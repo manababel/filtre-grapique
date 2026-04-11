@@ -1,0 +1,61 @@
+
+
+💡 Ajouts conseillés (si absents) :
+
+Motion Blur
+
+Zoom Blur
+
+Dual-Kawase Blur
+
+Gaussian Blur (vérifie que Guillossien = Gaussien)
+
+Dual-Kawase Blur (si tu fais du temps réel)
+
+
+
+Flous classiques / variations
+
+Gaussian Blur (IIR / separable) → tu as la version conv, mais pas la variante "separable" (optimisée en 1D horizontal + vertical).
+
+Box Blur (mean filter) → tu l’as, mais il existe aussi la version integral image blur (plus rapide sur grandes tailles).
+
+Triangle Blur (ou "tent blur") → convolution avec un noyau triangulaire (approximation rapide du gaussien).
+
+Flous directionnels / artistiques
+
+Zoom Blur (ou "radial zoom blur", différent du radial normal, effet de "vitesse vers le centre").
+
+Rotational Blur (rotation autour d’un point, proche du spiral, mais sans distorsion).
+
+Lens Blur (simulateur d’ouverture réelle, bokeh en forme de polygone).
+
+Hexagonal / Circular Bokeh Blur (formes d’ouverture personnalisées).
+
+Flous statistiques / avancés
+
+Mean-Shift Blur (lié au clustering des couleurs, proche de Kuwahara).
+
+Non-Local Means Blur (méthode avancée de débruitage, conserve les détails).
+
+Guided Filter (proche du bilateral / edge-aware, mais plus rapide et précis).
+
+Flous de simulation physique
+
+Heat Diffusion Blur (flou basé sur l’équation de diffusion de la chaleur).
+
+Optical Blur / PSF (Point Spread Function) (simulation réaliste d’optique, défocalisation).
+
+👉 Donc si je devais compléter ta liste, je dirais que tu pourrais ajouter au moins :
+
+Gaussian Separable
+
+Triangle Blur
+
+Zoom Blur
+
+Lens / Bokeh Blur
+
+Non-Local Means
+
+Guided Filter
