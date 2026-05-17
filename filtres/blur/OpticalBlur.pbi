@@ -1,139 +1,116 @@
-﻿Procedure OpticalBlur_MT(*param.parametre)
-  Protected *source.Pixel32
-  Protected *cible.Pixel32 
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected radius = *param\option[0]
-  Protected x, y, ix, iy
-  Protected rSum, gSum, bSum
-  Protected count
-  Protected pos, r, g, b, r1, g1, b1
-  Protected dx, dy
-  Protected lg_minus_1 = lg - 1
-  Protected ht_minus_1 = ht - 1
-  Protected radiusSq = radius * radius
-  
-  ; Thread split
-  Protected thread_startY = (*param\thread_pos * ht) / *param\thread_max
-  Protected thread_stopY  = ((*param\thread_pos + 1) * ht) / *param\thread_max - 1
-  If thread_stopY >= ht : thread_stopY = ht_minus_1 : EndIf
-  
-  For y = thread_startY To thread_stopY
-    For x = 0 To lg - 1
-      rSum = 0 : gSum = 0 : bSum = 0 : count = 0
-      pos = (y * lg + x) << 2
-      
-      ; Parcours du disque circulaire
-      For iy = -radius To radius
-        dy = iy
-        
-        ; Vérification Y
-        If (y + iy) < 0 Or (y + iy) > ht_minus_1
-          Continue
-        EndIf
-        
-        For ix = -radius To radius
-          dx = ix
-          
-          ; Test du disque circulaire
-          If dx * dx + dy * dy > radiusSq
-            Continue
-          EndIf
-          
-          ; Vérification X
-          If (x + ix) < 0 Or (x + ix) > lg_minus_1
-            Continue
-          EndIf
-          
-          ; Lecture du pixel
-          *source = *param\addr[0] + ((y + iy) * lg + (x + ix)) * 4
-          getrgb(*source\l, r1, g1, b1)
-          rSum + r1
-          gSum + g1
-          bSum + b1
-          count + 1
-        Next
-      Next
-      
-      ; Calcul de la moyenne
-      If count > 0
-        r = rSum / count
-        g = gSum / count
-        b = bSum / count
-      Else
-        ; Copie du pixel source si aucun échantillon
-        *source = *param\addr[0] + pos
-        getrgb(*source\l, r, g, b)
-      EndIf
-      
-      ; Écriture du résultat
-      *cible = *param\addr[1] + pos
-      *cible\l = (r << 16) | (g << 8) | b
-    Next
-  Next
-EndProcedure
+﻿; ---------------------------------------------------
+; Optical Blur - Version optimisée
+; Flou circulaire simulant un objectif (Bokeh rudimentaire)
+; ---------------------------------------------------
 
-
-Procedure OpticalBlur(*param.parametre)
-  If *param\info_active
-    *param\name = "Optical Blur"
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_Optical
-    *param\remarque = "Flou optique circulaire simulant un objectif"
-    *param\info[0] = "Radius"
-    *param\info[1] = "Nombre de passes"
-    *param\info[2] = "Masque binaire"
-    *param\info_data(0, 0) = 1  : *param\info_data(0, 1) = 50  : *param\info_data(0, 2) = 5
-    *param\info_data(1, 0) = 1  : *param\info_data(1, 1) = 10  : *param\info_data(1, 2) = 1
-    *param\info_data(2, 0) = 0  : *param\info_data(2, 1) = 2   : *param\info_data(2, 2) = 0
-    ProcedureReturn
-  EndIf
-  
-  If *param\source = 0 Or *param\cible = 0
-    ProcedureReturn
-  EndIf
-  
-  ; Validation du nombre de passes
-  If *param\option[1] < 1 : *param\option[1] = 1 : EndIf
-  If *param\option[1] > 10 : *param\option[1] = 10 : EndIf
-  
-  Protected total = *param\lg * *param\ht * 4
-  Protected *tempo = AllocateMemory(total)
-  
-  If Not *tempo
-    ProcedureReturn
-  EndIf
-  
-  ; Initialisation
-  CopyMemory(*param\source, *tempo, total)
-  *param\addr[0] = *tempo
-  *param\addr[1] = *param\cible
-  
-  ; Boucle d'itérations
-  Protected i
-  For i = 1 To *param\option[1]
-    MultiThread_MT(@OpticalBlur_MT())
+Procedure OpticalBlur_sp(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0], ht = \image_ht[0]
+    Protected radius = \option[0]
+    Protected radiusSq = radius * radius
+    Protected lg_minus_1 = lg - 1, ht_minus_1 = ht - 1
+    Protected x, y, ix, iy, rSum, gSum, bSum, count, pos, value
+    Protected dx, dy, targetX, targetY
     
-    ; Swap pour la prochaine itération
-    If i < *param\option[1]
-      Swap *param\addr[0], *param\addr[1]
-    EndIf
-  Next
-  
-  ; Application du masque si nécessaire
-  If *param\mask And *param\option[2]
-    *param\mask_type = *param\option[2] - 1
-    MultiThread_MT(@_mask())
-  EndIf
-  
-  ; Libération de la mémoire
-  If *tempo
-    FreeMemory(*tempo)
-  EndIf
+    macro_calul_tread(ht)
+    
+    For y = thread_start To thread_stop - 1
+      For x = 0 To lg - 1
+        rSum = 0 : gSum = 0 : bSum = 0 : count = 0
+        
+        ; Parcours du disque circulaire
+        For iy = -radius To radius
+          targetY = y + iy
+          If targetY < 0 Or targetY > ht_minus_1 : Continue : EndIf
+          
+          dy = iy
+          For ix = -radius To radius
+            targetX = x + ix
+            If targetX < 0 Or targetX > lg_minus_1 : Continue : EndIf
+            
+            dx = ix
+            ; Test de la forme circulaire (Distance Euclidienne)
+            If dx * dx + dy * dy <= radiusSq
+              value = PeekL(\addr[0] + (targetY * lg + targetX) << 2)
+              rSum + ((value >> 16) & $FF)
+              gSum + ((value >> 8) & $FF)
+              bSum + (value & $FF)
+              count + 1
+            EndIf
+          Next
+        Next
+        
+        pos = (y * lg + x) << 2
+        If count > 0
+          PokeL(\addr[1] + pos, ((rSum / count) << 16) | ((gSum / count) << 8) | (bSum / count))
+        Else
+          PokeL(\addr[1] + pos, PeekL(\addr[0] + pos))
+        EndIf
+      Next
+    Next
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 132
-; FirstLine = 63
+
+Procedure OpticalBlurEx(*FilterCtx.FilterParams)
+  Restore OpticalBlur_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  With *FilterCtx
+    Protected iterations = \option[1]
+    If iterations < 1 : iterations = 1 : EndIf
+    
+    Protected total = \image_lg[0] * \image_ht[0] * 4
+    Protected *tempo = AllocateMemory(total)
+    If Not *tempo : ProcedureReturn 0 : EndIf
+    
+    ; On copie la source dans le tempo pour l'itération initiale
+    CopyMemory(\addr[0], *tempo, total)
+    
+    Protected currentSource = *tempo
+    Protected currentCible = \addr[1]
+    Protected i
+    For i = 1 To iterations
+      \addr[0] = currentSource
+      \addr[1] = currentCible
+      
+      Create_MultiThread_MT(@OpticalBlur_sp(), 1)
+      
+      ; Swap des buffers pour l'itération suivante
+      If i < iterations
+        Swap currentSource, currentCible
+      EndIf
+    Next
+    
+    FreeMemory(*tempo)
+    
+    mask_update(*FilterCtx, last_data)
+  EndWith
+EndProcedure
+
+Procedure OpticalBlur(source, cible, mask, radius, iterations)
+  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  With FilterCtx
+    \option[0] = radius
+    \option[1] = iterations
+  EndWith
+  OpticalBlurEx(FilterCtx)
+EndProcedure
+
+DataSection
+  OpticalBlur_data:
+  Data.s "Optical Blur"
+  Data.s "Flou circulaire simulant l'ouverture d'un objectif"
+  Data.i #FilterType_Blur, #Blur_Optical
+  Data.s "Rayon"
+  Data.i 1, 50, 5
+  Data.s "Itérations"
+  Data.i 1, 10, 1
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 71
+; FirstLine = 49
 ; Folding = -
 ; EnableXP
 ; DPIAware

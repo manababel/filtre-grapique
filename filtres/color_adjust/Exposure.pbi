@@ -1,69 +1,111 @@
-﻿; ────────────────────────────────────────────────────────────────
-; Procédure thread : Correction d'exposition d'une image ARGB 32 bits
-;
-; Applique une courbe d’exposition simulée (de type photographique)
-; basée sur une fonction exponentielle décroissante.
-;
-; \option[0] = facteur d’exposition (1–255), plus la valeur est grande,
-;              plus l'image est lumineuse.
-;
-; Caractéristiques :
-; - Utilisation d'une table LUT (lookup table) pour performance
-; - Compatible multithread
-; - Respecte le masque alpha (si alpha < 128, le pixel est ignoré)
-; ────────────────────────────────────────────────────────────────
-Procedure Exposure_MT(*p.parametre)
-  Protected i, a, r, g, b, alpha, var
-  Protected totalPixels = *p\lg * *p\ht
-  Protected *srcPixel.Pixel32
-  Protected *dstPixel.Pixel32
-  ; Clamping et normalisation du facteur d’exposition
-  Protected exposure.f = *p\option[0]
-  Clamp(exposure, 1, 255)
-  exposure * 0.1
-  ; Génération de la LUT pour la transformation d'exposition
-  Protected Dim tab.a(255)
-  For i = 0 To 255
-    Protected val.f = 255 * (1.0 - Exp(-i * exposure / 255.0))
-    If val > 255 : val = 255 : EndIf
-    tab(i) = Int(val)
-  Next
-  Protected startPos = (*p\thread_pos * totalPixels) / *p\thread_max
-  Protected endPos   = ((*p\thread_pos + 1) * totalPixels) / *p\thread_max
-  ; Traitement des pixels dans la plage assignée au thread
-  For i = startPos To endPos - 1
-    *srcPixel = *p\source + (i << 2)
-    *dstPixel = *p\cible + (i << 2)
-    var = *srcPixel\l
-    getargb(var, a, r, g, b)
-    r = tab(r)
-    g = tab(g)
-    b = tab(b)
-    Clamp_RGB(r, g, b)
+﻿; ----------------------------------------------------------------------------------
+; Procédure thread pour la Correction d'Exposition (Courbe exponentielle)
+; ----------------------------------------------------------------------------------
 
-    *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
-  Next
-  FreeArray(tab())
+Procedure Exposure_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected i, a, r, g, b, pixel.l
+    Protected totalPixels = \image_lg[0] * \image_ht[1]
+    
+    ; On récupère la LUT pré-calculée stockée dans l'adresse temporaire du contexte
+    Protected *lut = \addr[2] 
+    
+    ; Utilisation de la macro standard pour le découpage multithread
+    macro_calul_tread(totalPixels)
+    
+    Protected *srcPixel.Pixel32 = \addr[0] + (thread_start << 2)
+    Protected *dstPixel.Pixel32 = \addr[1] + (thread_start << 2)
+    
+    For i = thread_start To thread_stop - 1
+      pixel = *srcPixel\l
+      
+      ; Extraction des composantes
+      a = (pixel >> 24) & $FF
+      r = (pixel >> 16) & $FF
+      g = (pixel >> 8) & $FF
+      b = pixel & $FF
+      
+      ; Transformation par la LUT
+      r = PeekA(*lut + r)
+      g = PeekA(*lut + g)
+      b = PeekA(*lut + b)
+      
+      ; Reconstruction du pixel (Le clamp est déjà géré par la LUT)
+      *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
+      
+      *srcPixel + 4
+      *dstPixel + 4
+    Next
+  EndWith
 EndProcedure
 
-Procedure Exposure(*param.parametre)
-  If param\info_active
-    param\typ = #FilterType_ColorAdjustment
-    param\name = "Exposure"
-    param\remarque = "Correction d’exposition (type photo)"
-    param\info[0] = "Exposition"
-    param\info[1] = "Masque"
-    param\info_data(0,0) = 0 : param\info_data(0,1) = 255 : param\info_data(0,2) = 15
-    param\info_data(1,0) = 0 : param\info_data(1,1) = 2 : param\info_data(1,2) = 0
-    ProcedureReturn
-  EndIf
+; ----------------------------------------------------------------------------------
+; Procédure d'appel et définition des métadonnées
+; ----------------------------------------------------------------------------------
 
-  filter_start(@Exposure_MT(), 3, 1)
+Procedure ExposureEx(*FilterCtx.FilterParams)
+  Restore Exposure_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  With *FilterCtx
+    ; --- Pré-calcul de la LUT (Lookup Table) ---
+    Protected *lut = AllocateMemory(256)
+    Protected exposure.f = \option[0] * 0.1
+    Protected i
+    If exposure < 0.1 : exposure = 0.1 : EndIf
+    
+    For i = 0 To 255
+      Protected val.f = 255 * (1.0 - Exp(-i * exposure / 255.0))
+      If val > 255 : val = 255 : EndIf
+      PokeA(*lut + i, Int(val))
+    Next
+    
+    ; On transmet la LUT aux threads via le pointeur pData
+    \addr[2] = *lut
+    
+    ; Traitement multithread
+    Create_MultiThread_MT(@Exposure_MT())
+    
+    ; Libération de la LUT et mise à jour du masque
+    FreeMemory(*lut)
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 38
-; FirstLine = 2
+; ----------------------------------------------------------------------------------
+; Interface simplifiée
+; ----------------------------------------------------------------------------------
+
+Procedure Exposure(source, cible, mask, exposure_val)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = exposure_val
+  EndWith
+  ExposureEx(FilterCtx)
+EndProcedure
+
+; ----------------------------------------------------------------------------------
+; Données du filtre
+; ----------------------------------------------------------------------------------
+
+DataSection
+  Exposure_Data:
+  Data.s "Exposure"           ; Nom
+  Data.s "Correction d'exposition photographique (courbe exponentielle)" ; Description
+  Data.i #FilterType_ColorAdjustment
+  Data.i 0                    ; Sous-type
+  
+  Data.s "Exposition"         ; Label option 0
+  Data.i 1, 255, 15           ; Min, Max, Défaut
+  
+  Data.s "XXX"                ; Fin des options
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 54
+; FirstLine = 31
 ; Folding = -
 ; EnableXP
 ; DPIAware

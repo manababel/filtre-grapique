@@ -1,248 +1,134 @@
-﻿; ============================================================================
-; Filtre Robinson - Détection de contours 8 directions optimisé
-; ============================================================================
-
-Macro Robinson_ReadGray(var)
-  getrgb(PeekL(*srcPixel), r, g, b)
-  gray(var) = (r * 77 + g * 150 + b * 29) >> 8
-  *srcPixel + 4
-EndMacro
-
-Macro Robinson_ReadRGB(var)
-  getrgb(PeekL(*srcPixel), r3(var), g3(var), b3(var))
-  *srcPixel + 4
-EndMacro
-
-Procedure Robinson_MT(*param.parametre)
-  Protected *source = *param\addr[0]
-  Protected *cible  = *param\addr[1]
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  
-  Protected mul.f = *param\option[0]
-  Protected toGray = *param\option[1]
-  Protected inverse = *param\option[2]
-  Protected mask_type = *param\option[3]  ; Paramètre masque (pour une autre procédure)
-  
-  ; Normalisation du multiplicateur (1-100 -> 0.05-5)
-  Clamp(mul, 1, 100)
-  mul * 0.05
-  
-  Protected *srcPixel.Long
-  Protected *dstPixel.Long
-  
-  ; Tableaux pour stocker les valeurs RGB ou niveaux de gris des 9 pixels du noyau 3x3
-  Protected Dim r3(8)
-  Protected Dim g3(8)
-  Protected Dim b3(8)
-  Protected Dim gray(8)
-  
-  Protected a, r, g, b
-  Protected x, y, i, dir
-  Protected valR, valG, valB, valGray, maxVal
-  Protected rMax, gMax, bMax
-  
-  ; Calcul des limites de traitement pour ce thread
-  Protected startPos = (*param\thread_pos * (ht - 2)) / *param\thread_max + 1
-  Protected endPos   = ((*param\thread_pos + 1) * (ht - 2)) / *param\thread_max
-  
-  ; Validation des limites (éviter les bords)
-  Clamp(startPos, 1, ht - 2)
-  Clamp(endPos, 1, ht - 2)
-  
-  ; Vérification que la zone de traitement est valide
-  If startPos > endPos
-    ProcedureReturn
-  EndIf
-  
-  ; Masques Robinson (8 directions, 9 positions du noyau 3x3)
-  ; Organisation: [direction, position]
-  ; Positions: 0=NW, 1=N, 2=NE, 3=W, 4=C, 5=E, 6=SW, 7=S, 8=SE
-  Protected Dim mask(7, 8)
-  
-  DataSection
-    robinson_data:
-    ; N (Nord)
-    Data.i  1,  1,  1,  0,  0,  0, -1, -1, -1
-    ; NE (Nord-Est)
-    Data.i  0,  1,  1, -1,  0,  1, -1, -1,  0
-    ; E (Est)
-    Data.i -1,  0,  1, -1,  0,  1, -1,  0,  1
-    ; SE (Sud-Est)
-    Data.i -1, -1,  0, -1,  0,  1,  0,  1,  1
-    ; S (Sud)
-    Data.i -1, -1, -1,  0,  0,  0,  1,  1,  1
-    ; SW (Sud-Ouest)
-    Data.i  0, -1, -1,  1,  0, -1,  1,  1,  0
-    ; W (Ouest)
-    Data.i  1,  0, -1,  1,  0, -1,  1,  0, -1
-    ; NW (Nord-Ouest)
-    Data.i  1,  1,  0,  1,  0, -1,  0, -1, -1
-  EndDataSection
-  
-  ; Charger les masques depuis la DataSection
-  Restore robinson_data
-  For dir = 0 To 7
-    For i = 0 To 8
-      Read.i mask(dir, i)
-    Next
-  Next
-  
-  ; ========================================================================
-  ; Traitement des pixels
-  ; ========================================================================
-  For y = startPos To endPos
-    For x = 1 To lg - 2
-      
-      If toGray
-        ; ====================================================================
-        ; MODE NIVEAU DE GRIS
-        ; ====================================================================
+﻿Procedure Robinson_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected mul.f = \option[0] * 0.05
+    Protected toGray = \option[1]   ; Boolean
+    Protected inverse = \option[2]  ; Boolean
+    
+    Protected Dim r3(8), Dim g3(8), Dim b3(8), Dim gray(8)
+    Protected Dim mask(7, 8)
+    Protected rMax, gMax, bMax, maxVal, valGray, valR, valG, valB
+    Protected *srcPixel.Pixel32, *dstPixel.Pixel32
+    Protected a, r, g, b, x, y, i, dir, k, pitch = lg << 2
+    Protected dx , dy
+    
+    ; Chargement des masques Robinson (8 directions)
+    Restore robinson_kernel
+    For dir = 0 To 7 : For i = 0 To 8 : Read.i mask(dir, i) : Next : Next
+    
+    macro_calul_tread(ht)
+    
+    ; Protection des bords
+    If thread_start < 1 : thread_start = 1 : EndIf
+    If thread_stop > ht - 1 : thread_stop = ht - 1 : EndIf
+    
+    For y = thread_start To thread_stop - 1
+      For x = 1 To lg - 2
         
-        ; Lecture des 9 pixels du noyau 3x3 en niveaux de gris
-        ; Ligne supérieure (y-1)
-        *srcPixel = *source + ((y - 1) * lg + (x - 1)) * 4
-        Robinson_ReadGray(0) : Robinson_ReadGray(1) : Robinson_ReadGray(2)
-        
-        ; Ligne centrale (y)
-        *srcPixel = *source + (y * lg + (x - 1)) * 4
-        Robinson_ReadGray(3) : Robinson_ReadGray(4) : Robinson_ReadGray(5)
-        
-        ; Ligne inférieure (y+1)
-        *srcPixel = *source + ((y + 1) * lg + (x - 1)) * 4
-        Robinson_ReadGray(6) : Robinson_ReadGray(7) : Robinson_ReadGray(8)
-        
-        ; Calcul du maximum sur les 8 directions
-        maxVal = 0
-        
-        For dir = 0 To 7
-          valGray = 0
-          
-          ; Convolution avec le masque de direction
-          For i = 0 To 8
-            valGray + gray(i) * mask(dir, i)
+        ; Lecture du voisinage 3x3
+        k = 0
+        For dy = -1 To 1
+          Protected *srcLine = \addr[0] + ((y + dy) * pitch)
+          For dx = -1 To 1
+            *srcPixel = *srcLine + ((x + dx) << 2)
+            If k = 4 : getargb(*srcPixel\l, a, r3(k), g3(k), b3(k)) : Else : getrgb(*srcPixel\l, r3(k), g3(k), b3(k)) : EndIf
+            If toGray : gray(k) = (r3(k) * 77 + g3(k) * 150 + b3(k) * 29) >> 8 : EndIf
+            k + 1
           Next
-          
-          ; Prendre la valeur absolue
-          valGray = Abs(valGray)
-          
-          ; Garder le maximum
-          If valGray > maxVal
-            maxVal = valGray
-          EndIf
         Next
         
-        ; Application du multiplicateur
-        r = maxVal * mul
-        
-        ; Clamping et inversion
-        Clamp(r, 0, 255)
-        If inverse : r = 255 - r : EndIf
-        
-        ; Écriture du pixel résultat (alpha = 255)
-        *dstPixel = *cible + (y * lg + x) * 4
-        PokeL(*dstPixel, $FF000000 | (r * $010101))
-        
-      Else
-        ; ====================================================================
-        ; MODE COULEUR
-        ; ====================================================================
-        
-        ; Lecture des 9 pixels du noyau 3x3 en couleur
-        ; Ligne supérieure (y-1)
-        *srcPixel = *source + ((y - 1) * lg + (x - 1)) * 4
-        Robinson_ReadRGB(0) : Robinson_ReadRGB(1) : Robinson_ReadRGB(2)
-        
-        ; Ligne centrale (y)
-        *srcPixel = *source + (y * lg + (x - 1)) * 4
-        Robinson_ReadRGB(3) : Robinson_ReadRGB(4) : Robinson_ReadRGB(5)
-        
-        ; Ligne inférieure (y+1)
-        *srcPixel = *source + ((y + 1) * lg + (x - 1)) * 4
-        Robinson_ReadRGB(6) : Robinson_ReadRGB(7) : Robinson_ReadRGB(8)
-        
-        ; Calcul des maximums sur les 8 directions pour chaque canal
-        rMax = 0 : gMax = 0 : bMax = 0
-        
-        For dir = 0 To 7
-          valR = 0 : valG = 0 : valB = 0
-          
-          ; Convolution avec le masque de direction
-          For i = 0 To 8
-            valR + r3(i) * mask(dir, i)
-            valG + g3(i) * mask(dir, i)
-            valB + b3(i) * mask(dir, i)
+        If toGray
+          maxVal = 0
+          For dir = 0 To 7
+            valGray = 0
+            For i = 0 To 8 : valGray + gray(i) * mask(dir, i) : Next
+            valGray = Abs(valGray)
+            If valGray > maxVal : maxVal = valGray : EndIf
           Next
-          
-          ; Prendre la valeur absolue
-          valR = Abs(valR)
-          valG = Abs(valG)
-          valB = Abs(valB)
-          
-          ; Garder le maximum pour chaque canal
-          If valR > rMax : rMax = valR : EndIf
-          If valG > gMax : gMax = valG : EndIf
-          If valB > bMax : bMax = valB : EndIf
-        Next
-        
-        ; Application du multiplicateur
-        r = rMax * mul
-        g = gMax * mul
-        b = bMax * mul
-        
-        ; Clamping et inversion
-        clamp_rgb(r, g, b)
-        If inverse
-          r = 255 - r
-          g = 255 - g
-          b = 255 - b
+          r = maxVal * mul : g = r : b = r
+        Else
+          rMax = 0 : gMax = 0 : bMax = 0
+          For dir = 0 To 7
+            valR = 0 : valG = 0 : valB = 0
+            For i = 0 To 8
+              valR + r3(i) * mask(dir, i)
+              valG + g3(i) * mask(dir, i)
+              valB + b3(i) * mask(dir, i)
+            Next
+            valR = Abs(valR) : valG = Abs(valG) : valB = Abs(valB)
+            If valR > rMax : rMax = valR : EndIf
+            If valG > gMax : gMax = valG : EndIf
+            If valB > bMax : bMax = valB : EndIf
+          Next
+          r = rMax * mul : g = gMax * mul : b = bMax * mul
         EndIf
         
-        ; Écriture du pixel résultat (alpha = 255)
-        *dstPixel = *cible + (y * lg + x) * 4
-        PokeL(*dstPixel, $FF000000 | (r << 16) | (g << 8) | b)
-      EndIf
-      
+        ; Traitement final (Limites et Inversion)
+        If r > 255 : r = 255 : EndIf
+        If g > 255 : g = 255 : EndIf
+        If b > 255 : b = 255 : EndIf
+        If inverse : r = 255 - r : g = 255 - g : b = 255 - b : EndIf
+
+        *dstPixel = \addr[1] + ((y * lg + x) << 2)
+        *dstPixel\l = (a << 24) | (Int(r) << 16) | (Int(g) << 8) | Int(b)
+      Next
     Next
-  Next
-  
-  ; Libération des tableaux
-  FreeArray(r3())
-  FreeArray(g3())
-  FreeArray(b3())
-  FreeArray(gray())
-  FreeArray(mask())
+    
+    FreeArray(r3()) : FreeArray(g3()) : FreeArray(b3()) : FreeArray(gray()) : FreeArray(mask())
+  EndWith
 EndProcedure
 
-Procedure Robinson(*param.parametre)
-  ; Configuration du filtre (métadonnées)
-  If *param\info_active
-    *param\typ = #FilterType_EdgeDetection
-    *param\subtype = #EdgeDetect_Gradient
-    *param\name = "Robinson"
-    *param\remarque = "Détection de contours 8 directions (opérateur de Robinson)"
-    
-    ; Description des paramètres
-    *param\info[0] = "Multiplicateur"
-    *param\info[1] = "Noir et blanc"
-    *param\info[2] = "Inversion"
-    *param\info[3] = "Masque"
-    
-    ; Paramètres: [min, max, défaut]
-    *param\info_data(0, 0) = 1   : *param\info_data(0, 1) = 100 : *param\info_data(0, 2) = 10
-    *param\info_data(1, 0) = 0   : *param\info_data(1, 1) = 1   : *param\info_data(1, 2) = 0
-    *param\info_data(2, 0) = 0   : *param\info_data(2, 1) = 1   : *param\info_data(2, 2) = 0
-    *param\info_data(3, 0) = 0   : *param\info_data(3, 1) = 2   : *param\info_data(3, 2) = 0
-    
-    ProcedureReturn
-  EndIf
+Procedure RobinsonEx(*FilterCtx.FilterParams)
+  Restore Robinson_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+
+  Create_MultiThread_MT(@Robinson_MT())
   
-  ; Lancement du traitement multi-thread
-  filter_start(@Robinson_MT(), 3)
+  mask_update(*FilterCtx, last_data)
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 240
-; FirstLine = 172
+
+Procedure Robinson(source, cible, mask, multiply=10, gray=0, inverse=0)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = multiply
+    \option[1] = gray
+    \option[2] = inverse
+  EndWith
+  RobinsonEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  Robinson_data:
+  Data.s "Robinson"
+  Data.s "Détection de contours par boussole 8 directions (Robinson)"
+  Data.i #FilterType_EdgeDetection
+  Data.i #EdgeDetect_Gradient
+  
+  Data.s "Multiplicateur"
+  Data.i 1, 100, 10
+  Data.s "Noir et Blanc"
+  Data.i 0, 1, 0
+  Data.s "Inverser"
+  Data.i 0, 1, 0
+  Data.s "XXX"
+
+  robinson_kernel:
+  Data.i  1,  1,  1,  0,  0,  0, -1, -1, -1 ; N
+  Data.i  0,  1,  1, -1,  0,  1, -1, -1,  0 ; NE
+  Data.i -1,  0,  1, -1,  0,  1, -1,  0,  1 ; E
+  Data.i -1, -1,  0, -1,  0,  1,  0,  1,  1 ; SE
+  Data.i -1, -1, -1,  0,  0,  0,  1,  1,  1 ; S
+  Data.i  0, -1, -1,  1,  0, -1,  1,  1,  0 ; SW
+  Data.i  1,  0, -1,  1,  0, -1,  1,  0, -1 ; W
+  Data.i  1,  1,  0,  1,  0, -1,  0, -1, -1 ; NW
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 14
+; FirstLine = 7
 ; Folding = -
 ; EnableXP
 ; DPIAware

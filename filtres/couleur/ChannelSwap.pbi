@@ -1,57 +1,98 @@
-﻿Procedure ChannelSwap_MT(*param.parametre)
-  Protected *source = *param\addr[0]
-  Protected *cible  = *param\addr[1]
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected opt = *param\option[0]
-  
-  Clamp(opt, 0, 5)
-  
-  Protected i, var, a, r, g, b, rgb
-  Protected totalPixels = lg * ht
-  Protected startPos = (*param\thread_pos * totalPixels) / *param\thread_max
-  Protected endPos = ((*param\thread_pos + 1) * totalPixels) / *param\thread_max
-  
-  Protected *srcPixel.Pixel32 = *source + (startPos << 2)
-  Protected *dstPixel.Pixel32 = *cible + (startPos << 2)
-  
-  For i = startPos To endPos - 1
-    var = *srcPixel\l
-    getargb(var, a, r, g, b)
+﻿; ----------------------------------------------------------------------------------
+; Procédure thread pour la permutation des canaux RGB
+; ----------------------------------------------------------------------------------
+
+Procedure ChannelSwap_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected *source = \addr[0]
+    Protected *cible  = \addr[1]
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[1]
+    Protected opt = \option[0]
     
-    ; Permutations directes des canaux (6 combinaisons possibles)
-    Select opt
-      Case 0 : rgb = (r << 16) | (g << 8) | b  ; RGB (original)
-      Case 1 : rgb = (r << 16) | (b << 8) | g  ; RBG
-      Case 2 : rgb = (g << 16) | (r << 8) | b  ; GRB
-      Case 3 : rgb = (g << 16) | (b << 8) | r  ; GBR
-      Case 4 : rgb = (b << 16) | (r << 8) | g  ; BRG
-      Case 5 : rgb = (b << 16) | (g << 8) | r  ; BGR
-    EndSelect
+    Clamp(opt, 0, 5)
     
-    *dstPixel\l = (a << 24) | rgb
-    *srcPixel + 4
-    *dstPixel + 4
-  Next
+    Protected i, var, a, r, g, b, rgb
+    Protected totalPixels = lg * ht
+    
+    ; Utilisation de la macro avec parenthèses pour l'argument composé
+    macro_calul_tread((lg * ht))
+    
+    Protected *srcPixel.Pixel32 = \addr[0] + (thread_start << 2)
+    Protected *dstPixel.Pixel32 = \addr[1] + (thread_start << 2)
+    
+    For i = thread_start To thread_stop - 1
+      var = *srcPixel\l
+      getargb(var, a, r, g, b)
+      
+      ; Permutations directes des canaux (6 combinaisons possibles)
+      Select opt
+        Case 0 : rgb = (r << 16) | (g << 8) | b  ; RGB (original)
+        Case 1 : rgb = (r << 16) | (b << 8) | g  ; RBG
+        Case 2 : rgb = (g << 16) | (r << 8) | b  ; GRB
+        Case 3 : rgb = (g << 16) | (b << 8) | r  ; GBR
+        Case 4 : rgb = (b << 16) | (r << 8) | g  ; BRG
+        Case 5 : rgb = (b << 16) | (g << 8) | r  ; BGR
+      EndSelect
+      
+      *dstPixel\l = (a << 24) | rgb
+      *srcPixel + 4
+      *dstPixel + 4
+    Next
+  EndWith
 EndProcedure
 
-Procedure ChannelSwap(*param.parametre)
-  If param\info_active
-    param\typ = #FilterType_ColorEffect
-    param\name = "Channel Swap"
-    param\remarque = "Permutation pure des canaux RGB"
-    param\info[0] = "Mode"
-    param\info[1] = "Masque"
-    param\info_data(0,0) = 0 : param\info_data(0,1) = 5 : param\info_data(0,2) = 0
-    param\info_data(1,0) = 0 : param\info_data(1,1) = 2 : param\info_data(1,2) = 0
-    ProcedureReturn
-  EndIf
+; ----------------------------------------------------------------------------------
+; Procédure d'appel et définition des métadonnées
+; ----------------------------------------------------------------------------------
+
+Procedure ChannelSwapEx(*FilterCtx.FilterParams)
+  Restore ChannelSwap_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  filter_start(@ChannelSwap_MT(), 1, 1)
+  With *FilterCtx
+    ; Lance le traitement multithread
+    Create_MultiThread_MT(@ChannelSwap_MT())
+    
+    ; Applique le masque si présent
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
 
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 51
+; ----------------------------------------------------------------------------------
+; Interface simplifiée
+; ----------------------------------------------------------------------------------
+
+Procedure ChannelSwap(source, cible, mask, mode)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = mode
+  EndWith
+  ChannelSwapEx(FilterCtx)
+EndProcedure
+
+; ----------------------------------------------------------------------------------
+; Données du filtre
+; ----------------------------------------------------------------------------------
+
+DataSection
+  ChannelSwap_Data:
+  Data.s "Channel Swap"                     ; Nom du filtre
+  Data.s "Permutation pure des canaux RGB"  ; Description
+  Data.i #FilterType_ColorEffect
+  Data.i 0                                  ; Sous-type
+  
+  Data.s "Mode (0-5)"                       ; Label option 0
+  Data.i 0, 5, 0                            ; Min, Max, Défaut
+  
+  Data.s "XXX"                              ; Fin des options
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 66
+; FirstLine = 40
 ; Folding = -
 ; EnableXP
 ; DPIAware

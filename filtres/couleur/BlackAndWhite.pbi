@@ -1,94 +1,129 @@
-﻿Procedure BlackAndWhite_MT(*param.parametre)   
-  Protected *source = *param\addr[0]
-  Protected *cible  = *param\addr[1]
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected seuil = *param\option[0]
-  Protected option = *param\option[1]
-  clamp(option , 1 , 9)
-  
-  Protected i, lum, l1, l2
-  Protected var, a, r, g, b
-  
-  Protected totalPixels = lg * ht
-  Protected start = (*param\thread_pos * totalPixels) / *param\thread_max
-  Protected stop = ((*param\thread_pos + 1) * totalPixels) / *param\thread_max
-  
-  Protected *srcPixel.Pixel32 = *source + (start << 2)
-  Protected *dstPixel.Pixel32 = *cible + (start << 2)
-  
-  For i = start To stop - 1
-    var = *srcPixel\l
-    getargb(var, a, r, g, b)
+﻿; ----------------------------------------------------------------------------------
+; Procédure thread pour la Binarisation Noir & Blanc (Seuillage)
+; ----------------------------------------------------------------------------------
+
+Procedure BlackAndWhite_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected i, a, r, g, b, lum, l1, l2, pixel.l
+    Protected totalPixels = \image_lg[0] * \image_ht[1]
+    Protected seuil = \option[0]
+    Protected mode  = \option[1]
     
-    Select option
-      Case 1  ; Rec.601 (0.299R + 0.587G + 0.114B) - Standard TV
-        lum = (r * 77 + g * 150 + b * 29) >> 8
-        
-      Case 2  ; Rec.709 (0.2126R + 0.7152G + 0.0722B) - Vidéo HD
-        lum = (r * 54 + g * 183 + b * 18) >> 8
-        
-      Case 3  ; Valeur max - max(R, G, B)
-        max3(lum, r, g, b)
-        
-      Case 4  ; Valeur min - min(R, G, B)
-        min3(lum, r, g, b)
-        
-      Case 5  ; Valeur médiane - median(R, G, B)
-        l1 = g
-        If r > l1 : Swap r, l1 : EndIf
-        If l1 > b : Swap l1, b : EndIf
-        If r > l1 : Swap r, l1 : EndIf
-        lum = l1
-        
-      Case 6  ; HSL Lightness - (max + min) / 2
-        min3(l1, r, g, b)
-        max3(l2, r, g, b)
-        lum = (l1 + l2) >> 1
-        
-      Case 7  ; Canal rouge uniquement
-        lum = r
-        
-      Case 8  ; Canal vert uniquement
-        lum = g
-        
-      Case 9  ; Canal bleu uniquement
-        lum = b
-        
-      Default ; Moyenne simple (R + G + B) / 3
-        lum = (r + g + b) * 85 >> 8
-    EndSelect
+    macro_calul_tread(totalPixels)
     
-    ; Seuillage binaire
-    If lum > seuil
-      *dstPixel\l = (a << 24) | $FFFFFF  ; Blanc
-    Else
-      *dstPixel\l = a << 24              ; Noir
-    EndIf
+    Protected *srcPixel.Pixel32 = \addr[0] + (thread_start << 2)
+    Protected *dstPixel.Pixel32 = \addr[1] + (thread_start << 2)
     
-    *srcPixel + 4
-    *dstPixel + 4
-  Next      
+    For i = thread_start To thread_stop - 1
+      pixel = *srcPixel\l
+      a = (pixel >> 24) & $FF
+      r = (pixel >> 16) & $FF
+      g = (pixel >> 8)  & $FF
+      b = pixel & $FF
+      
+      Select mode
+        Case 1  ; Rec.601 (Standard TV)
+          lum = (r * 77 + g * 150 + b * 29) >> 8
+          
+        Case 2  ; Rec.709 (Vidéo HD)
+          lum = (r * 54 + g * 183 + b * 18) >> 8
+          
+        Case 3  ; Valeur max
+          lum = r : If g > lum : lum = g : EndIf : If b > lum : lum = b : EndIf
+          
+        Case 4  ; Valeur min
+          lum = r : If g < lum : lum = g : EndIf : If b < lum : lum = b : EndIf
+          
+        Case 5  ; Valeur médiane
+          l1 = r : l2 = g : lum = b
+          If l1 > l2 : Swap l1, l2 : EndIf
+          If l2 > lum : Swap l2, lum : EndIf
+          If l1 > l2 : Swap l1, l2 : EndIf
+          lum = l2 ; La valeur du milieu
+          
+        Case 6  ; HSL Lightness - (max + min) / 2
+          l1 = r : If g > l1 : l1 = g : EndIf : If b > l1 : l1 = b : EndIf ; Max
+          l2 = r : If g < l2 : l2 = g : EndIf : If b < l2 : l2 = b : EndIf ; Min
+          lum = (l1 + l2) >> 1
+          
+        Case 7  ; Canal rouge
+          lum = r
+          
+        Case 8  ; Canal vert
+          lum = g
+          
+        Case 9  ; Canal bleu
+          lum = b
+          
+        Default ; Moyenne simple
+          lum = (r + g + b) * 85 >> 8
+      EndSelect
+      
+      ; Seuillage binaire
+      If lum > seuil
+        *dstPixel\l = (a << 24) | $FFFFFF  ; Blanc (conserve l'alpha)
+      Else
+        *dstPixel\l = (a << 24)            ; Noir (conserve l'alpha)
+      EndIf
+      
+      *srcPixel + 4
+      *dstPixel + 4
+    Next
+  EndWith
 EndProcedure
 
-Procedure BlackAndWhite(*param.parametre)
-  If param\info_active
-    param\typ = #FilterType_ColorEffect
-    param\name = "Black & White Threshold"
-    param\remarque = "Conversion binaire noir/blanc avec seuil"
-    param\info[0] = "Seuil"
-    param\info[1] = "Méthode de luminance"
-    param\info[2] = "Masque"
-    param\info_data(0,0) = 1   : param\info_data(0,1) = 254 : param\info_data(0,2) = 127
-    param\info_data(1,0) = 1   : param\info_data(1,1) = 9   : param\info_data(1,2) = 2
-    param\info_data(2,0) = 0   : param\info_data(2,1) = 2   : param\info_data(2,2) = 0
-    ProcedureReturn
-  EndIf
+; ----------------------------------------------------------------------------------
+; Procédure d'appel et définition des métadonnées
+; ----------------------------------------------------------------------------------
+
+Procedure BlackAndWhiteEx(*FilterCtx.FilterParams)
+  Restore BlackAndWhite_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  filter_start(@BlackAndWhite_MT(), 1, 1)
+  With *FilterCtx
+    Create_MultiThread_MT(@BlackAndWhite_MT())
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 8
+
+; ----------------------------------------------------------------------------------
+; Interface simplifiée
+; ----------------------------------------------------------------------------------
+
+Procedure BlackAndWhite(source, cible, mask, seuil, mode)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = seuil
+    \option[1] = mode
+  EndWith
+  BlackAndWhiteEx(FilterCtx)
+EndProcedure
+
+; ----------------------------------------------------------------------------------
+; Données du filtre
+; ----------------------------------------------------------------------------------
+
+DataSection
+  BlackAndWhite_Data:
+  Data.s "Black & White"      ; Nom
+  Data.s "Binarisation de l'image (Noir/Blanc) avec seuil réglable" ; Description
+  Data.i #FilterType_ColorEffect
+  Data.i 0                    ; Sous-type
+  
+  Data.s "Seuil (0-255)"      ; Label option 0
+  Data.i 0, 255, 127          ; Min, Max, Défaut
+  
+  Data.s "Méthode"            ; Label option 1
+  Data.i 1, 9, 2              ; Min, Max, Défaut (Rec.709)
+  
+  Data.s "XXX"                ; Fin des options
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 93
+; FirstLine = 71
 ; Folding = -
 ; EnableAsm
 ; EnableThread

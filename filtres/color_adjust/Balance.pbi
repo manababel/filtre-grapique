@@ -1,64 +1,114 @@
 ﻿; ----------------------------------------------------------------------------------
-; Procédure thread pour l'ajustement du balance des couleurs RGB sur une image ARGB 32 bits.
-;
-; Cette procédure applique un facteur multiplicateur sur les canaux rouge, vert, et bleu
-; (option[0], option[1], option[2] respectivement) en tenant compte d'un masque alpha
-; optionnel qui peut moduler l'effet de manière progressive ou dure.
-;
-; Paramètres (via *p.parametre) :
-; - option[0] : facteur rouge (0..255)
-; - option[1] : facteur vert (0..255)
-; - option[2] : facteur bleu  (0..255)
-Procedure Balance_MT(*p.parametre)
-  Protected i, pixel.l, a.l, r.l, g.l, b.l
-  Protected factorR = *p\option[0]
-  Protected factorG = *p\option[1]
-  Protected factorB = *p\option[2]
-  Protected totalPixels = *p\lg * *p\ht
-  Protected *srcPixel.Pixel32 = *p\source
-  Protected *dstPixel.Pixel32 = *p\cible
-  Protected startPos = (*p\thread_pos * totalPixels) / *p\thread_max
-  Protected endPos   = ((*p\thread_pos + 1) * totalPixels) / *p\thread_max
-  For i = startPos To endPos - 1
-    *srcPixel = *p\source + (i << 2)
-    *dstPixel = *p\cible + (i << 2)
-    pixel = *srcPixel\l
-    GetARGB(pixel, a, r, g, b)
-    r = (factorR * r) >> 8
-    g = (factorG * g) >> 8
-    b = (factorB * b) >> 8
-    Clamp_RGB(r, g, b)
-    *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
-  Next
+; Procédure thread pour l'ajustement du balance des couleurs RGB
+; ----------------------------------------------------------------------------------
+
+Procedure Balance_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected i, pixel.l, a.l, r.l, g.l, b.l
+    
+    ; Les facteurs sont normalisés par rapport à 255 (décalage de 8 bits)
+    Protected factorR.i = \option[0]
+    Protected factorG.i = \option[1]
+    Protected factorB.i = \option[2]
+    
+    Protected totalPixels = \image_lg[0] * \image_ht[0]
+    
+    ; Utilisation de la macro standard pour le découpage multithread
+    macro_calul_tread(totalPixels)
+    
+    Protected *srcPixel.Pixel32
+    Protected *dstPixel.Pixel32
+    
+    ; On pointe sur le début du segment assigné à ce thread
+    *srcPixel = \addr[0] + (thread_start << 2)
+    *dstPixel = \addr[1] + (thread_start << 2)
+    
+    For i = thread_start To thread_stop - 1
+      pixel = *srcPixel\l
+      
+      ; Extraction des composantes
+      a = (pixel >> 24) & $FF
+      r = (pixel >> 16) & $FF
+      g = (pixel >> 8) & $FF
+      b = pixel & $FF
+      
+      ; Application du gain
+      r = (factorR * r) >> 8
+      g = (factorG * g) >> 8
+      b = (factorB * b) >> 8
+      
+      ; Limitation (Clamp)
+      If r > 255 : r = 255 : EndIf
+      If g > 255 : g = 255 : EndIf
+      If b > 255 : b = 255 : EndIf
+      
+      ; Reconstruction du pixel
+      *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
+      
+      *srcPixel + 4
+      *dstPixel + 4
+    Next
+  EndWith
 EndProcedure
 
 ; ----------------------------------------------------------------------------------
-; Procédure principale pour appliquer un effet de balance RGB sur image ARGB 32 bits
-Procedure Balance(*param.parametre)
-  ; Mode d'information (description de l'effet)
-  If param\info_active
-    param\typ = #FilterType_ColorAdjustment
-    param\name = "Balance"
-    param\remarque = ""
-    param\info[0] = "Rouge (0-255)"
-    param\info[1] = "Vert (0-255)"
-    param\info[2] = "Bleu (0-255)"
-    param\info[3] = "Masque"
-    param\info_data(0,0) = 1 : param\info_data(0,1) = 512 : param\info_data(0,2) = 255
-    param\info_data(1,0) = 1 : param\info_data(1,1) = 512 : param\info_data(1,2) = 255
-    param\info_data(2,0) = 1 : param\info_data(2,1) = 512 : param\info_data(2,2) = 255
-    param\info_data(3,0) = 0 : param\info_data(3,1) = 2  : param\info_data(3,2) = 0
-    ProcedureReturn
-  EndIf
-  
-  filter_start(@Balance_MT(), 3, 1)
+; Procédure d'appel et définition des métadonnées
+; ----------------------------------------------------------------------------------
 
+Procedure BalanceEx(*FilterCtx.FilterParams)
+  Restore Balance_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  With *FilterCtx
+    ; Lance le traitement multithread
+    Create_MultiThread_MT(@Balance_MT())
+    
+    ; Applique le masque si présent (géré par le moteur)
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
 
+; ----------------------------------------------------------------------------------
+; Interface simplifiée
+; ----------------------------------------------------------------------------------
 
+Procedure Balance(source, cible, mask, r_factor, g_factor, b_factor)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = r_factor
+    \option[1] = g_factor
+    \option[2] = b_factor
+  EndWith
+  BalanceEx(FilterCtx)
+EndProcedure
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 45
+; ----------------------------------------------------------------------------------
+; Données du filtre
+; ----------------------------------------------------------------------------------
+
+DataSection
+  Balance_Data:
+  Data.s "Balance"            ; Nom du filtre
+  Data.s "Ajuste les gains par canal RGB (Balance des blancs)" ; Description
+  Data.i #FilterType_ColorAdjustment
+  Data.i 0                    ; Sous-type (si applicable)
+  
+  Data.s "Rouge (0-255)"      ; Label option 0
+  Data.i 0, 512, 255          ; Min, Max, Défaut
+  
+  Data.s "Vert (0-255)"       ; Label option 1
+  Data.i 0, 512, 255          ; Min, Max, Défaut
+  
+  Data.s "Bleu (0-255)"       ; Label option 2
+  Data.i 0, 512, 255          ; Min, Max, Défaut
+  
+  Data.s "XXX"                ; Fin des options
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 13
 ; Folding = -
 ; EnableXP
 ; DPIAware

@@ -37,7 +37,6 @@ Macro LaplacianPyramidSharpen_UpscaleImage(src,w,h,dst,nw,nh)
   LaplacianPyramidSharpen_ScaleImage(src,w,h,dst,nw,nh)
 EndMacro
 
-
 Procedure LaplacianPyramidSharpen_BlurBuffer(*buf,w,h,radius)
   If radius<1 : ProcedureReturn : EndIf
   Protected *tmp=AllocateMemory(w*h*4)
@@ -85,89 +84,109 @@ Procedure LaplacianPyramidSharpen_BlurBuffer(*buf,w,h,radius)
   FreeMemory(*tmp)
 EndProcedure
 
-Procedure LaplacianPyramidSharpen_sp(*param.parametre)
-  Protected lg=*param\lg, ht=*param\ht
-  Protected levels=*param\option[0]
-  Protected kernel=*param\option[1]
-  Protected gain.f=*param\option[2]/100.0
-  Protected gain2 
-  If levels<1:levels=1:EndIf
-  If kernel<0:kernel=0:EndIf
+Procedure LaplacianPyramidSharpen_spEx(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0], ht = \image_ht[1]
+    Protected levels = \option[0]
+    Protected kernel = \option[1]
+    Protected gain.f = \option[2] / 100.0
+    Protected gain2 
+    If levels<1:levels=1:EndIf
+    If kernel<0:kernel=0:EndIf
 
-  Protected l,i
-  Protected *temp=AllocateMemory(lg*ht*4)
+    Protected l,i
+    Protected *temp=AllocateMemory(lg*ht*4)
 
-  Dim pyramid.i(levels-1)
-  Dim laplacian_tab.i(levels-2)
+    Dim pyramid.i(levels-1)
+    Dim laplacian_tab.i(levels-2)
 
-  For l=0 To levels-1
-    pyramid(l)=AllocateMemory((lg>>l)*(ht>>l)*4)
-  Next
-  For l=0 To levels-2
-    laplacian_tab(l)=AllocateMemory((lg>>l)*(ht>>l)*4)
-  Next
-
-  LaplacianPyramidSharpen_ScaleImage(*param\addr[0],lg,ht,pyramid(0),lg,ht)
-  For l=1 To levels-1
-    LaplacianPyramidSharpen_ScaleImage(pyramid(l-1),lg>>(l-1),ht>>(l-1),pyramid(l),lg>>l,ht>>l)
-  Next
-
-  For l=0 To levels-2
-    LaplacianPyramidSharpen_UpscaleImage(pyramid(l+1),lg>>(l+1),ht>>(l+1),*temp,lg>>l,ht>>l)
-    For i=0 To (lg>>l)*(ht>>l)-1
-      PokeL(laplacian_tab(l)+i*4,PeekL(pyramid(l)+i*4)-PeekL(*temp+i*4))
+    For l=0 To levels-1
+      pyramid(l)=AllocateMemory((lg>>l)*(ht>>l)*4)
     Next
-  Next
-
-  For l=0 To levels-1
-    LaplacianPyramidSharpen_BlurBuffer(pyramid(l),lg>>l,ht>>l,kernel)
-  Next
-
-  For l=levels-2 To 0 Step -1
-    LaplacianPyramidSharpen_UpscaleImage(pyramid(l+1),lg>>(l+1),ht>>(l+1),*temp,lg>>l,ht>>l)
-    gain2 = gain
-    For i=0 To (lg>>l)*(ht>>l)-1
-      Protected a,r,g,b
-      a=(PeekL(*temp+i*4)>>24 & 255)+gain2 *(PeekL(laplacian_tab(l)+i*4)>>24 & 255)
-      r=(PeekL(*temp+i*4)>>16 & 255)+gain2 *(PeekL(laplacian_tab(l)+i*4)>>16 & 255)
-      g=(PeekL(*temp+i*4)>>8 & 255)+gain2 *(PeekL(laplacian_tab(l)+i*4)>>8 & 255)
-      b=(PeekL(*temp+i*4)    & 255)+gain2 *(PeekL(laplacian_tab(l)+i*4)    & 255)
-      Clamp(a,0,255):Clamp(r,0,255):Clamp(g,0,255):Clamp(b,0,255)
-      PokeL(pyramid(l)+i*4,(a<<24)|(r<<16)|(g<<8)|b)
+    For l=0 To levels-2
+      laplacian_tab(l)=AllocateMemory((lg>>l)*(ht>>l)*4)
     Next
-  Next
 
-  CopyMemory(pyramid(0),*param\addr[1],lg*ht*4)
+    LaplacianPyramidSharpen_ScaleImage(\addr[0],lg,ht,pyramid(0),lg,ht)
+    For l=1 To levels-1
+      LaplacianPyramidSharpen_ScaleImage(pyramid(l-1),lg>>(l-1),ht>>(l-1),pyramid(l),lg>>l,ht>>l)
+    Next
 
-  For l=0 To levels-1
-    FreeMemory(pyramid(l))
-    If l<levels-1:FreeMemory(laplacian_tab(l)):EndIf
-  Next
-  FreeMemory(*temp)
+    For l=0 To levels-2
+      LaplacianPyramidSharpen_UpscaleImage(pyramid(l+1),lg>>(l+1),ht>>(l+1),*temp,lg>>l,ht>>l)
+      For i=0 To (lg>>l)*(ht>>l)-1
+        PokeL(laplacian_tab(l)+i*4,PeekL(pyramid(l)+i*4)-PeekL(*temp+i*4))
+      Next
+    Next
+
+    For l=0 To levels-1
+      LaplacianPyramidSharpen_BlurBuffer(pyramid(l),lg>>l,ht>>l,kernel)
+    Next
+
+    For l=levels-2 To 0 Step -1
+      LaplacianPyramidSharpen_UpscaleImage(pyramid(l+1),lg>>(l+1),ht>>(l+1),*temp,lg>>l,ht>>l)
+      gain2 = gain
+      For i=0 To (lg>>l)*(ht>>l)-1
+        Protected a,r,g,b
+        a=(PeekL(*temp+i*4)>>24 & 255)+gain2 *(PeekL(laplacian_tab(l)+i*4)>>24 & 255)
+        r=(PeekL(*temp+i*4)>>16 & 255)+gain2 *(PeekL(laplacian_tab(l)+i*4)>>16 & 255)
+        g=(PeekL(*temp+i*4)>>8 & 255)+gain2 *(PeekL(laplacian_tab(l)+i*4)>>8 & 255)
+        b=(PeekL(*temp+i*4)    & 255)+gain2 *(PeekL(laplacian_tab(l)+i*4)    & 255)
+        Clamp(a,0,255):Clamp(r,0,255):Clamp(g,0,255):Clamp(b,0,255)
+        PokeL(pyramid(l)+i*4,(a<<24)|(r<<16)|(g<<8)|b)
+      Next
+    Next
+
+    CopyMemory(pyramid(0),\addr[1],lg*ht*4)
+
+    For l=0 To levels-1
+      FreeMemory(pyramid(l))
+      If l<levels-1:FreeMemory(laplacian_tab(l)):EndIf
+    Next
+    FreeMemory(*temp)
+  EndWith
 EndProcedure
 
-
-Procedure LaplacianPyramidSharpen(*param.parametre)
-  If param\info_active
-    param\typ=#FilterType_EdgeDetection
-    *param\subtype=#EdgeDetect_MultiScale
-    param\name="LaplacianPyramidSharpen"
-    param\info[0]="Niveaux"
-    param\info_data(0,0)=1: param\info_data(0,1)=6
-    param\info[1]="Kernel"
-    param\info_data(1,0)=0: param\info_data(1,1)=10
-    param\info[2]="Gain %"
-    param\info_data(2,0)=50: param\info_data(2,1)=300: param\info_data(2,2)=100
-    ProcedureReturn
-  EndIf
-  filter_start(@LaplacianPyramidSharpen_sp(),1)
+Procedure LaplacianPyramidSharpenEx(*FilterCtx.FilterParams)
+  Restore LaplacianPyramidSharpen_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  LaplacianPyramidSharpen_spEx(*FilterCtx)
+  
+  mask_update(*FilterCtx, last_data)
 EndProcedure
 
+Procedure LaplacianPyramidSharpen(source , cible , mask , niveaux , kernel , gain)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = niveaux
+    \option[1] = kernel
+    \option[2] = gain
+  EndWith
+  LaplacianPyramidSharpenEx(FilterCtx.FilterParams)
+EndProcedure
 
-
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 152
-; FirstLine = 106
-; Folding = -
+DataSection
+  LaplacianPyramidSharpen_data:
+  Data.s "LaplacianPyramidSharpen"
+  Data.s "Accentuation par pyramide laplacienne"
+  Data.i #FilterType_EdgeDetection
+  Data.i #EdgeDetect_MultiScale
+  
+  Data.s "Niveaux"
+  Data.i 1,6,3
+  Data.s "Kernel"
+  Data.i 0,10,2
+  Data.s "Gain %"
+  Data.i 50,300,100
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 168
+; FirstLine = 135
+; Folding = --
 ; EnableXP
 ; DPIAware

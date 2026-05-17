@@ -1,7 +1,9 @@
-﻿Macro Bilateral_DomainTransform1D_declare(length)
-  Protected *buf = *param\addr[0]
-  Protected *temp = *param\addr[1]
-  Protected *expLUT = *param\addr[2]
+﻿; --- Macros de calcul (conservées) ---
+
+Macro Bilateral_DomainTransform1D_declare(length)
+  Protected *buf = *FilterCtx\addr[0]
+  Protected *temp = *FilterCtx\addr[1]
+  Protected *expLUT = *FilterCtx\addr[2]
   Protected Dim domain.f(length)
   Protected Dim dc.f(length)
   Protected Dim dataR.f(length)
@@ -23,11 +25,10 @@ Macro Bilateral_DomainTransform1D_end()
 EndMacro
 
 Macro Bilateral_DomainTransform1D_sp0(op)
-  clamp(diff_d, 0, 255)
+  If diff_d < 0 : diff_d = 0 : ElseIf diff_d > 255 : diff_d = 255 : EndIf
   idx = Int(diff_d)
   frac = diff_d - idx
-  a0 = PeekF(*expLUT + (idx << 2))  ; Bit shift
-  ; Simplification du clamping pour idx+1
+  a0 = PeekF(*expLUT + (idx << 2))
   a1 = PeekF(*expLUT + ((idx + Bool(idx < 255)) << 2))
   alpha = a0 + frac * (a1 - a0)
   dataR(i) + alpha * (dataR(i op 1) - dataR(i))
@@ -41,7 +42,6 @@ Macro Bilateral_DomainTransform1D_sp1(v1)
   GetRGB(*scr1\l, r0, g0, b0)
   GetRGB(*scr2\l, r1, g1, b1)
   dataR(i) = r0 : dataG(i) = g0 : dataB(i) = b0
-  ; Optimisation du calcul de différence
   Protected dr = r1 - r0
   Protected dg = g1 - g0
   Protected db = b1 - b0
@@ -49,187 +49,200 @@ Macro Bilateral_DomainTransform1D_sp1(v1)
   If dc(i) > 255 : dc(i) = 255 : EndIf
 EndMacro
 
-Procedure Bilateral_DomainTransform1D_X(*param.parametre)
-  Protected length = *param\lg
-  Bilateral_DomainTransform1D_declare(length)
-  Protected y, pos
-  Protected lengthMinus1 = length - 1
-  Protected lengthMinus2 = length - 2
-  Protected sigma_color_factor.f = *param\option[4]
-  
-  macro_calul_tread(*param\ht)
-  
-  For y = thread_start To thread_stop - 1
-    pos = y * length << 2  ; Bit shift
-    Protected *source = *buf + pos
+; --- Procédures MT ---
+
+Procedure Bilateral_DomainTransform1D_X(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected length = \image_lg[0]
+    Bilateral_DomainTransform1D_declare(length)
+    Protected y, pos
+    Protected lengthMinus1 = length - 1
+    Protected lengthMinus2 = length - 2
+    Protected sigma_color_factor.f = \option[4]
     
-    ; Calcul des différences de couleur horizontales
-    For i = 0 To lengthMinus2
-      Bilateral_DomainTransform1D_sp1(4)
+    macro_calul_tread(\image_ht[0])
+    
+    For y = thread_start To thread_stop - 1
+      pos = y * length << 2
+      Protected *source = *buf + pos
+      
+      For i = 0 To lengthMinus2
+        Bilateral_DomainTransform1D_sp1(4)
+      Next
+      
+      i = lengthMinus1
+      pixel0 = PeekL(*source + (lengthMinus1 << 2))
+      GetRGB(pixel0, r0, g0, b0)
+      dataR(i) = r0 : dataG(i) = g0 : dataB(i) = b0
+      
+      domain(0) = 0
+      For i = 1 To lengthMinus1
+        domain(i) = domain(i - 1) + 1.0 + sigma_color_factor * dc(i - 1)
+        If domain(i) < domain(i - 1) : domain(i) = domain(i - 1) : EndIf
+      Next
+      
+      For i = 1 To lengthMinus1
+        diff_d = domain(i) - domain(i - 1)
+        Bilateral_DomainTransform1D_sp0(-)
+      Next
+      
+      For i = lengthMinus2 To 0 Step -1
+        diff_d = domain(i + 1) - domain(i)
+        Bilateral_DomainTransform1D_sp0(+)
+      Next
+      
+      For i = 0 To lengthMinus1
+        r0 = dataR(i) : g0 = dataG(i) : b0 = dataB(i)
+        clamp_rgb(r0, g0, b0)
+        PokeL(*temp + pos + (i << 2), (Int(r0) << 16) | (Int(g0) << 8) | Int(b0))
+      Next
     Next
-    
-    ; Dernier pixel de la ligne
-    i = lengthMinus1
-    pixel0 = PeekL(*source + (lengthMinus1 << 2))
-    GetRGB(pixel0, r0, g0, b0)
-    dataR(i) = r0 : dataG(i) = g0 : dataB(i) = b0
-    
-    ; Calcul du domaine cumulatif
-    domain(0) = 0
-    For i = 1 To lengthMinus1
-      domain(i) = domain(i - 1) + 1.0 + sigma_color_factor * dc(i - 1)
-      If domain(i) < domain(i - 1) : domain(i) = domain(i - 1) : EndIf
-    Next
-    
-    ; Filtrage récursif avant-arrière
-    For i = 1 To lengthMinus1
-      diff_d = domain(i) - domain(i - 1)
-      Bilateral_DomainTransform1D_sp0(-)
-    Next
-    
-    For i = lengthMinus2 To 0 Step -1
-      diff_d = domain(i + 1) - domain(i)
-      Bilateral_DomainTransform1D_sp0(+)
-    Next
-    
-    ; Stockage final dans le buffer temporaire
-    For i = 0 To lengthMinus1
-      r0 = dataR(i) : g0 = dataG(i) : b0 = dataB(i)
-      clamp_rgb(r0, g0, b0)
-      PokeL(*temp + pos + (i << 2), (r0 << 16) | (g0 << 8) | b0)
-    Next
-  Next
-  
-  Bilateral_DomainTransform1D_end()
+    Bilateral_DomainTransform1D_end()
+  EndWith
 EndProcedure
 
-Procedure Bilateral_DomainTransform1D_Y(*param.parametre)
-  Protected length = *param\ht
-  Bilateral_DomainTransform1D_declare(length)
-  Protected stride = *param\lg << 2  ; Bit shift
-  Protected start, stop, x
-  Protected lengthMinus1 = length - 1
-  Protected lengthMinus2 = length - 2
-  Protected sigma_color_factor.f = *param\option[4]
-  
-  start = (*param\thread_pos * *param\lg) / *param\thread_max
-  stop = ((*param\thread_pos + 1) * *param\lg) / *param\thread_max
-  If stop > *param\lg : stop = *param\lg : EndIf
-  
-  For x = start To stop - 1
-    Protected *source = *buf + (x << 2)
+Procedure Bilateral_DomainTransform1D_Y(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected length = \image_ht[0]
+    Bilateral_DomainTransform1D_declare(length)
+    Protected stride = \image_lg[0] << 2
+    Protected x, y
+    Protected lengthMinus1 = length - 1
+    Protected lengthMinus2 = length - 2
+    Protected sigma_color_factor.f = \option[4]
     
-    ; Calcul des différences de couleur verticales
-    For i = 0 To lengthMinus2
-      Bilateral_DomainTransform1D_sp1(stride)
+    macro_calul_tread(\image_lg[0])
+    
+    For x = thread_start To thread_stop - 1
+      Protected *source = *buf + (x << 2)
+      
+      For i = 0 To lengthMinus2
+        Bilateral_DomainTransform1D_sp1(stride)
+      Next
+      
+      i = lengthMinus1
+      pixel0 = PeekL(*source + lengthMinus1 * stride)
+      GetRGB(pixel0, r0, g0, b0)
+      dataR(i) = r0 : dataG(i) = g0 : dataB(i) = b0
+      
+      domain(0) = 0
+      For i = 1 To lengthMinus1
+        domain(i) = domain(i - 1) + 1.0 + sigma_color_factor * dc(i - 1)
+        If domain(i) < domain(i - 1) : domain(i) = domain(i - 1) : EndIf
+      Next
+      
+      For i = 1 To lengthMinus1
+        diff_d = domain(i) - domain(i - 1)
+        Bilateral_DomainTransform1D_sp0(-)
+      Next
+      
+      For i = lengthMinus2 To 0 Step -1
+        diff_d = domain(i + 1) - domain(i)
+        Bilateral_DomainTransform1D_sp0(+)
+      Next
+      
+      For i = 0 To lengthMinus1
+        r0 = dataR(i) : g0 = dataG(i) : b0 = dataB(i)
+        clamp_rgb(r0, g0, b0)
+        PokeL(*temp + (x << 2) + i * stride, (Int(r0) << 16) | (Int(g0) << 8) | Int(b0))
+      Next
     Next
-    
-    ; Dernier pixel de la colonne
-    i = lengthMinus1
-    pixel0 = PeekL(*source + lengthMinus1 * stride)
-    GetRGB(pixel0, r0, g0, b0)
-    dataR(i) = r0 : dataG(i) = g0 : dataB(i) = b0
-    
-    ; Calcul du domaine cumulatif vertical
-    domain(0) = 0
-    For i = 1 To lengthMinus1
-      domain(i) = domain(i - 1) + 1.0 + sigma_color_factor * dc(i - 1)
-      If domain(i) < domain(i - 1) : domain(i) = domain(i - 1) : EndIf
-    Next
-    
-    ; Filtrage récursif
-    For i = 1 To lengthMinus1
-      diff_d = domain(i) - domain(i - 1)
-      Bilateral_DomainTransform1D_sp0(-)
-    Next
-    
-    For i = lengthMinus2 To 0 Step -1
-      diff_d = domain(i + 1) - domain(i)
-      Bilateral_DomainTransform1D_sp0(+)
-    Next
-    
-    ; Stockage final
-    For i = 0 To lengthMinus1
-      r0 = dataR(i) : g0 = dataG(i) : b0 = dataB(i)
-      clamp_rgb(r0, g0, b0)
-      PokeL(*temp + (x << 2) + i * stride, (r0 << 16) | (g0 << 8) | b0)
-    Next
-  Next
-  
-  Bilateral_DomainTransform1D_end()
+    Bilateral_DomainTransform1D_end()
+  EndWith
 EndProcedure
 
-Procedure Bilateral(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_EdgeAware
-    *param\name = "Bilateral"
-    *param\remarque = "Adoucit tout en conservant les contours nets"
-    *param\info[0] = "Nb de passes"
-    *param\info[1] = "Sigma espace"
-    *param\info[2] = "Sigma couleur"
-    *param\info[3] = "Masque binaire"
-    *param\info_data(0,0) = 1 : *param\info_data(0,1) = 5   : *param\info_data(0,2) = 2
-    *param\info_data(1,0) = 1 : *param\info_data(1,1) = 100 : *param\info_data(1,2) = 40
-    *param\info_data(2,0) = 1 : *param\info_data(2,1) = 100 : *param\info_data(2,2) = 30
-    *param\info_data(3,0) = 0 : *param\info_data(3,1) = 2   : *param\info_data(3,2) = 0
-    ProcedureReturn
-  EndIf
+; --- Gestion du cycle du filtre ---
+
+Procedure BilateralEx(*FilterCtx.FilterParams)
+  Restore Bilateral_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  Protected pass = *param\option[0]
-  Protected sigma_space.f = *param\option[1]
-  Protected sigma_color.f = *param\option[2]
-  
-  Clamp(pass, 1, 5)
-  Clamp(sigma_space, 1, 100)
-  Clamp(sigma_color, 1, 255)
-  
-  ; LUT exponentielle pour la couleur
-  Protected *expLUT = AllocateMemory(256 << 2)  ; Bit shift
-  If *expLUT = 0 : ProcedureReturn : EndIf
-  
-  Protected d
-  Protected invSigmaColor.f = 1.0 / sigma_color  ; Précalcul inverse
-  
-  For d = 0 To 255
-    PokeF(*expLUT + (d << 2), Exp(-d * invSigmaColor))
-  Next
-  
-  *param\addr[2] = *expLUT
-  *param\option[4] = sigma_space * invSigmaColor  ; Réutilisation de l'inverse
-  
-  ; Buffer temporaire pour stockage intermédiaire
-  Protected total = *param\lg * *param\ht << 2
-  Protected *tempo = AllocateMemory(total)
-  If *tempo = 0
-    FreeMemory(*expLUT)
-    ProcedureReturn
-  EndIf
-  
-  Protected *buf = *param\source
-  
-  For d = 0 To pass - 1
-    *param\addr[0] = *buf
-    *param\addr[1] = *tempo
-    MultiThread_MT(@Bilateral_DomainTransform1D_X())
+  With *FilterCtx
+    ; Initialisation des paramètres
+    Protected pass = \option[0]
+    Protected sigma_space.f = \option[1]
+    Protected sigma_color.f = \option[2]
     
-    *param\addr[0] = *tempo
-    *param\addr[1] = *param\cible
-    MultiThread_MT(@Bilateral_DomainTransform1D_Y())
+    If pass < 1 : pass = 1 : EndIf
+    If sigma_color < 1 : sigma_color = 1 : EndIf
     
-    *buf = *param\cible
-  Next
-  
-  ; Application du masque éventuel
-  macro_Filter_BufferFinalize(3)
-  
-  ; Libération de la mémoire
-  FreeMemory(*expLUT)
-  FreeMemory(*tempo)
+    ; LUT exponentielle
+    \addr[2] = AllocateMemory(256 << 2)
+    If \addr[2] = 0 : ProcedureReturn 0 : EndIf
+    
+    Protected d
+    Protected invSigmaColor.f = 1.0 / sigma_color
+    For d = 0 To 255
+      PokeF(\addr[2] + (d << 2), Exp(-d * invSigmaColor))
+    Next
+    
+    \option[4] = sigma_space * invSigmaColor
+    
+    ; Buffer temporaire
+    Protected total = \image_lg[0] * \image_ht[0] << 2
+    Protected *tempo = AllocateMemory(total)
+    If *tempo = 0
+      FreeMemory(\addr[2]) : ProcedureReturn 0
+    EndIf
+    
+    Protected *buf_src = \addr[0]
+    Protected *buf_final = \addr[1]
+    
+    ; Boucle de passes
+    For d = 1 To pass
+      ; Passe X (Source -> Tempo)
+      \addr[0] = *buf_src
+      \addr[1] = *tempo
+      Create_MultiThread_MT(@Bilateral_DomainTransform1D_X())
+      
+      ; Passe Y (Tempo -> Cible)
+      \addr[0] = *tempo
+      \addr[1] = *buf_final
+      Create_MultiThread_MT(@Bilateral_DomainTransform1D_Y())
+      
+      ; Pour la passe suivante, la source devient la cible actuelle
+      *buf_src = *buf_final
+    Next
+    
+    ; Nettoyage
+    FreeMemory(\addr[2])
+    FreeMemory(*tempo)
+    \addr[2] = 0
+    
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 228
-; FirstLine = 159
+
+Procedure Bilateral(source, cible, mask, pass, sigma_space, sigma_color)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = pass
+    \option[1] = sigma_space
+    \option[2] = sigma_color
+  EndWith
+  BilateralEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  Bilateral_data:
+  Data.s "Bilateral"
+  Data.s "Lissage par transformation de domaine (Edge-Preserving)"
+  Data.i #FilterType_Blur
+  Data.i #Blur_EdgeAware
+  
+  Data.s "Nb de passes"
+  Data.i 1, 5, 2
+  Data.s "Sigma espace"
+  Data.i 1, 100, 40
+  Data.s "Sigma couleur"
+  Data.i 1, 100, 30
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 5
 ; Folding = --
 ; Optimizer
 ; EnableXP

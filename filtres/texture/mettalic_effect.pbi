@@ -1,242 +1,198 @@
 ﻿
 
-Global Dim bits.a(0),Pitch,Count,Width,Height,Trim
+Procedure.l AssignTables (*FilterCtx.FilterParams)
+  
+  With *FilterCtx
+    Protected *rt.PixelArray8 = *FilterCtx\addr[2]
+    Protected *gt.PixelArray8 = *FilterCtx\addr[3]
+    Protected *bt.PixelArray8 = *FilterCtx\addr[4]
+    Protected *source.PixelArray32 = \addr[0]
+    Protected *cible.PixelArray32  = \addr[1]
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected tt = lg * ht
+    Protected  i , r , g  , b
 
-Procedure Effect_ON(img)
- ; StartDrawing(ImageOutput(img))
- ; *Buffer     = DrawingBuffer() 
- ; Pitch       = DrawingBufferPitch()
- ; count       = Pitch*height
- ; ReDim bits.a(count)
- ; CopyMemory(*Buffer,@bits(),count)
- ; StopDrawing()
-EndProcedure
-
-Procedure Effect_OFF(img)
- ; StartDrawing(ImageOutput(img))
- ; *Buffer     = DrawingBuffer() 
- ; CopyMemory(@bits(),*Buffer,count)
- ; StopDrawing()
-EndProcedure
-
-;Structure ColorAmp
-  ;Low.l
-  ;High.l
-  ;LowRed.l
-  ;LowGreen.l
-  ;LowBlue.l
-  ;HighRed.l
-  ;HighGreen.l
-  ;HighBlue.l
-;EndStructure
-
-Procedure.l AssignTables (Array RedTable.a(1), Array GreenTable.a(1), Array  BlueTable.a(1), Array Bits.a(1),  Width, Height)
-  Protected h , w , i
-  For h = 0 To Height-1
-    For w = 0 To Width-1
-      i = h * pitch + trim * w
-      Bits(i+2) = RedTable(Bits(i+2))
-      Bits(i+1) = GreenTable(Bits(i+1))
-      Bits( i ) = BlueTable(Bits( i ))
+    For i = 0 To tt - 1
+      getrgb(*cible\pixel[i] , r , g , b)
+      *cible\pixel[i] = *rt\b[r] << 16 + *gt\b[g] << 8 + *bt\b[b]
     Next
-  Next  
-EndProcedure
-
-Procedure.l GradientValue ( FirstValue.d, SecondValue.d, Gradient.d)	
-  If Gradient = 0.0	
-    ProcedureReturn FirstValue
-  EndIf
-  If Gradient = 255.0
-    ProcedureReturn SecondValue
-  EndIf
-  ProcedureReturn ((FirstValue * (255 - Gradient) + SecondValue * Gradient) / 256)
-EndProcedure
-
-;Procedure.l  MakeGradient ( *cAmp.ColorAmp,Array rTable.a(1),Array gTable.a(1),Array bTable.a(1))
-  ;Protected i
-  ;Define.d delta, temp
-  ;If *cAmp\High = *cAmp\Low
-    ;ProcedureReturn
-  ;EndIf	
-  ;delta = 255.0 / (*cAmp\High - *cAmp\Low)
+  EndWith
   
-  ;For i = *cAmp\Low To *cAmp\High
-    ;temp = (i - *cAmp\Low) * delta
-    ;rTable(i) = GradientValue (*cAmp\LowRed,   *cAmp\HighRed,   temp)
-    ;gTable(i) = GradientValue (*cAmp\LowGreen, *cAmp\HighGreen, temp)
-    ;bTable(i) = GradientValue (*cAmp\LowBlue,  *cAmp\HighBlue,  temp)
-  ;Next  
-;EndProcedure
-
-Procedure ShiftTable (Array Table.a(1),Shift.l)  
-  Protected i , NewPosition
-  Dim tempTable.a (256)
-  CopyMemory (@Table(), @tempTable(), 256)
-  For i = 0 To 255
-    NewPosition = Int(Abs(i + Shift)) &  $000000FF
-    Table(NewPosition) = tempTable(i)
-  Next
 EndProcedure
 
-Procedure.l  ApplyMetallicLayer (Array	Bits.a(1),Width.l ,Height.l ,Levels.l)
-  Protected k , j
-  Dim mTable.a (256)  
-  If Levels < 2
-    ProcedureReturn
-  EndIf
+Procedure.l Mettalic_GradientValue (*FilterCtx.FilterParams , FirstValue, SecondValue, Gradient.f)
+  Protected *mem.Array32 = *FilterCtx\addr[5]
+  Protected v1.f = *mem\l[FirstValue]
+  Protected v2.f = *mem\l[SecondValue]
+  If Gradient = 0.0 : ProcedureReturn *mem\l[FirstValue] : EndIf
+  If Gradient = 255.0 : ProcedureReturn *mem\l[SecondValue] :EndIf
+  ProcedureReturn ((v1 * (255 - Gradient) + v2 * Gradient) / 256) 
+EndProcedure
+
+Procedure.l  Mettalic_MakeGradient(*FilterCtx.FilterParams)
+    
+  Protected *rt.PixelArray8 = *FilterCtx\addr[2]
+  Protected *gt.PixelArray8 = *FilterCtx\addr[3]
+  Protected *bt.PixelArray8 = *FilterCtx\addr[4]
+  Protected *mem.Array32 = *FilterCtx\addr[5]
   
-  For j = 0 To 254    
-    For k = 0 To 255
-      mTable(j+1) = k
+  Protected.i i
+  Define.f delta, temp
+  If *mem\l[4] = *mem\l[0] : ProcedureReturn : EndIf   
+  delta = 255.0 / (*mem\l[4] - *mem\l[0])
+  
+  For i = *mem\l[0] To *mem\l[4]
+    temp = (i - *mem\l[0]) * delta
+    *rt\b[i] = Mettalic_GradientValue (*FilterCtx ,1, 5, temp) 
+    *gt\b[i] = Mettalic_GradientValue (*FilterCtx ,2, 6, temp) 
+    *bt\b[i] = Mettalic_GradientValue (*FilterCtx ,3, 7, temp) 
+  Next 
+EndProcedure
+
+Procedure.l ApplyMetallicShiftLayer (*FilterCtx.FilterParams) 
+  With *FilterCtx
+    If \option[1] < 1 : ProcedureReturn : EndIf
+
+    Protected levels.l = \option[1]
+    Protected option.l = \option[2]
+    Protected i , NewPosition , factor
+    Protected *mt.PixelArray8 = \addr[2]
+    Protected *gt.PixelArray8 = \addr[3]
+    Protected *bt.PixelArray8 = \addr[4]
+    Protected *tt.PixelArray8 = \addr[6]
+    Protected *mem.Array32 = \addr[5]
+    
+    factor = 255 / levels
+    For i = 0 To Levels-1   
+      If i % 2
+        *mem\l[0] = i * factor
+        *mem\l[1] = 255 : *mem\l[2] = 255 : *mem\l[3] = 255
+        *mem\l[4] = (i + 1) * factor
+        *mem\l[5] = 0 : *mem\l[6] = 0 : *mem\l[7] = 0
+        *mt\b[255] = 0
+      Else
+        *mem\l[0] = i * factor + 1
+        *mem\l[1] = 0 : *mem\l[2] = 0 : *mem\l[3] = 0       
+        *mem\l[4] = (i + 1) * factor
+        *mem\l[5] = 255 : *mem\l[6] = 255 : *mem\l[7] = 255
+        *mt\b[255] = 255
+      EndIf
+      Mettalic_MakeGradient (*FilterCtx)
     Next
-    While k > 1
-      mTable(j+1) = k
-      k-Levels
-    Wend
-    If Levels % 2 = 0
-      mTable(255) = 0
-    Else
-      mTable(255) = 255
-    EndIf    
-    AssignTables (mTable(), mTable(), mTable(), Bits(), Width, Height)
-  Next  
+    
+    CopyMemory (*mt, *tt , 256)
+    For i = 0 To 255
+      NewPosition = (i + option) & $FF
+      *mt\b[NewPosition] = *tt\b[i]
+      *gt\b[NewPosition] = *tt\b[i]
+      *bt\b[NewPosition] = *tt\b[i]
+    Next 
+    
+    AssignTables(*FilterCtx)
+  EndWith
 EndProcedure
 
-Procedure.l ApplyMetallicShiftLayer (Array	Bits.a(1),Width.l,Height.l,Levels.l,Shift.l)  
-  Protected i , factor
-  ;cAmp.ColorAmp
-  Dim mTable.a (256)
+Procedure.l ApplyGoldLayer(*FilterCtx.FilterParams) 
   
-  If Levels < 1
-    ProcedureReturn
-  EndIf
-  
-  factor = 255 / Levels
-  For i = 0 To Levels-1   
-    If i % 2
-      ;cAmp\Low = i * factor
-      ;cAmp\LowRed = 255
-      ;cAmp\LowGreen = 255
-      ;cAmp\LowBlue = 255            
-      ;cAmp\High = (i + 1) * factor
-      ;cAmp\HighRed = 0
-      ;cAmp\HighGreen = 0
-      ;cAmp\HighBlue = 0
-      mTable(255) = 0
-    Else
-      ;cAmp\Low = i * factor + 1
-      ;cAmp\LowRed = 0
-      ;cAmp\LowGreen = 0
-      ;cAmp\LowBlue = 0      
-      ;cAmp\High = (i + 1) * factor      
-      ;cAmp\HighRed = 255
-      ;cAmp\HighGreen = 255
-      ;cAmp\HighBlue = 255
-      mTable(255) = 255
-    EndIf
-   ; MakeGradient (@cAmp, mTable(), mTable(), mTable())
-  Next
-  ShiftTable (mTable(), Shift)
-  AssignTables (mTable(), mTable(), mTable(), Bits(), Width, Height)
-EndProcedure
-
-Procedure.l ApplyGoldLayer (Array Bits.a(1),Width.l ,Height.l)  
-  ;cAmp.ColorAmp
   Dim rTable.a (256)
   Dim gTable.a (256)
   Dim bTable.a (256)
   
-  ;cAmp\Low = 0
-  ;cAmp\LowRed = 0
-  ;cAmp\LowGreen = 0
-  ;cAmp\LowBlue = 0
-  ;cAmp\High = 55
-  ;cAmp\HighRed = 190
-  ;cAmp\HighGreen = 55
-  ;cAmp\HighBlue = 0
-  ;MakeGradient (@cAmp, rTable(), gTable(), bTable())
+  Protected *mem.Array32 = *FilterCtx\addr[5]
   
-  ;cAmp\Low = 55
-  ;cAmp\LowRed = 190
-  ;cAmp\LowGreen = 55
-  ;cAmp\LowBlue = 0  
-  ;cAmp\High = 155
-  ;cAmp\HighRed = 255
-  ;cAmp\HighGreen = 190
-  ;cAmp\HighBlue = 50
-  ;MakeGradient (@cAmp, rTable(), gTable(), bTable())
-  
-  ;cAmp\Low = 155
-  ;cAmp\LowRed = 255
-  ;cAmp\LowGreen = 190
-  ;cAmp\LowBlue = 50
-  ;cAmp\High = 255
-  ;cAmp\HighRed = 255
-  ;cAmp\HighGreen = 255
-  ;cAmp\HighBlue = 255
-  ;MakeGradient (@cAmp, rTable(), gTable(), bTable())
-  AssignTables (rTable(), gTable(), bTable(), Bits(), Width, Height)
+  With *mem
+    \l[0] = 0  : \l[1] = 0   : \l[2] = 0  : \l[3] = 0
+    \l[4] = 55 : \l[5] = 190 : \l[6] = 55 : \l[7] = 0
+    Mettalic_MakeGradient (*FilterCtx.FilterParams)
+    
+    \l[0] = 55  : \l[1] = 190 : \l[2] = 55  : \l[3] = 0
+    \l[4] = 155 : \l[5] = 255 : \l[6] = 190 : \l[7] = 50
+    Mettalic_MakeGradient (*FilterCtx.FilterParams)
+    
+    \l[0] = 155 : \l[1] = 255 : \l[2] = 190 : \l[3] = 50
+    \l[4] = 255 : \l[5] = 255 : \l[6] = 255 : \l[7] = 255
+    Mettalic_MakeGradient (*FilterCtx.FilterParams)
+    AssignTables (*FilterCtx)
+  EndWith
 EndProcedure
 
-Procedure Metallic (img,level=1,shift=1,mode=0)
-  Protected i , h , w , gray
-  width = ImageWidth(img)
-  height = ImageHeight(img)
-  If ImageDepth(img) = 32
-    trim = 4
-  Else
-    trim = 3
-  EndIf
-  
-  Effect_ON(img)
-  
-  If Level % 2
-    Level+1
-  EndIf
-  
-  For h = 0 To Height-1
-    For w = 0 To Width-1      
-      i = h * pitch + trim * w
-      Gray = Int(Bits(i+2) + Bits(i+1) + Bits(i) / 3)
-      Bits(i+2)= Gray
-      Bits(i+1) = Gray
-      Bits(i) = Gray
+Procedure Metallic_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected *source.PixelArray32 = \addr[0]
+    Protected *cible.PixelArray32  = \addr[1]
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected tt = lg * ht
+    Protected  i , r , g  , b , gray
+ 
+    For i = 0 To tt - 1
+      getrgb(*source\pixel[i] , r , g , b)
+      Gray = (Int((r + g + b / 3)))  & 255
+      *cible\pixel[i] = gray * $10101
     Next
-  Next
   
-  ApplyMetallicShiftLayer (Bits(), Width, Height, Level, Shift)  
-  If Mode = 2     
-    ApplyGoldLayer (Bits(), Width, Height)
-  EndIf
+    ApplyMetallicShiftLayer (*FilterCtx) 
+    If \option[0]      
+      ApplyGoldLayer(*FilterCtx)
+    EndIf
+    
+  EndWith
+EndProcedure
+
+
+
+Procedure MetallicEx(*FilterCtx.FilterParams)
+  Restore Metalic_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  Effect_OFF(img)  
+  With *FilterCtx
+    \addr[2] = AllocateMemory(256)
+    \addr[3] = AllocateMemory(256)
+    \addr[4] = AllocateMemory(256)
+    \addr[6] = AllocateMemory(256)
+    \addr[5] = AllocateMemory(9 * 4)
+  EndWith
+  
+  Create_MultiThread_MT(@Metallic_MT())
+  mask_update(*FilterCtx, last_data)
 EndProcedure
 
-Procedure gadtip3()
-  SetGadgetText(12,Str(GetGadgetState(3)))
+Procedure Metallic(source, cible, mask, gray , var2 , var3)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = gray
+    \option[1] = var2
+    \option[2] = var3
+  EndWith
+  MetallicEx(FilterCtx)
 EndProcedure
 
-Procedure gadtip6()
-  SetGadgetText(12,Str(GetGadgetState(6)))
-EndProcedure
-
-Procedure sizeCB()
-  ResizeGadget(10,#PB_Ignore,#PB_Ignore,WindowWidth(0)-20,WindowHeight(0)-60)
-  ResizeGadget(12,WindowWidth(0)/2-40,WindowHeight(0)-85,80,20)
-  ResizeGadget(20,#PB_Ignore,#PB_Ignore,WindowWidth(0)-20,WindowHeight(0)-60)
-  ResizeGadget(0,#PB_Ignore,#PB_Ignore,WindowWidth(0)-20,WindowHeight(0)-60)
-  ResizeGadget(30,#PB_Ignore,WindowHeight(0)-40,#PB_Ignore,#PB_Ignore)  
-  If IsGadget(6)
-    ResizeGadget(3,325,WindowHeight(0)-35 ,230,24)
-    ResizeGadget(6,560,WindowHeight(0)-35 ,230,24)
-  Else
-    ResizeGadget(3,325,WindowHeight(0)-35 ,230,24)
-  EndIf
-EndProcedure
+DataSection
+  Metalic_Data:
+  Data.s "Metallic"
+  Data.s ""
+  Data.i #FilterType_TexturePattern
+  Data.i 0
+  
+  Data.s "gray / color" : Data.i 0, 1, 0
+  Data.s "option 1" : Data.i 1, 10, 1
+  Data.s "option 2" : Data.i 0, 255, 0
+  Data.s "XXX"
+EndDataSection
 
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 68
-; Folding = AA-
+
+
+
+
+
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 85
+; FirstLine = 81
+; Folding = --
 ; EnableXP
 ; DPIAware

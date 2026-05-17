@@ -1,128 +1,140 @@
-﻿Macro sobel_4d_sp1(v0 , v1 , v2 , v3 , v4 , v5 , v6 )
-  Protected r#v0 = r3(v1) + 2 * r3(v2) + r3(v3) - (r3(v4) + 2 * r3(v5) + r3(v6))
-  Protected g#v0 = g3(v1) + 2 * g3(v2) + g3(v3) - (g3(v4) + 2 * g3(v5) + g3(v6))
-  Protected b#v0 = b3(v1) + 2 * b3(v2) + b3(v3) - (b3(v4) + 2 * b3(v5) + b3(v6))
+﻿; Macros pour le calcul des gradients Sobel 4D
+Macro sobel_4d_calc(v0, v1, v2, v3, v4, v5, v6)
+  ; Sobel utilise les coefficients [1, 2, 1]
+  r#v0 = r3(v1) + (r3(v2) << 1) + r3(v3) - (r3(v4) + (r3(v5) << 1) + r3(v6))
+  g#v0 = g3(v1) + (g3(v2) << 1) + g3(v3) - (g3(v4) + (g3(v5) << 1) + g3(v6))
+  b#v0 = b3(v1) + (b3(v2) << 1) + b3(v3) - (b3(v4) + (b3(v5) << 1) + b3(v6))
 EndMacro
+
+Procedure sobel_4d_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected mul.f = \option[0] * 0.1
+    Protected mat = \option[1]      ; 0: SQR, 1: ABS
+    Protected toGray = \option[2]   ; Boolean
+    Protected inverse = \option[3]  ; Boolean
     
-Macro sobel_4d_sp2(v0)
-  r#v0 = Abs(rx#v0) + Abs(ry#v0)
-  g#v0 = Abs(gx#v0) + Abs(gy#v0)
-  b#v0 = Abs(bx#v0) + Abs(by#v0)
-EndMacro
-
-Macro sobel_4d_sp3(v0)
-  r#v0 = Sqr(rx#v0 * rx#v0 + ry#v0 * ry#v0)
-  g#v0 = Sqr(gx#v0 * gx#v0 + gy#v0 * gy#v0)
-  b#v0 = Sqr(bx#v0 * bx#v0 + by#v0 * by#v0)
-EndMacro
+    Protected Dim r3(8), Dim g3(8), Dim b3(8)
+    
+    ; Gradients intermédiaires
+    Protected rx0, gx0, bx0, ry0, gy0, by0
+    Protected rx45, gx45, bx45, ry45, gy45, by45
+    Protected rx90, gx90, bx90, ry90, gy90, by90
+    Protected rx135, gx135, bx135, ry135, gy135, by135
+    
+    ; Magnitudes par direction
+    Protected r0.f, g0.f, b0.f, r45.f, g45.f, b45.f
+    Protected r90.f, g90.f, b90.f, r135.f, g135.f, b135.f
+    
+    Protected *srcPixel.Pixel32, *dstPixel.Pixel32
+    Protected a, r, g, b, x, y, k, pitch = lg << 2
+    Protected dx , dy
+    
+    macro_calul_tread(ht)
+    
+    ; Éviter les bords
+    If thread_start < 1 : thread_start = 1 : EndIf
+    If thread_stop > ht - 1 : thread_stop = ht - 1 : EndIf
+    
+    For y = thread_start To thread_stop - 1
+      For x = 1 To lg - 2
         
-Procedure sobel_4d_MT(*param.parametre)
-  Protected *source = *param\addr[0]
-  Protected *cible  = *param\addr[1]
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected mul.f = *param\option[0]
-  Protected mat = *param\option[1]
-  Protected toGray = *param\option[2]
-  Protected inverse = *param\option[3]
-  Protected *srcPixel.Pixel32
-  Protected *dstPixel.Pixel32
-  Protected r0 , r45 , r90 , r135
-  Protected g0 , g45 , g90 , g135
-  Protected b0 , b45 , b90 , b135
-  clamp(mul, 0, 100)
-  mul = mul * 0.1
-  Protected x, y, i
-  Protected a , r, g, b
-  Protected Dim r3(9)
-  Protected Dim g3(9)
-  Protected Dim b3(9)
-  Protected startPos = (*param\thread_pos * (ht-2)) / *param\thread_max
-  Protected endPos   = ((*param\thread_pos + 1) * (ht-2)) / *param\thread_max
-  If startPos < 1 : startPos = 1 : EndIf
-  For y = startPos To endPos
-    For x = 1 To lg - 2
-      ; Lecture des 9 pixels voisins (3x3 autour du pixel courant)
-      *srcPixel = (*source + ((y + -1) * lg + (x + -1)) * 4)
-      getrgb(*srcPixel\l , r3(0) , g3(0) , b3(0) )
-      *srcPixel = *srcPixel + 4
-      getrgb(*srcPixel\l , r3(1) , g3(1) , b3(1) )
-      *srcPixel = *srcPixel + 4
-      getrgb(*srcPixel\l , r3(2) , g3(2) , b3(2) )
-      *srcPixel = (*source + ((y + 0) * lg + (x + -1)) * 4)
-      getrgb(*srcPixel\l , r3(3) , g3(3) , b3(3) )
-      *srcPixel = *srcPixel + 4
-      getargb(*srcPixel\l , a , r3(4) , g3(4) , b3(4) )
-      *srcPixel = *srcPixel + 4
-      getrgb(*srcPixel\l , r3(5) , g3(5) , b3(5) )
-      *srcPixel = (*source + ((y + 1) * lg + (x + -1)) * 4)
-      getrgb(*srcPixel\l , r3(6) , g3(6) , b3(6) )
-      *srcPixel = *srcPixel + 4
-      getrgb(*srcPixel\l , r3(7) , g3(7) , b3(7) )
-      *srcPixel = *srcPixel + 4
-      getrgb(*srcPixel\l , r3(8) , g3(8) , b3(8) )
-      ; Gradient direction 0°
-      sobel_4d_sp1(x0 , 2 , 5 , 8 , 0 , 3 , 6)
-      sobel_4d_sp1(y0 , 0 , 1 , 2 , 6 , 7 , 8) 
-      ; Gradient direction 45°
-      sobel_4d_sp1(x45 , 0 , 1 , 2 , 6 , 7 , 8) 
-      sobel_4d_sp1(y45 , 2 , 5 , 8 , 0 , 3 , 6)
-      ; Gradient direction 90°
-      sobel_4d_sp1(x90 , 6 , 7 , 8 , 0 , 1 , 2)
-      sobel_4d_sp1(y90 , 0 , 3 , 6 , 2 , 5 , 6) 
-      ; Gradient direction 135°
-      sobel_4d_sp1(x135 , 6 , 3 , 0 , 8 , 5 , 2)
-      sobel_4d_sp1(y135 , 2 , 5 , 8 , 0 , 3 , 6) 
-      ; Magnitudes (sqrt des 2 directions combinées)
-      If mat
-        sobel_4d_sp2(0) : sobel_4d_sp2(45) : sobel_4d_sp2(90) : sobel_4d_sp2(135)
-      Else
-        sobel_4d_sp3(0) : sobel_4d_sp3(45) : sobel_4d_sp3(90) : sobel_4d_sp3(135)
-      EndIf
-      ; Max des directions
-      max4(r , r0 , r45 , r90 , r135)
-      max4(g , g0 , g45 , g90 , g135)
-      max4(b , b0 , b45 , b90 , b135)
-      r * mul : g * mul : b * mul
-      clamp_rgb(r, g, b)
-      ; Gris ?
-      If toGray : r = (r * 77 + g * 150 + b * 29) >> 8 : g = r : b = r : EndIf
-      ; Inversion ?
-      If inverse : r = 255 - r : g = 255 - g : b = 255 - b : EndIf
-      *dstPixel = (*cible + (y * lg + x ) * 4)
-      *dstPixel\l = (a << 24 ) | (r << 16) | (g << 8) | b
+        ; Lecture du voisinage 3x3
+        k = 0
+        For dy = -1 To 1
+          Protected *srcLine = \addr[0] + ((y + dy) * pitch)
+          For dx = -1 To 1
+            *srcPixel = *srcLine + ((x + dx) << 2)
+            If k = 4 : getargb(*srcPixel\l, a, r3(k), g3(k), b3(k)) : Else : getrgb(*srcPixel\l, r3(k), g3(k), b3(k)) : EndIf
+            k + 1
+          Next
+        Next
+        
+        ; Calcul des gradients (Gx et Gy) pour chaque angle
+        sobel_4d_calc(x0, 2, 5, 8, 0, 3, 6)   : sobel_4d_calc(y0, 6, 7, 8, 0, 1, 2)
+        sobel_4d_calc(x45, 1, 2, 5, 3, 6, 7)  : sobel_4d_calc(y45, 5, 8, 7, 1, 0, 3)
+        sobel_4d_calc(x90, 6, 7, 8, 0, 1, 2)  : sobel_4d_calc(y90, 2, 5, 8, 0, 3, 6)
+        sobel_4d_calc(x135, 7, 8, 5, 1, 0, 3) : sobel_4d_calc(y135, 3, 6, 7, 1, 2, 5)
+
+        ; Calcul Magnitude Finale
+        If mat ; ABS
+          r0 = Abs(rx0)+Abs(ry0) : g0 = Abs(gx0)+Abs(gy0) : b0 = Abs(bx0)+Abs(by0)
+          r45 = Abs(rx45)+Abs(ry45) : g45 = Abs(gx45)+Abs(gy45) : b45 = Abs(bx45)+Abs(by45)
+          r90 = Abs(rx90)+Abs(ry90) : g90 = Abs(gx90)+Abs(gy90) : b90 = Abs(bx90)+Abs(by90)
+          r135 = Abs(rx135)+Abs(ry135) : g135 = Abs(gx135)+Abs(gy135) : b135 = Abs(bx135)+Abs(by135)
+        Else   ; SQR
+          r0 = Sqr(rx0*rx0+ry0*ry0) : g0 = Sqr(gx0*gx0+gy0*gy0) : b0 = Sqr(bx0*bx0+by0*by0)
+          r45 = Sqr(rx45*rx45+ry45*ry45) : g45 = Sqr(gx45*gx45+gy45*gy45) : b45 = Sqr(bx45*bx45+by45*by45)
+          r90 = Sqr(rx90*rx90+ry90*ry90) : g90 = Sqr(gx90*gx90+gy90*gy90) : b90 = Sqr(bx90*bx90+by90*by90)
+          r135 = Sqr(rx135*rx135+ry135*ry135) : g135 = Sqr(gx135*gx135+gy135*gy135) : b135 = Sqr(bx135*bx135+by135*by135)
+        EndIf
+
+        ; Sélection du gradient maximal
+        r = r0 : If r45 > r : r = r45 : EndIf : If r90 > r : r = r90 : EndIf : If r135 > r : r = r135 : EndIf
+        g = g0 : If g45 > g : g = g45 : EndIf : If g90 > g : g = g90 : EndIf : If g135 > g : g = g135 : EndIf
+        b = b0 : If b45 > b : b = b45 : EndIf : If b90 > b : b = b90 : EndIf : If b135 > b : b = b135 : EndIf
+        
+        r * mul : g * mul : b * mul
+        
+        If r > 255 : r = 255 : EndIf
+        If g > 255 : g = 255 : EndIf
+        If b > 255 : b = 255 : EndIf
+        
+        If toGray : r = (r * 77 + g * 150 + b * 29) >> 8 : g = r : b = r : EndIf
+        If inverse : r = 255 - r : g = 255 - g : b = 255 - b : EndIf
+
+        *dstPixel = \addr[1] + ((y * lg + x) << 2)
+        *dstPixel\l = (a << 24) | (Int(r) << 16) | (Int(g) << 8) | Int(b)
+      Next
     Next
-  Next
-  FreeArray(r3())
-  FreeArray(g3())
-  FreeArray(b3())
+    FreeArray(r3()) : FreeArray(g3()) : FreeArray(b3())
+  EndWith
 EndProcedure
 
-Procedure Sobel_4d(*param.parametre)
-  ; Affichage des informations de configuration si demandé
-  If param\info_active
-    param\typ = #FilterType_EdgeDetection
-    param\subtype = #EdgeDetect_Gradient
-    param\name = "Sobel 4 directions"
-    param\remarque = ""
-    param\info[0] = "multiply"             
-    param\info[1] = "ABS/SQR"            
-    param\info[2] = "Noir et blanc"       
-    param\info[3] = "inversion"           
-    param\info[4] = "Masque binaire"           
-    param\info_data(0,0) = 0 : param\info_data(0,1) = 100  : param\info_data(0,2) = 10 ;
-    param\info_data(1,0) = 0 : param\info_data(1,1) = 1  : param\info_data(1,2) = 0 
-    param\info_data(2,0) = 0 : param\info_data(2,1) = 1  : param\info_data(2,2) = 0 
-    param\info_data(3,0) = 0 : param\info_data(3,1) = 1  : param\info_data(3,2) = 0 
-    param\info_data(4,0) = 0 : param\info_data(4,1) = 2  : param\info_data(4,2) = 0
-    ProcedureReturn
-  EndIf
-  filter_start(@sobel_4d_MT() , 4)
+Procedure Sobel_4dEx(*FilterCtx.FilterParams)
+  Restore Sobel_4d_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+
+  Create_MultiThread_MT(@sobel_4d_MT())
+  
+  mask_update(*FilterCtx, last_data)
 EndProcedure
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 104
-; FirstLine = 58
+Procedure Sobel_4d(source, cible, mask, multiply=10, math=0, gray=0, inverse=0)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = multiply
+    \option[1] = math
+    \option[2] = gray
+    \option[3] = inverse
+  EndWith
+  Sobel_4dEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  Sobel_4d_data:
+  Data.s "Sobel 4D"
+  Data.s "Contours Sobel multidirectionnels (0°, 45°, 90°, 135°)"
+  Data.i #FilterType_EdgeDetection
+  Data.i #EdgeDetect_Gradient
+  
+  Data.s "Multiplicateur"
+  Data.i 0, 100, 10
+  Data.s "Math (0:SQR, 1:ABS)"
+  Data.i 0, 1, 0
+  Data.s "Noir et Blanc"
+  Data.i 0, 1, 0
+  Data.s "Inverser"
+  Data.i 0, 1, 0
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 32
+; FirstLine = 9
 ; Folding = -
 ; EnableXP
 ; DPIAware

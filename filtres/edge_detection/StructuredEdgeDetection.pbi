@@ -80,182 +80,189 @@ Procedure.f SED_ComputeColorGradient(Array r3(1), Array g3(1), Array b3(1), size
   ProcedureReturn v
 EndProcedure
 
-Procedure StructuredEdge_MT(*param.parametre)
-  Protected *source = *param\addr[0]
-  Protected *cible  = *param\addr[1]
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  
-  Protected sensitivity.f = *param\option[0]  ; Sensibilité (1-100)
-  Protected kernelSize = *param\option[1]     ; Taille noyau (0=3x3, 1=5x5)
-  Protected toGray = *param\option[2]
-  Protected inverse = *param\option[3]
-  Protected mode = *param\option[4]           ; 0=Standard, 1=Gradient, 2=Texture
-  
-  ; Normalisation de la sensibilité
-  Clamp(sensitivity, 1, 100)
-  sensitivity * 0.02  ; 0.02 - 2.0
-  
-  ; Détermination de la taille du noyau
-  Protected kSize = 3
-  If kernelSize = 1 : kSize = 5 : EndIf
-  Protected kRadius = kSize >> 1
-  
-  ; Tableaux pour les pixels
-  Protected maxPixels = kSize * kSize
-  Protected Dim r3(maxPixels)
-  Protected Dim g3(maxPixels)
-  Protected Dim b3(maxPixels)
-  Protected Dim gray(maxPixels)
-  
-  Protected *srcPixel.Long
-  Protected *dstPixel.Long
-  Protected r, g, b
-  Protected x, y, i, j, idx
-  
-  ; Variables de calcul
-  Protected gradient.f, texture.f, colorGrad.f
-  Protected edgeStrength.f, result.f
-  Protected magnitude
-  
-  ; Limites de traitement pour ce thread
-  Protected startPos = (*param\thread_pos * (ht - kSize + 1)) / *param\thread_max + kRadius
-  Protected endPos   = ((*param\thread_pos + 1) * (ht - kSize + 1)) / *param\thread_max + kRadius - 1
-  
-  Clamp(startPos, kRadius, ht - kRadius - 1)
-  Clamp(endPos, kRadius, ht - kRadius - 1)
-  
-  If startPos > endPos
-    ProcedureReturn
-  EndIf
-  
-  ; ========================================================================
-  ; Traitement des pixels
-  ; ========================================================================
-  For y = startPos To endPos
-    For x = kRadius To lg - kRadius - 1
-      
-      ; Lecture du voisinage (noyau kSize x kSize)
-      idx = 0
-      For j = -kRadius To kRadius
-        For i = -kRadius To kRadius
-          *srcPixel = *source + ((y + j) * lg + (x + i)) * 4
-          SED_ReadPixel(idx)
-          idx + 1
+Procedure StructuredEdge_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected *source = \addr[0]
+    Protected *cible  = \addr[1]
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[1]
+    
+    Protected sensitivity.f = \option[0]  ; Sensibilité (1-100)
+    Protected kernelSize = \option[1]      ; Taille noyau (0=3x3, 1=5x5)
+    Protected toGray = \option[2]
+    Protected inverse = \option[3]
+    Protected mode = \option[4]            ; 0=Standard, 1=Gradient, 2=Texture
+    
+    ; Normalisation de la sensibilité
+    Clamp(sensitivity, 1, 100)
+    sensitivity * 0.02  ; 0.02 - 2.0
+    
+    ; Détermination de la taille du noyau
+    Protected kSize = 3
+    If kernelSize = 1 : kSize = 5 : EndIf
+    Protected kRadius = kSize >> 1
+    
+    ; Tableaux pour les pixels
+    Protected maxPixels = kSize * kSize
+    Protected Dim r3(maxPixels)
+    Protected Dim g3(maxPixels)
+    Protected Dim b3(maxPixels)
+    Protected Dim gray(maxPixels)
+    
+    Protected *srcPixel.Long
+    Protected *dstPixel.Long
+    Protected r, g, b
+    Protected x, y, i, j, idx
+    
+    ; Variables de calcul
+    Protected gradient.f, texture.f, colorGrad.f
+    Protected edgeStrength.f, result.f
+    Protected magnitude
+    
+    macro_calul_tread((ht - kSize + 1))
+    
+    ; ========================================================================
+    ; Traitement des pixels
+    ; ========================================================================
+    For y = thread_start + kRadius To thread_stop + kRadius - 1
+      For x = kRadius To lg - kRadius - 1
+        
+        ; Lecture du voisinage (noyau kSize x kSize)
+        idx = 0
+        For j = -kRadius To kRadius
+          For i = -kRadius To kRadius
+            *srcPixel = *source + ((y + j) * lg + (x + i)) * 4
+            SED_ReadPixel(idx)
+            idx + 1
+          Next
         Next
-      Next
-      
-      If toGray
-        ; ====================================================================
-        ; MODE NIVEAU DE GRIS
-        ; ====================================================================
         
-        Select mode
-          Case 0  ; Mode standard - combinaison gradient + texture
-            gradient = SED_ComputeGradient(gray(), kSize)
-            texture = SED_ComputeTexture(gray(), kSize)
-            
-            ; Combinaison pondérée
-            edgeStrength = (gradient * 0.7 + texture * 0.3) * sensitivity
-            
-          Case 1  ; Mode gradient uniquement
-            edgeStrength = SED_ComputeGradient(gray(), kSize) * sensitivity
-            
-          Case 2  ; Mode texture uniquement
-            edgeStrength = SED_ComputeTexture(gray(), kSize) * sensitivity * 2.0
-        EndSelect
-        
-        ; Normalisation et clamping
-        magnitude = edgeStrength
-        Clamp(magnitude, 0, 255)
-        If inverse : magnitude = 255 - magnitude : EndIf
-        
-        ; Écriture du pixel
-        *dstPixel = *cible + (y * lg + x) * 4
-        PokeL(*dstPixel, $FF000000 | (Int(magnitude) * $010101))
-        
-      Else
-        ; ====================================================================
-        ; MODE COULEUR
-        ; ====================================================================
-        
-        Select mode
-          Case 0  ; Mode standard - combinaison gradient couleur + texture
-            colorGrad = SED_ComputeColorGradient(r3(), g3(), b3(), kSize)
-            texture = SED_ComputeTexture(gray(), kSize)
-            
-            edgeStrength = (colorGrad * 0.7 + texture * 0.3) * sensitivity
-            
-          Case 1  ; Mode gradient couleur uniquement
-            edgeStrength = SED_ComputeColorGradient(r3(), g3(), b3(), kSize) * sensitivity
-            
-          Case 2  ; Mode texture uniquement
-            edgeStrength = SED_ComputeTexture(gray(), kSize) * sensitivity * 2.0
-        EndSelect
-        
-        ; Application sur chaque canal avec légère variation
-        r = edgeStrength * 1.0
-        g = edgeStrength * 0.95
-        b = edgeStrength * 0.90
-        
-        Clamp(r, 0, 255)
-        Clamp(g, 0, 255)
-        Clamp(b, 0, 255)
-        
-        If inverse
-          r = 255 - r
-          g = 255 - g
-          b = 255 - b
+        If toGray
+          ; ====================================================================
+          ; MODE NIVEAU DE GRIS
+          ; ====================================================================
+          
+          Select mode
+            Case 0  ; Mode standard - combinaison gradient + texture
+              gradient = SED_ComputeGradient(gray(), kSize)
+              texture = SED_ComputeTexture(gray(), kSize)
+              
+              ; Combinaison pondérée
+              edgeStrength = (gradient * 0.7 + texture * 0.3) * sensitivity
+              
+            Case 1  ; Mode gradient uniquement
+              edgeStrength = SED_ComputeGradient(gray(), kSize) * sensitivity
+              
+            Case 2  ; Mode texture uniquement
+              edgeStrength = SED_ComputeTexture(gray(), kSize) * sensitivity * 2.0
+          EndSelect
+          
+          ; Normalisation et clamping
+          magnitude = edgeStrength
+          Clamp(magnitude, 0, 255)
+          If inverse : magnitude = 255 - magnitude : EndIf
+          
+          ; Écriture du pixel
+          *dstPixel = *cible + (y * lg + x) * 4
+          PokeL(*dstPixel, $FF000000 | (Int(magnitude) * $010101))
+          
+        Else
+          ; ====================================================================
+          ; MODE COULEUR
+          ; ====================================================================
+          
+          Select mode
+            Case 0  ; Mode standard - combinaison gradient couleur + texture
+              colorGrad = SED_ComputeColorGradient(r3(), g3(), b3(), kSize)
+              texture = SED_ComputeTexture(gray(), kSize)
+              
+              edgeStrength = (colorGrad * 0.7 + texture * 0.3) * sensitivity
+              
+            Case 1  ; Mode gradient couleur uniquement
+              edgeStrength = SED_ComputeColorGradient(r3(), g3(), b3(), kSize) * sensitivity
+              
+            Case 2  ; Mode texture uniquement
+              edgeStrength = SED_ComputeTexture(gray(), kSize) * sensitivity * 2.0
+          EndSelect
+          
+          ; Application sur chaque canal avec légère variation
+          r = edgeStrength * 1.0
+          g = edgeStrength * 0.95
+          b = edgeStrength * 0.90
+          
+          Clamp(r, 0, 255)
+          Clamp(g, 0, 255)
+          Clamp(b, 0, 255)
+          
+          If inverse
+            r = 255 - r
+            g = 255 - g
+            b = 255 - b
+          EndIf
+          
+          ; Écriture du pixel
+          *dstPixel = *cible + (y * lg + x) * 4
+          PokeL(*dstPixel, $FF000000 | (Int(r) << 16) | (Int(g) << 8) | Int(b))
         EndIf
         
-        ; Écriture du pixel
-        *dstPixel = *cible + (y * lg + x) * 4
-        PokeL(*dstPixel, $FF000000 | (Int(r) << 16) | (Int(g) << 8) | Int(b))
-      EndIf
-      
+      Next
     Next
-  Next
-  
-  ; Libération des tableaux
-  FreeArray(r3())
-  FreeArray(g3())
-  FreeArray(b3())
-  FreeArray(gray())
+    
+    ; Libération des tableaux
+    FreeArray(r3())
+    FreeArray(g3())
+    FreeArray(b3())
+    FreeArray(gray())
+  EndWith
 EndProcedure
 
-Procedure StructuredEdgeDetection(*param.parametre)
-  ; Configuration du filtre (métadonnées)
-  If *param\info_active
-    *param\typ = #FilterType_EdgeDetection
-    *param\subtype = #EdgeDetect_Advanced
-    *param\name = "Structured Edge"
-    *param\remarque = "Détection de contours structurés avec contexte spatial"
-    
-    ; Description des paramètres
-    *param\info[0] = "Sensibilité"
-    *param\info[1] = "Noyau (0=3x3/1=5x5)"
-    *param\info[2] = "Noir et blanc"
-    *param\info[3] = "Inversion"
-    *param\info[4] = "Mode (0=Std/1=Grad/2=Tex)"
-    *param\info[5] = "masque"
-    
-    ; Paramètres: [min, max, défaut]
-    *param\info_data(0, 0) = 1   : *param\info_data(0, 1) = 100 : *param\info_data(0, 2) = 50
-    *param\info_data(1, 0) = 0   : *param\info_data(1, 1) = 1   : *param\info_data(1, 2) = 0
-    *param\info_data(2, 0) = 0   : *param\info_data(2, 1) = 1   : *param\info_data(2, 2) = 0
-    *param\info_data(3, 0) = 0   : *param\info_data(3, 1) = 1   : *param\info_data(3, 2) = 0
-    *param\info_data(4, 0) = 0   : *param\info_data(4, 1) = 2   : *param\info_data(4, 2) = 0
-    *param\info_data(5, 0) = 0   : *param\info_data(5, 1) = 2   : *param\info_data(5, 2) = 0
-    
-    ProcedureReturn
-  EndIf
-  
-  ; Lancement du traitement multi-thread
-  filter_start(@StructuredEdge_MT(), 5)
+Procedure StructuredEdgeDetectionEx(*FilterCtx.FilterParams)
+  Restore StructuredEdgeDetection_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+
+  With *FilterCtx
+    Create_MultiThread_MT(@StructuredEdge_MT())
+    mask_update(*FilterCtx.FilterParams , last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 79
-; FirstLine = 58
+
+Procedure StructuredEdgeDetection(source , cible , mask , sensibilite , noyau , gris , inversion , mode)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = sensibilite
+    \option[1] = noyau
+    \option[2] = gris
+    \option[3] = inversion
+    \option[4] = mode
+  EndWith
+  StructuredEdgeDetectionEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  StructuredEdgeDetection_data:
+  Data.s "Structured Edge"
+  Data.s "Détection de contours structurés avec contexte spatial"
+  Data.i #FilterType_EdgeDetection
+  Data.i #EdgeDetect_Advanced
+  
+  Data.s "Sensibilité"       
+  Data.i 1,100,50
+  Data.s "Noyau (0=3x3/1=5x5)"   
+  Data.i 0,1,0
+  Data.s "Noir et blanc"        
+  Data.i 0,1,0
+  Data.s "Inversion"  
+  Data.i 0,1,0
+  Data.s "Mode (0=Std/1=Grad/2=Tex)" 
+  Data.i 0,2,0
+  Data.s "XXX"  
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 229
+; FirstLine = 210
 ; Folding = --
 ; EnableXP
 ; DPIAware

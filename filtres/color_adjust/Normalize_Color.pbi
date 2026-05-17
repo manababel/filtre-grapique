@@ -1,92 +1,125 @@
-﻿; -----------------------------------------------------------------------------
-; Procedure Normalize_Color
-; -------------------------
-; Effectue la normalisation des couleurs sur une portion d'image
-; en fonction des indices thread_pos et thread_max (gestion multi-thread)
-;
-; Paramètres (dans *p) :
-; - source : pointeur vers le buffer source ARGB 32 bits
-; - cible  : pointeur vers le buffer cible ARGB 32 bits
-; - lg     : largeur image
-; - ht     : hauteur image
-; - thread_pos : index du thread courant
-; - thread_max : nombre total de threads
-; -----------------------------------------------------------------------------
-Procedure Normalize_Color_MT(*p.parametre)
-  Protected start, stop, i
-  Protected var.l
-  Protected r, g, b
-  Protected rmin = 255, gmin = 255, bmin = 255
-  Protected rmax = 0, gmax = 0, bmax = 0
-  Protected rangeR, rangeG, rangeB
-  Protected pixelCount = *p\lg * *p\ht
-  Protected *source = *p\source
-  Protected *cible = *p\cible
+﻿; ----------------------------------------------------------------------------------
+; Procédure thread pour la Normalisation des couleurs (Étirement de contraste)
+; ----------------------------------------------------------------------------------
 
-  ; Délimitation de la portion à traiter selon thread
-  start = ( *p\thread_pos * pixelCount ) / *p\thread_max
-  stop  = ( (*p\thread_pos + 1) * pixelCount ) / *p\thread_max - 1
-
-  ; --- Recherche des min/max par canal sur la portion ---
-  For i = start To stop
-    var = PeekL(*source + i * 4)
-    getrgb(var, r, g, b)
-
-    If r < rmin : rmin = r : EndIf
-    If g < gmin : gmin = g : EndIf
-    If b < bmin : bmin = b : EndIf
-
-    If r > rmax : rmax = r : EndIf
-    If g > gmax : gmax = g : EndIf
-    If b > bmax : bmax = b : EndIf
-  Next
-
-  ; Synchronisation entre threads (à implémenter si multi-thread complet)
-
-  ; Calcul des plages, protection division zéro
-  rangeR = rmax - rmin
-  rangeG = gmax - gmin
-  rangeB = bmax - bmin
-  If rangeR = 0 : rangeR = 1 : EndIf
-  If rangeG = 0 : rangeG = 1 : EndIf
-  If rangeB = 0 : rangeB = 1 : EndIf
-
-  ; --- Normalisation des pixels ---
-  For i = start To stop
-    var = PeekL(*source + i * 4)
-    getrgb(var, r, g, b)
-
-    r = ((r - rmin) * 255) / rangeR
-    g = ((g - gmin) * 255) / rangeG
-    b = ((b - bmin) * 255) / rangeB
-
-    Clamp_rgb(r, g, b)
-
-    PokeL(*cible + i * 4, (var & $FF000000) | (r << 16) | (g << 8) | b)
-  Next
+Procedure Normalize_Color_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected i, a, r, g, b, pixel.l
+    Protected totalPixels = \image_lg[0] * \image_ht[1]
+    
+    ; Récupération des min/max globaux calculés dans la procédure parente
+    ; On utilise les options temporaires ou pData pour passer ces valeurs
+    Protected rmin = \option[10], rmax = \option[11]
+    Protected gmin = \option[12], gmax = \option[13]
+    Protected bmin = \option[14], bmax = \option[15]
+    
+    ; Calcul des plages (range) avec protection division par zéro
+    Protected rangeR = rmax - rmin : If rangeR <= 0 : rangeR = 1 : EndIf
+    Protected rangeG = gmax - gmin : If rangeG <= 0 : rangeG = 1 : EndIf
+    Protected rangeB = bmax - bmin : If rangeB <= 0 : rangeB = 1 : EndIf
+    
+    ; Utilisation de la macro standard pour le découpage multithread
+    macro_calul_tread(totalPixels)
+    
+    Protected *srcPixel.Pixel32 = \addr[0] + (thread_start << 2)
+    Protected *dstPixel.Pixel32 = \addr[1] + (thread_start << 2)
+    
+    For i = thread_start To thread_stop - 1
+      pixel = *srcPixel\l
+      
+      ; Extraction
+      a = (pixel >> 24) & $FF
+      r = (pixel >> 16) & $FF
+      g = (pixel >> 8) & $FF
+      b = pixel & $FF
+      
+      ; Normalisation : (Valeur - Min) * 255 / Plage
+      r = ((r - rmin) * 255) / rangeR
+      g = ((g - gmin) * 255) / rangeG
+      b = ((b - bmin) * 255) / rangeB
+      
+      ; Limitation
+      If r < 0 : r = 0 : ElseIf r > 255 : r = 255 : EndIf
+      If g < 0 : g = 0 : ElseIf g > 255 : g = 255 : EndIf
+      If b < 0 : b = 0 : ElseIf b > 255 : b = 255 : EndIf
+      
+      ; Reconstruction
+      *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
+      
+      *srcPixel + 4
+      *dstPixel + 4
+    Next
+  EndWith
 EndProcedure
 
+; ----------------------------------------------------------------------------------
+; Procédure d'appel et définition des métadonnées
+; ----------------------------------------------------------------------------------
 
-; -----------------------------------------------------------------------------
-; Procedure Normalize_Color_Filter
-; -------------------------------
-; Wrapper filtre compatible avec système de paramètres multi-thread
-; -----------------------------------------------------------------------------
-Procedure Normalize_Color(*param.parametre)
-  If param\info_active
-    param\typ = #FilterType_ColorAdjustment
-    param\name = "Normalize_Color"
-    param\remarque = ""
-    param\info[0] = "Masque binaire"
-    param\info_data(0,0) = 0 : param\info_data(0,1) = 1 : param\info_data(0,2) = 0
-    ProcedureReturn
-  EndIf
-
-  filter_start(@Normalize_Color_MT(), 0, 1)
+Procedure Normalize_ColorEx(*FilterCtx.FilterParams)
+  Restore Normalize_Color_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  With *FilterCtx
+    ; --- Passe 1 : Recherche des Min/Max Globaux (nécessaire avant le MT) ---
+    Protected rmin = 255, rmax = 0
+    Protected gmin = 255, gmax = 0
+    Protected bmin = 255, bmax = 0
+    Protected *ptr.Pixel32 = \addr[0]
+    Protected total = \image_lg[0] * \image_ht[1]
+    Protected r, g, b ,i
+    
+    For i = 0 To total - 1
+      r = (*ptr\l >> 16) & $FF
+      g = (*ptr\l >> 8) & $FF
+      b = *ptr\l & $FF
+      
+      If r < rmin : rmin = r : EndIf : If r > rmax : rmax = r : EndIf
+      If g < gmin : gmin = g : EndIf : If g > gmax : gmax = g : EndIf
+      If b < bmin : bmin = b : EndIf : If b > bmax : bmax = b : EndIf
+      *ptr + 4
+    Next
+    
+    ; Stockage temporaire pour les threads
+    \option[10] = rmin : \option[11] = rmax
+    \option[12] = gmin : \option[13] = gmax
+    \option[14] = bmin : \option[15] = bmax
+    
+    ; --- Passe 2 : Traitement Multithread ---
+    Create_MultiThread_MT(@Normalize_Color_MT())
+    
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 84
-; FirstLine = 25
+
+; ----------------------------------------------------------------------------------
+; Interface simplifiée
+; ----------------------------------------------------------------------------------
+
+Procedure Normalize_Color(source, cible, mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  Normalize_ColorEx(FilterCtx)
+EndProcedure
+
+; ----------------------------------------------------------------------------------
+; Données du filtre
+; ----------------------------------------------------------------------------------
+
+DataSection
+  Normalize_Color_Data:
+  Data.s "Normalize Color"    ; Nom
+  Data.s "Étend les composantes RGB pour occuper toute la plage 0-255" ; Description
+  Data.i #FilterType_ColorAdjustment
+  Data.i 0                    ; Sous-type
+  
+  Data.s "XXX"                ; Pas d'options utilisateur nécessaires
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 70
+; FirstLine = 58
 ; Folding = -
 ; EnableXP
 ; DPIAware

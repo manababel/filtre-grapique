@@ -1,185 +1,127 @@
 ﻿
-Macro Blend_entete_mix(nom , opt1 = 0) 
-  If param\info_active
-    param\typ = #FilterType_BlendModes
-    *param\subtype = opt1
-    param\name = nom
-    param\remarque = ""         
-    param\info[0] = "neg image 1"
-    param\info[1] = "neg image 2"
-    param\info[2] = "scaleX image 2"
-    param\info[3] = "scaleX image 2"
-    param\info[4] = "PosX image 2"
-    param\info[5] = "Posy image 2"
-    param\info[6] = "Masque binaire"
-    param\info_data(0,0) = 0 : param\info_data(0,1) = 1  : param\info_data(0,2) = 0 
-    param\info_data(1,0) = 0 : param\info_data(1,1) = 1  : param\info_data(1,2) = 0 
-    param\info_data(2,0) = 0 : param\info_data(2,1) = 100  : param\info_data(2,2) = 100 
-    param\info_data(3,0) = 0 : param\info_data(3,1) = 100  : param\info_data(3,2) = 100
-    param\info_data(4,0) = 0 : param\info_data(4,1) = 200  : param\info_data(4,2) = 100
-    param\info_data(5,0) = 0 : param\info_data(5,1) = 200  : param\info_data(5,2) = 100
-    param\info_data(6,0) = 0 : param\info_data(6,1) = 2  : param\info_data(6,2) = 0
-    ProcedureReturn
-  EndIf
-  
-  Protected *tempo
-  If *param\source = *param\cible
-    *tempo = AllocateMemory(*param\lg * *param\ht * 4)
-    If Not *tempo : ProcedureReturn : EndIf
-    CopyMemory(*param\source , *tempo , *param\lg * *param\ht * 4)
-    *param\addr[0] = *tempo
-  Else
-    *param\addr[0] = *param\source
-  EndIf
-  
-  *param\addr[1] = *param\mix
-  Protected var = 6 ; = "Masque binaire"
+Macro Blend_entete_mix(nom , opt = 0) 
+  Restore Blend_entete_mix_data
+  Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\info[6] = "" ; efface l'option 6 (alpha)
+  *FilterCtx\name = nom
+  *FilterCtx\subtype = opt 
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  If *FilterCtx\image[2] = 0 : ProcedureReturn 0 : EndIf
+  last_data - 1
 EndMacro
 
-Macro Blend_entete_mix2(nom , op1 , opt2 = 0) 
-  If param\info_active
-    param\typ = #FilterType_BlendModes
-    *param\subtype = opt2
-    param\name = nom
-    param\remarque = ""   
-    param\info[0] = "neg image 1"
-    param\info[1] = "neg image 2"
-    param\info[2] = "scaleX image 2"
-    param\info[3] = "scaleX image 2"
-    param\info[4] = "PosX image 2"
-    param\info[5] = "Posy image 2"
-    param\info[6] = op1   
-    param\info[7] = "Masque binaire" 
-    param\info_data(0,0) = 0 : param\info_data(0,1) = 1  : param\info_data(0,2) = 0 
-    param\info_data(1,0) = 0 : param\info_data(1,1) = 1  : param\info_data(1,2) = 0 
-    param\info_data(2,0) = 0 : param\info_data(2,1) = 100  : param\info_data(2,2) = 100 
-    param\info_data(3,0) = 0 : param\info_data(3,1) = 100  : param\info_data(3,2) = 100
-    param\info_data(4,0) = 0 : param\info_data(4,1) = 200  : param\info_data(4,2) = 100
-    param\info_data(5,0) = 0 : param\info_data(5,1) = 200  : param\info_data(5,2) = 100
-    param\info_data(6,0) = 0 : param\info_data(6,1) = 255  : param\info_data(6,2) = 128
-    param\info_data(7,0) = 0 : param\info_data(7,1) = 2  : param\info_data(7,2) = 0
-    ProcedureReturn
-  EndIf
-  
-  If *param\source = 0 Or *param\mix = 0 Or  *param\cible = 0 : ProcedureReturn : EndIf
-  
-  Protected *tempo
-  If *param\source = *param\cible
-    *tempo = AllocateMemory(*param\lg * *param\ht * 4)
-    If Not *tempo : ProcedureReturn : EndIf
-    CopyMemory(*param\source , *tempo , *param\lg * *param\ht * 4)
-    *param\addr[0] = *tempo
-  Else
-    *param\addr[0] = *param\source
-  EndIf
-  
-  *param\addr[1] = *param\mix
-  Protected var = 7 ; = "Masque binaire"
+Macro Blend_entete_mix2(nom , opt2 , opt = 0) 
+  Restore Blend_entete_mix_data
+  Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\name = nom
+  *FilterCtx\subtype = opt 
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  If *FilterCtx\image[2] = 0 : ProcedureReturn 0 : EndIf
 EndMacro
 
 
-
+DataSection
+  Blend_entete_mix_data:
+  Data.s ""
+  Data.s ""
+  Data.i #FilterType_BlendModes
+  Data.i 0
+  
+  Data.s "neg image 1"  
+  Data.i 0,1,0
+  Data.s "neg image 2" 
+  Data.i 0,1,0
+  Data.s "scaleX image 2" 
+  Data.i 1,100,100
+  Data.s "scaleX image 2"      
+  Data.i 1,100,100
+  Data.s "PosX image 2" 
+  Data.i 0,200,100
+  Data.s "PosY image 2"      
+  Data.i 0,200,100
+  Data.s "Alpha"      
+  Data.i 0,255,128
+  Data.s "XXX"
+EndDataSection
 
 Macro Blend_strat()
 
-  Protected *src1.Long    = *param\source
-  Protected *src2.Long    = *param\mix
-  Protected *dst.Long     = *param\cible
-  
-  Protected lg      = *param\lg
-  Protected ht      = *param\ht
-  Protected lg_mix  = *param\lg_mix
-  Protected ht_mix  = *param\ht_mix
-
-  Protected scale_x = *param\option[2]
-  Protected scale_y = *param\option[3]
-
+  Protected *src1.array32 = *FilterCtx\addr[0] ; source
+  Protected *scr2.array32 = *FilterCtx\image[2]; mix 
+  Protected *dst.array32  = *FilterCtx\addr[1] ; cible
+  Protected lg      = *FilterCtx\image_lg[0]
+  Protected ht      = *FilterCtx\image_ht[0]
   ; --- Optimisation : ratios pré-calculés (pour éviter divisions dans la boucle)
-  Protected ratioX.f = lg_mix / (lg * (scale_x * 0.01))
-  Protected ratioY.f = ht_mix / (ht * (scale_y * 0.01))
-
+  Protected ratioX.f = *FilterCtx\image_lg[2] / (lg * (*FilterCtx\option[2] * 0.01))
+  Protected ratioY.f = *FilterCtx\image_ht[2] / (ht * (*FilterCtx\option[3] * 0.01))
   ; --- Zone où appliquer le mix
-  Protected posX_start = ((*param\option[4] - 100) * lg) / 100
-  Protected posY_start = ((*param\option[5] - 100) * ht) / 100
-
-  Protected lg2 = (lg * scale_x) / 100
-  Protected ht2 = (ht * scale_y) / 100
-
-  Protected posX_end = posX_start + lg2
-  Protected posY_end = posY_start + ht2
-
+  Protected posX_start = ((*FilterCtx\option[4] - 100) * lg) / 100
+  Protected posY_start = ((*FilterCtx\option[5] - 100) * ht) / 100
+  
+  Protected posX_end = posX_start + ((lg * *FilterCtx\option[2]) / 100)
+  Protected posY_end = posY_start + ((ht * *FilterCtx\option[3]) / 100)
+  
   If posX_end > lg : posX_end = lg : EndIf
   If posY_end > ht : posY_end = ht : EndIf
-  
   ; Multithreading : partition verticale
-  Protected startY = (*param\thread_pos * ht) / *param\thread_max
-  Protected stopY  = ((*param\thread_pos + 1) * ht) / *param\thread_max - 1
-  If stopY >= ht - 1 : stopY = ht - 1 : EndIf
-
+  macro_calul_tread(ht) 
+  If thread_stop >= ht - 1 : thread_stop = ht - 1 : EndIf
   Protected x, y, pos, pos2
   Protected sx.f, sy.f
   Protected x1, y1
   Protected a, r, g, b
   Protected a1, r1, g1, b1
   Protected a2, r2, g2, b2
-
-  For y = startY To stopY
+  For y = thread_start To thread_stop - 1
     ; Pré-calc pour la ligne (évite une multiplication dans la boucle x)
     Protected y_offset = y * lg
     sy = (y - posY_start) * ratioY
-
     For x = 0 To lg - 1
-
-      pos = (y_offset + x) << 2
-
-      *dst  = *param\cible + pos
-      *src1 = *param\addr[0] + pos
-
-      getargb(*src1\l, a1, r1, g1, b1)
-
-      ; Option 0 : inversion source
-      If *param\option[0] : r1 = 255 - r1 : g1 = 255 - g1 : b1 = 255 - b1 : EndIf
-      
+      pos = (y_offset + x); << 2
+      getargb(*src1\l[pos], a1, r1, g1, b1)
+      If *FilterCtx\option[0] : r1 = 255 - r1 : g1 = 255 - g1 : b1 = 255 - b1 : EndIf ; Option 0 : inversion source
       ; Test si pixel dans la zone
       If x >= posX_start And x < posX_end And y >= posY_start And y < posY_end
-
         sx = (x - posX_start) * ratioX
         x1 = Int(sx)
         y1 = Int(sy)
-
-        pos2 = (y1 * lg_mix + x1) << 2
-        
-        *src2 = *param\addr[1] + pos2
-
-        getargb(*src2\l, a2, r2, g2, b2)
-
-        ; Option 1 : inversion du mix
-        If *param\option[1] : r2 = 255 - r2 : g2 = 255 - g2 : b2 = 255 - b2 : EndIf
+        pos2 = (y1 * *FilterCtx\image_lg[2] + x1); << 2
+        getargb(*scr2\l[pos2], a2, r2, g2, b2)
+        If *FilterCtx\option[1] : r2 = 255 - r2 : g2 = 255 - g2 : b2 = 255 - b2 : EndIf ; ; Option 1 : inversion du mix
 EndMacro
 
 
 Macro Blend_Stop()
-        *dst\l = (a1 << 24) | (r << 16) | (g << 8) | b
+        *dst\l[pos] = (a1 << 24) | (r << 16) | (g << 8) | b
       Else
-        *dst\l = (a1 << 24) | (r1 << 16 ) | (g1 << 8) | b1
+        *dst\l[pos] = (a1 << 24) | (r1 << 16 ) | (g1 << 8) | b1
       EndIf
-
     Next
   Next
-
 EndMacro
 
 
-
-Macro Filtre2_end()
-  If *param\mask And *param\option[var] : *param\mask_type = *param\option[var] - 1 : MultiThread_MT(@_mask()) : EndIf
-  If *tempo : FreeMemory(*tempo) : EndIf
-EndMacro
 
 
 ;**************
 
-Procedure Blend_additive_MT(*param.parametre)
+Macro macro_blend_sp0()
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_mix(mix)
+  Set_Mask(mask)
+  FilterCtx\option[0] = inv1
+  FilterCtx\option[1] = inv2
+  FilterCtx\option[2] = scx
+  FilterCtx\option[3] = scy
+  FilterCtx\option[4] = px
+  FilterCtx\option[5] = py
+  Blend_AdditiveEx(FilterCtx.FilterParams)
+EndMacro
+
+;-- 
+
+Procedure Blend_additive_MT(*FilterCtx.FilterParams)
   Blend_strat()
   min(r , (r1 + r2) , 255)
   min(g , (g1 + g2) , 255)
@@ -187,13 +129,16 @@ Procedure Blend_additive_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_additive(*param.parametre)
+Procedure Blend_AdditiveEx(*FilterCtx.FilterParams)
   Blend_entete_mix("additive" , #Blend_Additive)
-  MultiThread_MT(@Blend_additive_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_additive_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
-;**************
-Procedure Blend_additive_inverted_MT(*param.parametre)
+
+Procedure Blend_additive(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
+;-- **************
+Procedure Blend_additive_inverted_MT(*FilterCtx.FilterParams)
   Blend_strat()
   Min(r , (r2 + (255 - r1)), 255)
   Min(g , (g2 + (255 - g1)), 255)
@@ -201,14 +146,16 @@ Procedure Blend_additive_inverted_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_additive_inverted(*param.parametre)
+Procedure Blend_additive_invertedEx(*FilterCtx.FilterParams)
   Blend_entete_mix("additive_inverted" , #Blend_Additive)
-  MultiThread_MT(@Blend_additive_inverted_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_additive_inverted_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
-;**************
-Procedure Blend_alphablend_MT(*param.parametre)
-  Protected alpha = *param\option[6]
+Procedure Blend_additive_inverted(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
+;-- **************
+Procedure Blend_alphablend_MT(*FilterCtx.FilterParams)
+  Protected alpha = *FilterCtx\option[6]
   clamp(alpha , 0 , 255)
   Protected inv_alpha = 255 - alpha
   Blend_strat()
@@ -218,13 +165,15 @@ Procedure Blend_alphablend_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_alphablend(*param.parametre)
+Procedure Blend_alphablendEx(*FilterCtx.FilterParams)
   Blend_entete_mix2("alphablend","alpa" , #Blend_Additive)
-  MultiThread_MT(@Blend_alphablend_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_alphablend_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_alphablend(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_RMSColor_MT(*param.parametre)
+Procedure Blend_RMSColor_MT(*FilterCtx.FilterParams)
   ;Filtre2_QuadraticBlend
   ;Filtre2_SquaredAverage
   Blend_strat()
@@ -235,13 +184,15 @@ Procedure Blend_RMSColor_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_RMSColor(*param.parametre)
+Procedure Blend_RMSColorEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_RMSColor")
-  MultiThread_MT(@Blend_RMSColor_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_RMSColor_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_RMSColor(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_And_MT(*param.parametre)
+Procedure Blend_And_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r1 & r2
   g = g1 & g2
@@ -249,13 +200,15 @@ Procedure Blend_And_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_And(*param.parametre)
+Procedure Blend_AndEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_And")
-  MultiThread_MT(@Blend_And_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_And_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_And(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Average_MT(*param.parametre)
+Procedure Blend_Average_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = (r1 + r2) >> 1
   g = (g1 + g2) >> 1
@@ -263,13 +216,15 @@ Procedure Blend_Average_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Average(*param.parametre)
+Procedure Blend_AverageEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Average" ,#Blend_Additive)
-  MultiThread_MT(@Blend_Average_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Average_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Average(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_LightBlend_MT(*param.parametre)
+Procedure Blend_LightBlend_MT(*FilterCtx.FilterParams)
   ;Filtre2_IntensityBlend
   ;Filtre2_WeightedBlend
   Blend_strat()
@@ -281,13 +236,15 @@ Procedure Blend_LightBlend_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_LightBlend(*param.parametre)
+Procedure Blend_LightBlendEx(*FilterCtx.FilterParams)
   Blend_entete_mix("LightBlend" , #Blend_Additive)
-  MultiThread_MT(@Blend_LightBlend_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_LightBlend_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_LightBlend(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_IntensityBoost_MT(*param.parametre)
+Procedure Blend_IntensityBoost_MT(*FilterCtx.FilterParams)
   ;Filtre2_PowerBlend
   ;Filtre2_Amplify
   Blend_strat()
@@ -298,13 +255,15 @@ Procedure Blend_IntensityBoost_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_IntensityBoost(*param.parametre)
+Procedure Blend_IntensityBoostEx(*FilterCtx.FilterParams)
   Blend_entete_mix("IntensityBoost" , #Blend_Additive)
-  MultiThread_MT(@Blend_IntensityBoost_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_IntensityBoost_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_IntensityBoost(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_BrushUp_MT(*param.parametre)
+Procedure Blend_BrushUp_MT(*FilterCtx.FilterParams)
   Blend_strat()
   Protected l1 = (r1 * 1225 + g1 * 2405 + b1 * 466) >> 12
   Protected l2 = (r2 * 1225 + g2 * 2405 + b2 * 466) >> 12
@@ -315,13 +274,15 @@ Procedure Blend_BrushUp_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_BrushUp(*param.parametre)
+Procedure Blend_BrushUpEx(*FilterCtx.FilterParams)
   Blend_entete_mix("BrushUp" , #Blend_Additive)
-  MultiThread_MT(@Blend_BrushUp_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_BrushUp_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_BrushUp(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Burn_MT(*param.parametre)
+Procedure Blend_Burn_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 256 - ((256 - r2) << 8) / (r1 + 1)
   g = 256 - ((256 - g2) << 8) / (g1 + 1)
@@ -330,13 +291,15 @@ Procedure Blend_Burn_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Burn(*param.parametre)
+Procedure Blend_BurnEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Burn" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_Burn_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Burn_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Burn(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_SubtractiveDodge_MT(*param.parametre)
+Procedure Blend_SubtractiveDodge_MT(*FilterCtx.FilterParams)
   ;Filtre2_LinearDodge
   Blend_strat()
   Max(r , 0, (r2 - 255 + r1))
@@ -348,13 +311,15 @@ Procedure Blend_SubtractiveDodge_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_SubtractiveDodge(*param.parametre)
+Procedure Blend_SubtractiveDodgeEx(*FilterCtx.FilterParams)
   Blend_entete_mix("SubtractiveDodge" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_SubtractiveDodge_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_SubtractiveDodge_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_SubtractiveDodge(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_ColorBurn_MT(*param.parametre)
+Procedure Blend_ColorBurn_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 0 : g = 0 : b = 0
   If r1 > 0 : r = 255 - (((255 - r2) << 8) / r1) : EndIf
@@ -364,14 +329,16 @@ Procedure Blend_ColorBurn_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_ColorBurn(*param.parametre)
+Procedure Blend_ColorBurnEx(*FilterCtx.FilterParams)
   ; Partie en-tête + appel multi-thread
   Blend_entete_mix("ColorBurn" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_ColorBurn_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_ColorBurn_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_ColorBurn(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_ColorDodge_MT(*param.parametre)
+Procedure Blend_ColorDodge_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 0 : g = 0 : b = 0
   If r1 < 255 : Min(r, ((r2 << 8) / (255 - r1)), 255) : EndIf
@@ -380,13 +347,15 @@ Procedure Blend_ColorDodge_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_ColorDodge(*param.parametre)
+Procedure Blend_ColorDodgeEx(*FilterCtx.FilterParams)
   Blend_entete_mix("ColorDodge" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_ColorDodge_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_ColorDodge_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_ColorDodge(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Contrast_MT(*param.parametre)
+Procedure Blend_Contrast_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 127 + ((r2 - 127) * r1) / 127
   g = 127 + ((g2 - 127) * g1) / 127
@@ -395,13 +364,15 @@ Procedure Blend_Contrast_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Contrast(*param.parametre)
+Procedure Blend_ContrastEX(*FilterCtx.FilterParams)
   Blend_entete_mix("Contrast" , #Blend_Contrast)
-  MultiThread_MT(@Blend_Contrast_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Contrast_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Contrast(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Cosine_MT(*param.parametre)
+Procedure Blend_Cosine_MT(*FilterCtx.FilterParams)
   Protected Dim CosLUT(256) , j
   For j = 0 To 255 : CosLUT(j) = Int(Abs(Cos(j * 3.14159265 / 255)) * 255) : Next
   Blend_strat()
@@ -413,14 +384,16 @@ Procedure Blend_Cosine_MT(*param.parametre)
   FreeArray(CosLUT())
 EndProcedure
 
-Procedure Blend_Cosine(*param.parametre)
+Procedure Blend_CosineEX(*FilterCtx.FilterParams)
   Blend_entete_mix("Cosine" , #Blend_Contrast)
-  MultiThread_MT(@Blend_Cosine_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Cosine_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Cosine(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_CrossFading_MT(*param.parametre)
-  Protected fading = *param\option[6]
+Procedure Blend_CrossFading_MT(*FilterCtx.FilterParams)
+  Protected fading = *FilterCtx\option[6]
   Blend_strat()
   r = (r1 * fading + r2 * (255 - fading)) >> 8
   g = (g1 * fading + g2 * (255 - fading)) >> 8
@@ -428,13 +401,15 @@ Procedure Blend_CrossFading_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_CrossFading(*param.parametre)
+Procedure Blend_CrossFadingEx(*FilterCtx.FilterParams)
   Blend_entete_mix2("CrossFading","fading" , #Blend_Contrast)
-  MultiThread_MT(@Blend_CrossFading_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_CrossFading_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_CrossFading(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_InverseMultiply_MT(*param.parametre)
+Procedure Blend_InverseMultiply_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r1 = 255 - r1
   g1 = 255 - g1
@@ -449,13 +424,15 @@ Procedure Blend_InverseMultiply_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_InverseMultiply(*param.parametre)
+Procedure Blend_InverseMultiplyEX(*FilterCtx.FilterParams)
   Blend_entete_mix("InverseMultiply" , #Blend_Multiply)
-  MultiThread_MT(@Blend_InverseMultiply_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_InverseMultiply_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_InverseMultiply(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Darken_MT(*param.parametre)
+Procedure Blend_Darken_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r2
   g = g2
@@ -466,13 +443,15 @@ Procedure Blend_Darken_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Darken(*param.parametre)
+Procedure Blend_DarkenEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Darken" , #Blend_Multiply)
-  MultiThread_MT(@Blend_Darken_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Darken_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Darken(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_SubtractiveBlend_MT(*param.parametre)
+Procedure Blend_SubtractiveBlend_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r2 - (255 - ((r1 * r2) >> 8))
   g = g2 - (255 - ((g1 * g2) >> 8))
@@ -481,13 +460,15 @@ Procedure Blend_SubtractiveBlend_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_SubtractiveBlend(*param.parametre)
+Procedure Blend_SubtractiveBlendEx(*FilterCtx.FilterParams)
   Blend_entete_mix("SubtractiveBlend" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_SubtractiveBlend_MT())
-  Filtre2_end() 
+  Create_MultiThread_MT(@Blend_SubtractiveBlend_MT())
+  mask_update(*FilterCtx.FilterParams , last_data) 
 EndProcedure
+Procedure Blend_SubtractiveBlend(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Difference_MT(*param.parametre)
+Procedure Blend_Difference_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = Abs(r1 - r2)
   g = Abs(g1 - g2)
@@ -496,14 +477,16 @@ Procedure Blend_Difference_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Difference(*param.parametre)
+Procedure Blend_DifferenceEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Difference" , #Blend_Multiply)
-  MultiThread_MT(@Blend_Difference_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Difference_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Difference(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Div_MT(*param.parametre)
-  Protected m = *param\option[6]
+Procedure Blend_Div_MT(*FilterCtx.FilterParams)
+  Protected m = *FilterCtx\option[6]
   Blend_strat()
   r = r1 * m / (r2 + 1)
   g = g1 * m / (g2 + 1)
@@ -512,13 +495,15 @@ Procedure Blend_Div_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Div(*param.parametre)
+Procedure Blend_DivEx(*FilterCtx.FilterParams)
   Blend_entete_mix2("Div","mul" , #Blend_Multiply)
-  MultiThread_MT(@Blend_Div_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Div_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Div(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_SoftAdd_MT(*param.parametre)
+Procedure Blend_SoftAdd_MT(*FilterCtx.FilterParams)
   ;Filtre2_ScreenBlend
   ;Filtre2_LightenBlend
   Blend_strat()
@@ -529,13 +514,15 @@ Procedure Blend_SoftAdd_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_SoftAdd(*param.parametre)
+Procedure Blend_SoftAddEx(*FilterCtx.FilterParams)
   Blend_entete_mix("SoftAdd" , #Blend_Additive)
-  MultiThread_MT(@Blend_SoftAdd_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_SoftAdd_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_SoftAdd(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_SoftLightBoost_MT(*param.parametre)
+Procedure Blend_SoftLightBoost_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r2 + r1 * (r1 / 127.5 - 1)
   g = g2 + g1 * (g1 / 127.5 - 1)
@@ -544,14 +531,15 @@ Procedure Blend_SoftLightBoost_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_SoftLightBoost(*param.parametre)
+Procedure Blend_SoftLightBoostEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_SoftLightBoost")
-  MultiThread_MT(@Blend_SoftLightBoost_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_SoftLightBoost_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_SoftLightBoost(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Exponentiale_MT(*param.parametre)
+Procedure Blend_Exponentiale_MT(*FilterCtx.FilterParams)
   Protected Dim ExpLUT(256) , j
   For j = 0 To 255
     ExpLUT(j) = Int(Pow(255, j / 255.0) + 0.5)  ; valeur entière arrondie
@@ -566,13 +554,15 @@ Procedure Blend_Exponentiale_MT(*param.parametre)
   FreeArray(ExpLUT())
 EndProcedure
 
-Procedure Blend_Exponentiale(*param.parametre)
+Procedure Blend_ExponentialeEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Exponentiale" , #Blend_Multiply)
-  MultiThread_MT(@Blend_Exponentiale_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Exponentiale_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Exponentiale(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Fade_MT(*param.parametre)
+Procedure Blend_Fade_MT(*FilterCtx.FilterParams)
   Protected Dim SumLUT(766) , j
   For j = 0 To 765 : SumLUT(j) = j : Next
   Blend_strat()
@@ -585,14 +575,15 @@ Procedure Blend_Fade_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Fade(*param.parametre)
+Procedure Blend_FadeEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Fade")
-  MultiThread_MT(@Blend_Fade_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Fade_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Fade(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Fence_MT(*param.parametre)
+Procedure Blend_Fence_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = (r2 * (r1 + r2)) >> 9 
   g = (g2 * (g1 + g2)) >> 9
@@ -601,14 +592,15 @@ Procedure Blend_Fence_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Fence(*param.parametre)
+Procedure Blend_FenceEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Fence")
-  MultiThread_MT(@Blend_Fence_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Fence_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Fence(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Freeze_MT(*param.parametre)
+Procedure Blend_Freeze_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 255 - ((255 - r1) * (255 - r1)) / (r2 + 1)
   g = 255 - ((255 - g1) * (255 - g1)) / (g2 + 1)
@@ -617,14 +609,15 @@ Procedure Blend_Freeze_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Freeze(*param.parametre)
+Procedure Blend_FreezeEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Freeze")
-  MultiThread_MT(@Blend_Freeze_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Freeze_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Freeze(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Glow_MT(*param.parametre)
+Procedure Blend_Glow_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = (r2 * r2) / ((255 - r1) + 1)
   g = (g2 * g2) / ((255 - g1) + 1)
@@ -633,14 +626,15 @@ Procedure Blend_Glow_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Glow(*param.parametre)
+Procedure Blend_GlowEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Glow")
-  MultiThread_MT(@Blend_Glow_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Glow_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Glow(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_HardContrast_MT(*param.parametre)
+Procedure Blend_HardContrast_MT(*FilterCtx.FilterParams)
   Blend_strat()
   If r2 > 127 : r = r2 + r1 - 127 : Else : r = r2 - r1 + 127 : EndIf
   If g2 > 127 : g = g2 + g1 - 127 : Else : g = g2 - g1 + 127 : EndIf
@@ -649,14 +643,15 @@ Procedure Blend_HardContrast_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_HardContrast(*param.parametre)
+Procedure Blend_HardContrastEx(*FilterCtx.FilterParams)
   Blend_entete_mix("HardContrast" , #Blend_Contrast)
-  MultiThread_MT(@Blend_HardContrast_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_HardContrast_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_HardContrast(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Hardlight_MT(*param.parametre)
+Procedure Blend_Hardlight_MT(*FilterCtx.FilterParams)
   Blend_strat()
   If r2 < 128 : r = (r1 * r2) >> 7 : Else : r = 255 - ((255 - r1) * (255 - r2) >> 7) : EndIf
   If g2 < 128 : g = (g1 * g2) >> 7 : Else : g = 255 - ((255 - g1) * (255 - g2) >> 7) : EndIf
@@ -665,14 +660,15 @@ Procedure Blend_Hardlight_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Hardlight(*param.parametre)
+Procedure Blend_HardlightEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Hardlight")
-  MultiThread_MT(@Blend_Hardlight_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Hardlight_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Hardlight(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_TanBlend_MT(*param.parametre)
+Procedure Blend_TanBlend_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r2 + Tan(r1 * 0.706125 - 90) * 128  
   g = g2 + Tan(g1 * 0.706125 - 90) * 128
@@ -681,14 +677,15 @@ Procedure Blend_TanBlend_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_TanBlend(*param.parametre)
+Procedure Blend_TanBlendEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_TanBlend")
-  MultiThread_MT(@Blend_TanBlend_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_TanBlend_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_TanBlend(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_HardlTangent_MT(*param.parametre)
+Procedure Blend_HardlTangent_MT(*FilterCtx.FilterParams)
   Protected Dim tab(255) , j , c
   ;For j = 0 To 255 : tab(j) = Tan(j * 180 / 256 - 90) * 128 : Next
   c = 4 ; 8 ou 16
@@ -702,14 +699,15 @@ Procedure Blend_HardlTangent_MT(*param.parametre)
   FreeArray(tab())
 EndProcedure
 
-Procedure Blend_HardlTangent(*param.parametre)
+Procedure Blend_HardlTangentEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_HardlTangent")
-  MultiThread_MT(@Blend_HardlTangent_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_HardlTangent_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_HardlTangent(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Heat_MT(*param.parametre)
+Procedure Blend_Heat_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 255 - ((255 - r2) * (255 - r2)) / (r1 + 1)
   g = 255 - ((255 - g2) * (255 - g2)) / (g1 + 1)
@@ -718,14 +716,15 @@ Procedure Blend_Heat_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Heat(*param.parametre)
+Procedure Blend_HeatEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Heat")
-  MultiThread_MT(@Blend_Heat_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Heat_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Heat(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_InHale_MT(*param.parametre)
+Procedure Blend_InHale_MT(*FilterCtx.FilterParams)
   Protected Dim tab(255) , j
   For j = 0 To 255 : tab(j) = (255 - j) * ((255 - j) / 127.5 - 1) : Clamp(tab(j), 0, 255) : Next
   Blend_strat()
@@ -737,13 +736,15 @@ Procedure Blend_InHale_MT(*param.parametre)
   FreeArray(tab())
 EndProcedure
 
-Procedure Blend_InHale(*param.parametre)
+Procedure Blend_InHaleEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_InHale")
-  MultiThread_MT(@Blend_InHale_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_InHale_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_InHale(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Intensify_MT(*param.parametre)
+Procedure Blend_Intensify_MT(*FilterCtx.FilterParams)
   Protected Dim tab(256) , j
   For j = 0 To 255 : tab(j) = 64 - Cos(j * 3.14 / 255) * 64 : Next
   Blend_strat()
@@ -755,14 +756,15 @@ Procedure Blend_Intensify_MT(*param.parametre)
   FreeArray(tab())
 EndProcedure
 
-Procedure Blend_Intensify(*param.parametre)
+Procedure Blend_IntensifyEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Intensify")
-  MultiThread_MT(@Blend_Intensify_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Intensify_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Intensify(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_CosBlend_MT(*param.parametre)
+Procedure Blend_CosBlend_MT(*FilterCtx.FilterParams)
   Protected Dim tab(256) , j
   For j = 0 To 255 : tab(j) = 64 - Cos(j * 3.14 / 255) * 64 : Next
   Blend_strat()
@@ -774,18 +776,19 @@ Procedure Blend_CosBlend_MT(*param.parametre)
   FreeArray(tab())
 EndProcedure
 
-Procedure Blend_CosBlend(*param.parametre)
+Procedure Blend_CosBlendEx(*FilterCtx.FilterParams)
   Blend_entete_mix("CosBlend" , #Blend_Contrast)
-  MultiThread_MT(@Blend_CosBlend_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_CosBlend_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_CosBlend(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
 ;-- a modifier
-Procedure Blend_Interpolation_MT(*param.parametre)
+Procedure Blend_Interpolation_MT(*FilterCtx.FilterParams)
   Protected Dim tab(256) , j
   For j = 0 To 255 : tab(j) = 64 - Cos(j * 3.14159265 / 255) * 64 : Next
-  Protected fading = *param\option[0]
+  Protected fading = *FilterCtx\option[0]
   Blend_strat() 
   r = (tab(r1) * fading + tab(r2) * (255 - fading)) >> 8
   g = (tab(g1) * fading + tab(g2) * (255 - fading)) >> 8
@@ -795,14 +798,15 @@ Procedure Blend_Interpolation_MT(*param.parametre)
   FreeArray(tab())
 EndProcedure
 
-Procedure Blend_Interpolation(*param.parametre)
+Procedure Blend_InterpolationEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Interpolation")
-  MultiThread_MT(@Blend_Interpolation_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Interpolation_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Interpolation(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_InvBurn_MT(*param.parametre)
+Procedure Blend_InvBurn_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 0 : g = 0 : b = 0
   If r1 > 0 : r = 255 - (255 - r2) / r1 : EndIf
@@ -812,14 +816,15 @@ Procedure Blend_InvBurn_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_InvBurn(*param.parametre)
+Procedure Blend_InvBurnEx(*FilterCtx.FilterParams)
   Blend_entete_mix("InvBurn" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_InvBurn_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_InvBurn_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_InvBurn(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_InvColorBurn_MT(*param.parametre)
+Procedure Blend_InvColorBurn_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 0 : g = 0 : b = 0
   If r1 > 0 : r = 255 - (((255 - r2) << 8) / r1) : EndIf
@@ -829,14 +834,15 @@ Procedure Blend_InvColorBurn_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_InvColorBurn(*param.parametre)
+Procedure Blend_InvColorBurnEx(*FilterCtx.FilterParams)
   Blend_entete_mix("InvColorBurn" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_InvColorBurn_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_InvColorBurn_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_InvColorBurn(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_InvColorDodge_MT(*param.parametre)
+Procedure Blend_InvColorDodge_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 255 : g = 255 : b = 255
   If r1 < 255 : r = (r2 << 8) / (255 - r1) : EndIf
@@ -846,13 +852,15 @@ Procedure Blend_InvColorDodge_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_InvColorDodge(*param.parametre)
+Procedure Blend_InvColorDodgeEx(*FilterCtx.FilterParams)
   Blend_entete_mix("InvColorDodge" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_InvColorDodge_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_InvColorDodge_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_InvColorDodge(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_InvDodge_MT(*param.parametre)
+Procedure Blend_InvDodge_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 255 : g = 255 : b = 255
   If r1 < 255 : r = r2 / (255 - r1) : EndIf
@@ -862,14 +870,15 @@ Procedure Blend_InvDodge_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_InvDodge(*param.parametre)
+Procedure Blend_InvDodgeEx(*FilterCtx.FilterParams)
   Blend_entete_mix("InvDodge" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_InvDodge_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_InvDodge_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_InvDodge(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Lighten_MT(*param.parametre)
+Procedure Blend_Lighten_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r2 : g = g2 : b = b2
   If r1 > r2 : r = r1 : EndIf
@@ -879,14 +888,15 @@ Procedure Blend_Lighten_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Lighten(*param.parametre)
+Procedure Blend_LightenEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Lighten" ,#Blend_Additive)
-  MultiThread_MT(@Blend_Lighten_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Lighten_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure                                    
+Procedure Blend_Lighten(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_LinearBurn_MT(*param.parametre)
+Procedure Blend_LinearBurn_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r1 + r2
   g = g1 + g2
@@ -898,13 +908,15 @@ Procedure Blend_LinearBurn_MT(*param.parametre)
   Blend_Stop()
 EndProcedure                               
 
-Procedure Blend_LinearBurn(*param.parametre)
+Procedure Blend_LinearBurnEx(*FilterCtx.FilterParams)
   Blend_entete_mix("LinearBurn" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_LinearBurn_MT())
-  Filtre2_end()
-EndProcedure      
+  Create_MultiThread_MT(@Blend_LinearBurn_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
+EndProcedure  
+Procedure Blend_LinearBurn(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_LinearLight_MT(*param.parametre)
+Procedure Blend_LinearLight_MT(*FilterCtx.FilterParams)
   Protected Dim comps(2)
   Protected Dim src1(2), Dim src2(2)
   Protected k
@@ -929,14 +941,15 @@ Procedure Blend_LinearLight_MT(*param.parametre)
   FreeArray(src2())
 EndProcedure
 
-Procedure Blend_LinearLight(*param.parametre)
+Procedure Blend_LinearLightEx(*FilterCtx.FilterParams)
   Blend_entete_mix("LinearLight" , #Blend_Additive)
-  MultiThread_MT(@Blend_LinearLight_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_LinearLight_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_LinearLight(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Logarithmic_MT(*param.parametre)
+Procedure Blend_Logarithmic_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 255 * (Log(r1 + 1) + Log(r2 + 1)) / (2 * Log(256))
   g = 255 * (Log(g1 + 1) + Log(g2 + 1)) / (2 * Log(256))
@@ -945,13 +958,15 @@ Procedure Blend_Logarithmic_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Logarithmic(*param.parametre)
+Procedure Blend_LogarithmicEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Logarithmic")
-  MultiThread_MT(@Blend_Logarithmic_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Logarithmic_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Logarithmic(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Mean_MT(*param.parametre)
+Procedure Blend_Mean_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = (r1 + r2) >> 1
   g = (g1 + g2) >> 1
@@ -960,14 +975,15 @@ Procedure Blend_Mean_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Mean(*param.parametre)
+Procedure Blend_MeanEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Mean")
-  MultiThread_MT(@Blend_Mean_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Mean_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Mean(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_ColorVivify_MT(*param.parametre)
+Procedure Blend_ColorVivify_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r2 + r1 - (g1 + b1) >> 1
   g = g2 + g1 - (r1 + b1) >> 1
@@ -976,13 +992,15 @@ Procedure Blend_ColorVivify_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_ColorVivify(*param.parametre)
+Procedure Blend_ColorVivifyEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_ColorVivify")
-  MultiThread_MT(@Blend_ColorVivify_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_ColorVivify_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_ColorVivify(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Multiply_MT(*param.parametre)
+Procedure Blend_Multiply_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = (r1 * r2) >> 8
   g = (g1 * g2) >> 8
@@ -991,13 +1009,15 @@ Procedure Blend_Multiply_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Multiply(*param.parametre)
+Procedure Blend_MultiplyEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Multiply" , #Blend_Multiply)
-  MultiThread_MT(@Blend_Multiply_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Multiply_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Multiply(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Negation_MT(*param.parametre)
+Procedure Blend_Negation_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 255 - Abs(255 - r1 - r2)
   g = 255 - Abs(255 - g1 - g2)
@@ -1006,14 +1026,15 @@ Procedure Blend_Negation_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Negation(*param.parametre)
+Procedure Blend_NegationEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Negation" , #Blend_Multiply)
-  MultiThread_MT(@Blend_Negation_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Negation_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure                  
+Procedure Blend_Negation(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_PinLight_MT(*param.parametre)
+Procedure Blend_PinLight_MT(*FilterCtx.FilterParams)
   Blend_strat()
   If r1 < 128 : Min(r , r2, (2 * r1)) : Else : Max(r , r2, (2 * (r1 - 128))) : EndIf
   If g1 < 128 : Min(g , g2, (2 * g1)) : Else : Max(g , g2, (2 * (g1 - 128))) : EndIf
@@ -1022,13 +1043,15 @@ Procedure Blend_PinLight_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_PinLight(*param.parametre)
+Procedure Blend_PinLightEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_PinLight")
-  MultiThread_MT(@Blend_PinLight_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_PinLight_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_PinLight(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Or_MT(*param.parametre)
+Procedure Blend_Or_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r1 | r2
   g = g1 | g2
@@ -1037,14 +1060,15 @@ Procedure Blend_Or_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Or(*param.parametre)
+Procedure Blend_OrEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Or")
-  MultiThread_MT(@Blend_Or_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Or_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Or(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Overlay_MT(*param.parametre)
+Procedure Blend_Overlay_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = (r1 * r2) >> 7
   g = (g1 * g2) >> 7
@@ -1056,14 +1080,15 @@ Procedure Blend_Overlay_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Overlay(*param.parametre)
+Procedure Blend_OverlayEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Overlay")
-  MultiThread_MT(@Blend_Overlay_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Overlay_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Overlay(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Pegtop_soft_light_MT(*param.parametre)
+Procedure Blend_Pegtop_soft_light_MT(*FilterCtx.FilterParams)
   Blend_strat()
   Protected c = (r1 * r2) >> 8
   r = c + r1 * (255 - ((255 - r1) * (255 - r2) >> 8) - c) >> 8
@@ -1075,14 +1100,15 @@ Procedure Blend_Pegtop_soft_light_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Pegtop_soft_light(*param.parametre)
+Procedure Blend_Pegtop_soft_lightEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Pegtop_soft_light")
-  MultiThread_MT(@Blend_Pegtop_soft_light_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Pegtop_soft_light_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Pegtop_soft_light(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_quadritic_MT(*param.parametre)
+Procedure Blend_quadritic_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 255
   If r2 <> 255 : r = r1 * r1 / (255 - r2) : EndIf
@@ -1094,13 +1120,15 @@ Procedure Blend_quadritic_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_quadritic(*param.parametre)
+Procedure Blend_quadriticEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_quadritic")
-  MultiThread_MT(@Blend_quadritic_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_quadritic_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_quadritic(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_Screen_MT(*param.parametre)
+Procedure Blend_Screen_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = 255 - ((255 - r1) * (255 - r2) >> 8)
   g = 255 - ((255 - g1) * (255 - g2) >> 8)
@@ -1109,13 +1137,15 @@ Procedure Blend_Screen_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Screen(*param.parametre)
+Procedure Blend_ScreenEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Screen" , #Blend_Additive)
-  MultiThread_MT(@Blend_Screen_MT())
-  Filtre2_end()
-EndProcedure          
+  Create_MultiThread_MT(@Blend_Screen_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
+EndProcedure   
+Procedure Blend_Screen(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_SoftColorBurn_MT(*param.parametre)
+Procedure Blend_SoftColorBurn_MT(*FilterCtx.FilterParams)
   Blend_strat()
   ; Calcul soft burn pour chaque composante
   If r1 + r2 < 256
@@ -1158,13 +1188,15 @@ Procedure Blend_SoftColorBurn_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_SoftColorBurn(*param.parametre)
+Procedure Blend_SoftColorBurnEx(*FilterCtx.FilterParams)
   Blend_entete_mix("SoftColorBurn" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_SoftColorBurn_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_SoftColorBurn_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_SoftColorBurn(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_SoftColorDodge_MT(*param.parametre)
+Procedure Blend_SoftColorDodge_MT(*FilterCtx.FilterParams)
   Blend_strat()
   ; Composante rouge
   If r1 + r2 < 256
@@ -1209,14 +1241,15 @@ Procedure Blend_SoftColorDodge_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_SoftColorDodge(*param.parametre)
+Procedure Blend_SoftColorDodgeEx(*FilterCtx.FilterParams)
   Blend_entete_mix("SoftColorDodge" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_SoftColorDodge_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_SoftColorDodge_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure             
+Procedure Blend_SoftColorDodge(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_SoftLight_MT(*param.parametre)
+Procedure Blend_SoftLight_MT(*FilterCtx.FilterParams)
   Protected k
   Blend_strat()
   Protected Dim src1(2), Dim src2(2), Dim res(2)
@@ -1231,13 +1264,15 @@ Procedure Blend_SoftLight_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_SoftLight(*param.parametre)
+Procedure Blend_SoftLightEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_SoftLight")
-  MultiThread_MT(@Blend_SoftLight_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_SoftLight_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_SoftLight(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
+
 ;**************
-Procedure Blend_SoftOverlay_MT(*param.parametre)
+Procedure Blend_SoftOverlay_MT(*FilterCtx.FilterParams)
   Blend_strat()
   If r1 < 128
     r = (r1 * r2) >> 7
@@ -1261,14 +1296,15 @@ Procedure Blend_SoftOverlay_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_SoftOverlay(*param.parametre)
+Procedure Blend_SoftOverlayEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_SoftOverlay")
-  MultiThread_MT(@Blend_SoftOverlay_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_SoftOverlay_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure                 
+Procedure Blend_SoftOverlay(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Stamp_MT(*param.parametre)
+Procedure Blend_Stamp_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = (r1 + r2 * 2) - 256
   g = (g1 + g2 * 2) - 256
@@ -1277,14 +1313,15 @@ Procedure Blend_Stamp_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Stamp(*param.parametre)
+Procedure Blend_StampEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Stamp")
-  MultiThread_MT(@Blend_Stamp_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Stamp_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Stamp(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Subtractive_MT(*param.parametre)
+Procedure Blend_Subtractive_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = (r1 + r2) - 256
   g = (g1 + g2) - 256
@@ -1293,14 +1330,15 @@ Procedure Blend_Subtractive_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Subtractive(*param.parametre)
+Procedure Blend_SubtractiveEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Subtractive" , #Blend_Subtractive)
-  MultiThread_MT(@Blend_Subtractive_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Subtractive_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure                  
+Procedure Blend_Subtractive(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 ;**************
-Procedure Blend_Xor_MT(*param.parametre)
+Procedure Blend_Xor_MT(*FilterCtx.FilterParams)
   Blend_strat()
   r = r1 ! r2
   g = g1 ! g2
@@ -1309,18 +1347,19 @@ Procedure Blend_Xor_MT(*param.parametre)
   Blend_Stop()
 EndProcedure
 
-Procedure Blend_Xor(*param.parametre)
+Procedure Blend_XorEx(*FilterCtx.FilterParams)
   Blend_entete_mix("Filtre2_Xor")
-  MultiThread_MT(@Blend_Xor_MT())
-  Filtre2_end()
+  Create_MultiThread_MT(@Blend_Xor_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
+Procedure Blend_Xor(source , cible , mix , mask , inv1 = 0, inv2 = 0 , scx = 100 , scy = 100, px = 100 , py = 100) : macro_blend_sp0() : EndProcedure
 
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 1118
-; FirstLine = 1257
-; Folding = ----------------------
-; Markers = 1116
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 196
+; FirstLine = 182
+; Folding = --------------------------------
+; Markers = 1144
 ; EnableAsm
 ; EnableThread
 ; EnableXP

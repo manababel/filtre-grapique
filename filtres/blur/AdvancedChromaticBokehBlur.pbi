@@ -1,135 +1,120 @@
-﻿Macro AdvancedChromaticBlur_sp1(v1, v2, channel)
-  px = v1
-  py = v2
-  Clamp(px, 0, lg - 1)
-  Clamp(py, 0, ht - 1)
-  index = (py * lg + px) * 4
-  value = PeekL(*param\addr[0] + index)
-  
-  ; Extraction optimisée des composantes
-  a_temp = (value >> 24) & 255
-  r_temp = (value >> 16) & 255
-  g_temp = (value >> 8) & 255
-  b_temp = value & 255
-  
-  Select channel
-    Case 0 
-      sumR + r_temp
-      countR + 1
-    Case 1 
-      sumG + g_temp
-      countG + 1
-    Case 2 
-      sumB + b_temp
-      countB + 1
-  EndSelect
-  sumA + a_temp
-EndMacro
+﻿; ---------------------------------------------------
+; Advanced Chromatic Bokeh Blur - Version optimisée
+; Flou cinématographique polygonal avec aberration chromatique
+; ---------------------------------------------------
 
-Procedure AdvancedChromaticBokehBlur_sp(*param.parametre)
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected radius = *param\option[0]
-  Protected sides = *param\option[1]
-  Protected chroma = *param\option[2]
-  
-  ; Validation des paramètres
-  If radius < 1 : radius = 1 : EndIf
-  If sides < 3 : sides = 3 : EndIf
-  If chroma < 0 : chroma = 0 : EndIf
-  
-  Protected x, y, i
-  Protected.f angle
-  Protected px, py
-  Protected value, r.l, g.l, b.l, a.l
-  Protected sumR, sumG, sumB, sumA
-  Protected countR, countG, countB
-  Protected dxR, dyR, dxG, dyG, dxB, dyB
-  Protected index
-  Protected a_temp, r_temp, g_temp, b_temp
-  Protected chromaRange = chroma * 2
-  Protected angleStep.f = 2.0 * #PI / sides
-  
-  macro_calul_tread(ht)
-  
-  For y = thread_start To thread_stop - 1
-    For x = 0 To lg - 1
-      sumR = 0 : sumG = 0 : sumB = 0 : sumA = 0
-      countR = 0 : countG = 0 : countB = 0
-      
-      ; Parcourir les sommets du polygone pour chaque canal
-      For i = 0 To sides - 1
-        angle = angleStep * i
+Procedure AdvancedChromaticBokehBlur_sp(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0], ht = \image_ht[0]
+    Protected radius = \option[0], sides = \option[1], chroma = \option[2]
+    Protected x, y, i, px, py, index, value, countR, countG, countB
+    Protected sumR, sumG, sumB, sumA, r, g, b, a
+    Protected dx, dy, value_src
+    Protected angle.f, angleStep.f = 2.0 * #PI / sides
+    Protected chromaRange = chroma * 2
+    
+    ; Générateur pour le thread
+    RandomSeed((\thread_pos + 1) * 1234)
+    
+    macro_calul_tread(ht)
+    
+    For y = thread_start To thread_stop - 1
+      For x = 0 To lg - 1
+        sumR = 0 : sumG = 0 : sumB = 0 : sumA = 0
+        countR = 0 : countG = 0 : countB = 0
         
-        ; Décalage chromatique aléatoire pour chaque canal
-        dxR = Round(radius * Cos(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
-        dyR = Round(radius * Sin(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
-        dxG = Round(radius * Cos(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
-        dyG = Round(radius * Sin(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
-        dxB = Round(radius * Cos(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
-        dyB = Round(radius * Sin(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
+        ; Parcourir les sommets du polygone pour chaque canal
+        For i = 0 To sides - 1
+          angle = angleStep * i
+          
+          ; --- Canal Rouge ---
+          dx = Round(radius * Cos(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
+          dy = Round(radius * Sin(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
+          px = x + dx : py = y + dy
+          If px < 0 : px = 0 : ElseIf px > lg - 1 : px = lg - 1 : EndIf
+          If py < 0 : py = 0 : ElseIf py > ht - 1 : py = ht - 1 : EndIf
+          value = PeekL(\addr[0] + (py * lg + px) << 2)
+          sumR + ((value >> 16) & $FF) : sumA + ((value >> 24) & $FF) : countR + 1
+          
+          ; --- Canal Vert ---
+          dx = Round(radius * Cos(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
+          dy = Round(radius * Sin(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
+          px = x + dx : py = y + dy
+          If px < 0 : px = 0 : ElseIf px > lg - 1 : px = lg - 1 : EndIf
+          If py < 0 : py = 0 : ElseIf py > ht - 1 : py = ht - 1 : EndIf
+          value = PeekL(\addr[0] + (py * lg + px) << 2)
+          sumG + ((value >> 8) & $FF) : sumA + ((value >> 24) & $FF) : countG + 1
+          
+          ; --- Canal Bleu ---
+          dx = Round(radius * Cos(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
+          dy = Round(radius * Sin(angle) + Random(chromaRange) - chroma, #PB_Round_Nearest)
+          px = x + dx : py = y + dy
+          If px < 0 : px = 0 : ElseIf px > lg - 1 : px = lg - 1 : EndIf
+          If py < 0 : py = 0 : ElseIf py > ht - 1 : py = ht - 1 : EndIf
+          value = PeekL(\addr[0] + (py * lg + px) << 2)
+          sumB + (value & $FF) : sumA + ((value >> 24) & $FF) : countB + 1
+        Next
         
-        AdvancedChromaticBlur_sp1(x + dxR, y + dyR, 0)
-        AdvancedChromaticBlur_sp1(x + dxG, y + dyG, 1)
-        AdvancedChromaticBlur_sp1(x + dxB, y + dyB, 2)
-      Next
-      
-      ; Calcul de la moyenne des pixels échantillonnés par canal
-      If countR > 0
+        index = (y * lg + x) << 2
+        value_src = PeekL(\addr[0] + index)
+        
+        ; Calcul des moyennes par canal
         r = sumR / countR
-      Else
-        r = (PeekL(*param\addr[0] + (y * lg + x) * 4) >> 16) & 255
-      EndIf
-      
-      If countG > 0
         g = sumG / countG
-      Else
-        g = (PeekL(*param\addr[0] + (y * lg + x) * 4) >> 8) & 255
-      EndIf
-      
-      If countB > 0
         b = sumB / countB
-      Else
-        b = PeekL(*param\addr[0] + (y * lg + x) * 4) & 255
-      EndIf
-      
-      ; Alpha basé sur le nombre total d'échantillons
-      If countR > 0 Or countG > 0 Or countB > 0
         a = sumA / (countR + countG + countB)
-      Else
-        a = (PeekL(*param\addr[0] + (y * lg + x) * 4) >> 24) & 255
-      EndIf
-      
-      ; Écriture du pixel résultant
-      PokeL(*param\addr[1] + (y * lg + x) * 4, (a << 24) | (r << 16) | (g << 8) | b)
+        
+        ; Clamping rapide
+        If r > 255 : r = 255 : EndIf : If g > 255 : g = 255 : EndIf
+        If b > 255 : b = 255 : EndIf : If a > 255 : a = 255 : EndIf
+        
+        PokeL(\addr[1] + index, (a << 24) | (r << 16) | (g << 8) | b)
+      Next
     Next
-  Next
+  EndWith
 EndProcedure
 
-Procedure AdvancedChromaticBokehBlur(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_Optical
-    *param\name = "AdvancedChromaticBokehBlur"
-    *param\remarque = "Flou cinématographique polygonal avec aberration chromatique"
-    *param\info[0] = "Rayon"
-    *param\info[1] = "Nombre de côtés du polygone"
-    *param\info[2] = "Décalage chromatique"
-    *param\info_data(0, 0) = 1 : *param\info_data(0, 1) = 5 : *param\info_data(0, 2) = 1
-    *param\info_data(1, 0) = 3 : *param\info_data(1, 1) = 12 : *param\info_data(1, 2) = 1
-    *param\info_data(2, 0) = 0 : *param\info_data(2, 1) = 5 : *param\info_data(2, 2) = 1
-    ProcedureReturn
-  EndIf
+Procedure AdvancedChromaticBokehBlurEx(*FilterCtx.FilterParams)
+  Restore AdvancedChromaticBokehBlur_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  Clamp(*param\option[0], 1, 5)
-  Clamp(*param\option[1], 3, 12)
-  Clamp(*param\option[2], 0, 5)
+  With *FilterCtx
+    ; Bornage des options
+    If \option[0] < 1 : \option[0] = 1 : EndIf
+    If \option[1] < 3 : \option[1] = 3 : EndIf
+    If \option[2] < 0 : \option[2] = 0 : EndIf
+  EndWith
   
-  filter_start(@AdvancedChromaticBokehBlur_sp(), 1)
+  Create_MultiThread_MT(@AdvancedChromaticBokehBlur_sp(), 1)
+  
+  mask_update(*FilterCtx, last_data)
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 128
-; FirstLine = 59
+
+Procedure AdvancedChromaticBokehBlur(source, cible, mask, radius, sides, chromaShift)
+  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  With FilterCtx
+    \option[0] = radius : \option[1] = sides : \option[2] = chromaShift
+  EndWith
+  AdvancedChromaticBokehBlurEx(FilterCtx)
+EndProcedure
+
+DataSection
+  AdvancedChromaticBokehBlur_data:
+  Data.s "Advanced Chromatic Bokeh"
+  Data.s "Flou polygonal avec simulation d'aberrations chromatiques par canal"
+  Data.i #FilterType_Blur, #Blur_Optical
+  Data.s "Rayon"
+  Data.i 1, 50, 5
+  Data.s "Côtés"
+  Data.i 3, 12, 6
+  Data.s "Chroma"
+  Data.i 0, 10, 2
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 93
+; FirstLine = 62
 ; Folding = -
 ; EnableXP
 ; DPIAware

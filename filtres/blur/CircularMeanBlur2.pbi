@@ -1,12 +1,12 @@
 ﻿; ---------------------------------------------------
 ; CircularMeanBlurSAT (moyenne circulaire via somme intégrale 2D)
-; ARGB32, multithread, masque optionnel
 ; ---------------------------------------------------
 
 ; --- Procédure threadée
-Procedure CircularMean_MT(*param.parametre)
-  Protected w = *param\lg, h = *param\ht
-  Protected radius = *param\option[0]
+Procedure CircularMean_MT(*FilterCtx.FilterParams)
+  Protected w = FilterCtx\image_lg[0]
+  Protected h = FilterCtx\image_ht[0]
+  Protected radius = FilterCtx\option[0]
   Protected *src32.pixel32
   Protected *dst32.pixel32
 
@@ -39,7 +39,7 @@ Procedure CircularMean_MT(*param.parametre)
         sx = x - 1
         sy = y - 1
         spos = sy * w + sx
-        *src32 = *param\addr[0] + spos*4
+        *src32 = FilterCtx\image[0] + spos * 4
         ; on stocke les canaux en 16-bit (décalés) pour garder précision lors de l'accumulation
         Protected a_s = ((*src32\l >> 24) & $FF) << 8
         Protected r_s = ((*src32\l >> 16) & $FF) << 8
@@ -118,14 +118,9 @@ Procedure CircularMean_MT(*param.parametre)
       EndIf
 
       ; clamp result (utilise ta fonction clamp_rgb si existante)
-      If r1 < 0 : r1 = 0 : EndIf
-      If r1 > 255 : r1 = 255 : EndIf
-      If g1 < 0 : g1 = 0 : EndIf
-      If g1 > 255 : g1 = 255 : EndIf
-      If b1 < 0 : b1 = 0 : EndIf
-      If b1 > 255 : b1 = 255 : EndIf
+      clamp_rgb(r1 , g1 , b1)
 
-      *dst32 = *param\addr[1] + pos * 4
+      *dst32 = FilterCtx\image[1] + pos * 4
       *dst32\l = (a1 << 24) + (r1 << 16) + (g1 << 8) + b1
     Next
   Next
@@ -136,29 +131,42 @@ EndProcedure
 
 
 ; --- Procédure principale (inchangée)
-Procedure CircularMeanblur(*param.parametre)
-  If param\info_active
-    param\typ      = #FilterType_Blur
-    param\subtype  = #Blur_Classic
-    param\name     = "CircularMeanBlurSAT"
-    param\remarque = "Moyenne circulaire via somme intégrale 2D"
-    param\info[0]  = "Rayon"
-    param\info[3]  = "Masque"
-    param\info_data(0,0)=0 : param\info_data(0,1)=200 : param\info_data(0,2)=1
-    param\info_data(3,0)=0 : param\info_data(3,1)=1   : param\info_data(3,2)=0
-    ProcedureReturn
-  EndIf
-
-  If Filter_BufferPrepare(*param.parametre) <> 0
-    CopyMemory(*param\addr[0], *param\addr[1], (*param\lg * *param\ht * 4))
-    MultiThread_MT(@CircularMean_MT())
-    macro_Filter_BufferFinalize(3)
-  EndIf
+Procedure CircularMeanblurEx(*FilterCtx.FilterParams)
+  
+  Restore CircularMeanblur_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  Create_MultiThread_MT(@CircularMean_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
+  
 EndProcedure
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 157
-; FirstLine = 88
+Procedure CircularMeanblur(source , cible , mask , rayon)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = rayon
+  EndWith
+  CircularMeanblurEx(FilterCtx.FilterParams)
+EndProcedure
+
+
+DataSection
+  CircularMeanblur_data:
+  Data.s "CircularMeanBlurSAT"
+  Data.s "Moyenne circulaire via somme intégrale 2D"
+  Data.i #FilterType_Blur
+  Data.i #Blur_Classic
+  
+  Data.s "Rayon"         
+  Data.i 1,15,1
+  Data.s "XXX"
+EndDataSection
+
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 138
+; FirstLine = 105
 ; Folding = -
 ; EnableXP
 ; DPIAware

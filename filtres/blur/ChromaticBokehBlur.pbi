@@ -1,144 +1,112 @@
-﻿Macro ChromaticBlur_sp1(dxR, dyR, dxG, dyG, dxB, dyB)
-  ; Canal Rouge
-  px = x + dxR
-  py = y + dyR
-  If px < 0 : px = 0 : ElseIf px > lg_minus_1 : px = lg_minus_1 : EndIf
-  If py < 0 : py = 0 : ElseIf py > ht_minus_1 : py = ht_minus_1 : EndIf
-  index = (py * lg + px) << 2
-  value = PeekL(*param\addr[0] + index)
-  r_temp = (value >> 16) & 255
-  sumR + r_temp
-  
-  ; Canal Vert
-  px = x + dxG
-  py = y + dyG
-  If px < 0 : px = 0 : ElseIf px > lg_minus_1 : px = lg_minus_1 : EndIf
-  If py < 0 : py = 0 : ElseIf py > ht_minus_1 : py = ht_minus_1 : EndIf
-  index = (py * lg + px) << 2
-  value = PeekL(*param\addr[0] + index)
-  g_temp = (value >> 8) & 255
-  sumG + g_temp
-  
-  ; Canal Bleu
-  px = x + dxB
-  py = y + dyB
-  If px < 0 : px = 0 : ElseIf px > lg_minus_1 : px = lg_minus_1 : EndIf
-  If py < 0 : py = 0 : ElseIf py > ht_minus_1 : py = ht_minus_1 : EndIf
-  index = (py * lg + px) << 2
-  value = PeekL(*param\addr[0] + index)
-  b_temp = value & 255
-  sumB + b_temp
-  
-  ; Canal Alpha (même position que le pixel central)
-  index = (y * lg + x) << 2
-  value = PeekL(*param\addr[0] + index)
-  a_temp = (value >> 24) & 255
-  sumA + a_temp
-  
-  count + 1
-EndMacro
+﻿; ---------------------------------------------------
+; Chromatic Aberration Blur - Version optimisée
+; Simule les franges colorées dues aux défauts de lentille
+; ---------------------------------------------------
 
-
-Procedure ChromaticBokehBlur_sp(*param.parametre)
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected radius = *param\option[0]
-  Protected chroma = *param\option[1]  ; décalage chromatique maximal
-  
-  If radius < 1 : radius = 1 : EndIf
-  If chroma < 0 : chroma = 0 : EndIf
-  
-  Protected x, y, i
-  Protected dxR, dyR, dxG, dyG, dxB, dyB
-  Protected value, r, g, b, a
-  Protected sumR, sumG, sumB, sumA, count
-  Protected px, py, index
-  Protected a_temp, r_temp, g_temp, b_temp
-  Protected lg_minus_1 = lg - 1
-  Protected ht_minus_1 = ht - 1
-  Protected chromaRange = chroma * 2 + 1
-  Protected samples = radius * radius
-  Protected thread_pos = *param\thread_pos
-  
-  ; Initialisation du générateur aléatoire pour ce thread
-  RandomSeed((thread_pos + 1) * 9876)
-  
-  macro_calul_tread(ht)
-  
-  For y = thread_start To thread_stop - 1
-    For x = 0 To lg - 1
-      sumR = 0 : sumG = 0 : sumB = 0 : sumA = 0 : count = 0
-      
-      ; Parcourir un voisinage avec aberration chromatique
-      For i = 1 To samples
-        ; Décalage pseudo-aléatoire pour chaque canal (simule l'aberration chromatique)
-        dxR = Random(chromaRange) - chroma
-        dyR = Random(chromaRange) - chroma
-        dxG = Random(chromaRange) - chroma
-        dyG = Random(chromaRange) - chroma
-        dxB = Random(chromaRange) - chroma
-        dyB = Random(chromaRange) - chroma
+Procedure ChromaticBokehBlur_sp(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0], ht = \image_ht[0]
+    Protected radius = \option[0], chroma = \option[1]
+    Protected x, y, i, samples = radius * radius
+    Protected dx, dy, px, py, index, value
+    Protected sumR, sumG, sumB, sumA, count
+    Protected r, g, b, a
+    Protected lg_minus_1 = lg - 1, ht_minus_1 = ht - 1
+    Protected chromaRange = chroma * 2 + 1
+    
+    ; Initialisation du générateur pour le thread (reproductibilité locale)
+    RandomSeed((\thread_pos + 1) * 9876)
+    
+    macro_calul_tread(ht)
+    
+    For y = thread_start To thread_stop - 1
+      For x = 0 To lg - 1
+        sumR = 0 : sumG = 0 : sumB = 0 : sumA = 0 : count = 0
         
-        ChromaticBlur_sp1(dxR, dyR, dxG, dyG, dxB, dyB)
-      Next
-      
-      ; Moyenne
-      If count > 0
-        r = sumR / count
-        g = sumG / count
-        b = sumB / count
-        a = sumA / count
-      Else
-        ; Copie du pixel source si aucun échantillon
+        For i = 1 To samples
+          ; --- Canal Rouge ---
+          dx = Random(chromaRange) - chroma : dy = Random(chromaRange) - chroma
+          px = x + dx : py = y + dy
+          If px < 0 : px = 0 : ElseIf px > lg_minus_1 : px = lg_minus_1 : EndIf
+          If py < 0 : py = 0 : ElseIf py > ht_minus_1 : py = ht_minus_1 : EndIf
+          value = PeekL(\addr[0] + (py * lg + px) << 2)
+          sumR + ((value >> 16) & $FF)
+          
+          ; --- Canal Vert ---
+          dx = Random(chromaRange) - chroma : dy = Random(chromaRange) - chroma
+          px = x + dx : py = y + dy
+          If px < 0 : px = 0 : ElseIf px > lg_minus_1 : px = lg_minus_1 : EndIf
+          If py < 0 : py = 0 : ElseIf py > ht_minus_1 : py = ht_minus_1 : EndIf
+          value = PeekL(\addr[0] + (py * lg + px) << 2)
+          sumG + ((value >> 8) & $FF)
+          
+          ; --- Canal Bleu ---
+          dx = Random(chromaRange) - chroma : dy = Random(chromaRange) - chroma
+          px = x + dx : py = y + dy
+          If px < 0 : px = 0 : ElseIf px > lg_minus_1 : px = lg_minus_1 : EndIf
+          If py < 0 : py = 0 : ElseIf py > ht_minus_1 : py = ht_minus_1 : EndIf
+          value = PeekL(\addr[0] + (py * lg + px) << 2)
+          sumB + (value & $FF)
+          
+          ; --- Canal Alpha (échantillonné au centre) ---
+          value = PeekL(\addr[0] + (y * lg + x) << 2)
+          sumA + ((value >> 24) & $FF)
+          
+          count + 1
+        Next
+        
         index = (y * lg + x) << 2
-        value = PeekL(*param\addr[0] + index)
-        a = (value >> 24) & 255
-        r = (value >> 16) & 255
-        g = (value >> 8) & 255
-        b = value & 255
-      EndIf
-      
-      ; Clamping pour sécurité
-      If a < 0 : a = 0 : ElseIf a > 255 : a = 255 : EndIf
-      If r < 0 : r = 0 : ElseIf r > 255 : r = 255 : EndIf
-      If g < 0 : g = 0 : ElseIf g > 255 : g = 255 : EndIf
-      If b < 0 : b = 0 : ElseIf b > 255 : b = 255 : EndIf
-      
-      PokeL(*param\addr[1] + (y * lg + x) * 4, (a << 24) | (r << 16) | (g << 8) | b)
+        If count > 0
+          a = sumA / count : r = sumR / count : g = sumG / count : b = sumB / count
+          ; Clamping rapide
+          If a > 255 : a = 255 : EndIf : If r > 255 : r = 255 : EndIf
+          If g > 255 : g = 255 : EndIf : If b > 255 : b = 255 : EndIf
+          PokeL(\addr[1] + index, (a << 24) | (r << 16) | (g << 8) | b)
+        Else
+          PokeL(\addr[1] + index, PeekL(\addr[0] + index))
+        EndIf
+      Next
     Next
-  Next
+  EndWith
 EndProcedure
 
-
-Procedure ChromaticBokehBlur(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_Optical
-    *param\name = "Chromatic Aberration Blur"
-    *param\remarque = "Flou simulant l'aberration chromatique des objectifs (franges colorées)"
-    *param\info[0] = "Rayon"
-    *param\info[1] = "Décalage chromatique"
-    *param\info[2] = "Masque"
-    *param\info_data(0, 0) = 1  : *param\info_data(0, 1) = 50 : *param\info_data(0, 2) = 10
-    *param\info_data(1, 0) = 0  : *param\info_data(1, 1) = 10 : *param\info_data(1, 2) = 2
-    *param\info_data(2, 0) = 0  : *param\info_data(2, 1) = 2  : *param\info_data(2, 2) = 0
-    ProcedureReturn
-  EndIf
+Procedure ChromaticBokehBlurEx(*FilterCtx.FilterParams)
+  Restore ChromaticBokehBlur_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  ; Validation des paramètres
-  If *param\option[0] < 1 : *param\option[0] = 1 : EndIf
-  If *param\option[0] > 50 : *param\option[0] = 50 : EndIf
-  If *param\option[1] < 0 : *param\option[1] = 0 : EndIf
-  If *param\option[1] > 10 : *param\option[1] = 10 : EndIf
+  With *FilterCtx
+    If \option[0] < 1 : \option[0] = 1 : EndIf
+    If \option[1] < 0 : \option[1] = 0 : EndIf
+  EndWith
   
-  Filter_BufferPrepare(*param)
-  MultiThread_MT(@ChromaticBokehBlur_sp())
-  macro_Filter_BufferFinalize(2)
+  Create_MultiThread_MT(@ChromaticBokehBlur_sp(), 1)
+  
+  mask_update(*FilterCtx, last_data)
 EndProcedure
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 112
-; FirstLine = 67
+Procedure ChromaticBokehBlur(source, cible, mask, radius, chromaShift)
+  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  With FilterCtx
+    \option[0] = radius : \option[1] = chromaShift
+  EndWith
+  ChromaticBokehBlurEx(FilterCtx)
+EndProcedure
+
+DataSection
+  ChromaticBokehBlur_data:
+  Data.s "Chromatic Aberration Blur"
+  Data.s "Simule les franges colorées des objectifs via échantillonnage décalé"
+  Data.i #FilterType_Blur, #Blur_Optical
+  Data.s "Rayon"
+  Data.i 1, 50, 10
+  Data.s "Décalage Chroma"
+  Data.i 0, 10, 2
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 87
+; FirstLine = 54
 ; Folding = -
 ; EnableXP
 ; DPIAware

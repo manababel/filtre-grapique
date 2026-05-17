@@ -1,63 +1,103 @@
-﻿; ────────────────────────────────────────────────────────────────
-; Procédure thread pour coloriser une image ARGB 32 bits
-;
-; L'option[0] contrôle l'intensité de la colorisation (0–512),
-; où 128 correspond à une intensité neutre (équilibre entre couleur et gris).
-;
-; La colorisation est un mélange entre la couleur originale et la moyenne
-; des canaux (niveau de gris), modulé par l'intensité.
-; ────────────────────────────────────────────────────────────────
-Procedure Colorize_MT(*p.parametre)
-  Protected i, a, r, g, b, gray
-  Protected intensity = *p\option[0]  ; 0-512
-  Protected var.l
-  Protected totalPixels = *p\lg * *p\ht
-  Protected *srcPixel.Pixel32
-  Protected *dstPixel.Pixel32
-  Protected startPos = (*p\thread_pos * totalPixels) / *p\thread_max
-  Protected endPos = ((*p\thread_pos + 1) * totalPixels) / *p\thread_max
-  
-  *srcPixel = *p\addr[0] + (startPos << 2)
-  *dstPixel = *p\addr[1] + (startPos << 2)
-  
-  For i = startPos To endPos - 1
-    var = *srcPixel\l
-    getargb(var, a, r, g, b)
+﻿; ----------------------------------------------------------------------------------
+; Procédure thread pour la Colorisation (Balance Saturation/Gris)
+; ----------------------------------------------------------------------------------
+
+Procedure Colorize_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected i, a, r, g, b, gray, pixel.l
+    Protected totalPixels = \image_lg[0] * \image_ht[1]
     
-    ; Calcul du niveau de gris (poids luminance standard)
-    gray = (r * 54 + g * 183 + b * 18) >> 8
+    ; On récupère l'intensité (0-512). 128 est le pivot.
+    Protected intensity.i = \option[0]
+    Protected invIntensity.i = 128 - intensity
     
-    ; Mélange : result = (color * intensity + gray * (128 - intensity)) / 128
-    ; Optimisé sans division flottante
-    r = (r * intensity + gray * (128 - intensity)) >> 7  ; division par 128 = shift 7
-    g = (g * intensity + gray * (128 - intensity)) >> 7
-    b = (b * intensity + gray * (128 - intensity)) >> 7
+    macro_calul_tread(totalPixels)
     
-    Clamp_RGB(r, g, b)
-    *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
+    Protected *srcPixel.Pixel32 = \addr[0] + (thread_start << 2)
+    Protected *dstPixel.Pixel32 = \addr[1] + (thread_start << 2)
     
-    *srcPixel + 4
-    *dstPixel + 4
-  Next
+    For i = thread_start To thread_stop - 1
+      pixel = *srcPixel\l
+      
+      ; Extraction ARGB
+      a = (pixel >> 24) & $FF
+      r = (pixel >> 16) & $FF
+      g = (pixel >> 8)  & $FF
+      b = pixel & $FF
+      
+      ; Calcul de la luminance (Gris Rec.709)
+      gray = (r * 54 + g * 183 + b * 18) >> 8
+      
+      ; Mélange linéaire optimisé : (Couleur * Sat + Gris * (1 - Sat))
+      ; Le décalage >> 7 correspond à la division par 128
+      r = (r * intensity + gray * invIntensity) >> 7
+      g = (g * intensity + gray * invIntensity) >> 7
+      b = (b * intensity + gray * invIntensity) >> 7
+      
+      ; Clamp indispensable (surtout si intensity > 128)
+      If r < 0 : r = 0 : ElseIf r > 255 : r = 255 : EndIf
+      If g < 0 : g = 0 : ElseIf g > 255 : g = 255 : EndIf
+      If b < 0 : b = 0 : ElseIf b > 255 : b = 255 : EndIf
+      
+      ; Reconstruction du pixel
+      *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
+      
+      *srcPixel + 4
+      *dstPixel + 4
+    Next
+  EndWith
 EndProcedure
 
-; ────────────────────────────────────────────────────────────────
-Procedure Colorize(*param.parametre)
-  If param\info_active
-    param\typ = #FilterType_ColorEffect
-    param\name = "Colorize"
-    param\remarque = "Ajuste l'intensité des couleurs vs niveaux de gris"
-    param\info[0] = "Intensité"
-    param\info[1] = "Masque"
-    param\info_data(0,0) = 0   : param\info_data(0,1) = 512 : param\info_data(0,2) = 128
-    param\info_data(1,0) = 0   : param\info_data(1,1) = 2   : param\info_data(1,2) = 0
-    ProcedureReturn
-  EndIf
+; ----------------------------------------------------------------------------------
+; Procédure d'appel et définition des métadonnées
+; ----------------------------------------------------------------------------------
+
+Procedure ColorizeEx(*FilterCtx.FilterParams)
+  Restore Colorize_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  filter_start(@Colorize_MT(), 1, 1)
+  With *FilterCtx
+    Create_MultiThread_MT(@Colorize_MT())
+    
+    ; Application du masque et mélange final
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 57
+
+; ----------------------------------------------------------------------------------
+; Interface simplifiée
+; ----------------------------------------------------------------------------------
+
+Procedure Colorize(source, cible, mask, intensity)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = intensity
+  EndWith
+  ColorizeEx(FilterCtx)
+EndProcedure
+
+; ----------------------------------------------------------------------------------
+; Données du filtre
+; ----------------------------------------------------------------------------------
+
+DataSection
+  Colorize_Data:
+  Data.s "Colorize"           ; Nom
+  Data.s "Ajuste la saturation : 0=Gris, 128=Original, 512=Saturé" ; Description
+  Data.i #FilterType_ColorEffect
+  Data.i 0                    ; Sous-type
+  
+  Data.s "Intensité"          ; Label option 0
+  Data.i 0, 512, 128          ; Min, Max, Défaut
+  
+  Data.s "XXX"                ; Fin des options
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 71
+; FirstLine = 45
 ; Folding = -
 ; EnableXP
 ; DPIAware

@@ -1,143 +1,105 @@
-﻿; -------------------------------------------------------------------------------
-; Tile_MT - Effet de pixelisation/mosaïque avec multi-threading
-;
-; Paramètres:
-;   *p.parametre - Pointeur vers la structure de paramètres
-;                  - option[0]: nombre de tuiles horizontales (1-100)
-;                  - option[1]: nombre de tuiles verticales (1-100)
-;
-; Description:
-;   Crée un effet de pixelisation en divisant l'image en tuiles.
-;   Chaque tuile affiche un pixel agrandi de l'image source, créant
-;   un effet de "gros pixels" ou mosaïque.
-;
-; Optimisations:
-;   - Précalcul de la taille des tuiles
-;   - Calcul direct de l'index du pixel source
-;   - Utilisation d'offsets directs pour accès mémoire
-;   - Minimisation des calculs dans la boucle interne
-; -------------------------------------------------------------------------------
-Procedure Tile_MT(*p.parametre)
-  Protected x.i, y.i
-  Protected tile_x.i, tile_y.i
-  Protected src_x.i, src_y.i
-  Protected *source.Long = *p\addr[0]
-  Protected *cible.Long  = *p\addr[1]
-  Protected lg.i = *p\lg
-  Protected ht.i = *p\ht
+﻿; ==============================================================================
+; FILTRE TILE (PIXELISATION / MOSAÏQUE) - STRUCTURE RÉVISÉE
+; ==============================================================================
 
-  ; Récupération du nombre de tuiles avec protection minimale
-  Protected tilesX.i = *p\option[0]
-  Protected tilesY.i = *p\option[1]
-  
-  ; Protection contre division par zéro
-  If tilesX < 1 : tilesX = 1 : EndIf
-  If tilesY < 1 : tilesY = 1 : EndIf
+Procedure Tile_MT(*p.FilterParams)
+  With *p
+    Protected x.i, y.i
+    Protected tile_x.i, tile_y.i
+    Protected src_x.i, src_y.i
+    Protected *source.Long = \addr[0]
+    Protected *cible.Long  = \addr[1]
+    Protected lg.i = \image_lg[0]
+    Protected ht.i = \image_ht[0]
 
-  ; Précalcul de la taille de chaque tuile en pixels
-  Protected tile_width.f = lg / tilesX
-  Protected tile_height.f = ht / tilesY
-
-  ; Calcul de la portion de lignes à traiter par ce thread
-  Protected startY.i = (*p\thread_pos * ht) / *p\thread_max
-  Protected stopY.i  = ((*p\thread_pos + 1) * ht) / *p\thread_max - 1
-  If stopY > ht - 1 : stopY = ht - 1 : EndIf
-
-  ; Variables de boucle
-  Protected offset_dst.i, offset_src.i
-  Protected pixel_color.l
-
-  ; Traitement pixel par pixel
-  For y = startY To stopY
-    ; Calcul de l'index de la tuile verticale
-    tile_y = Int(y / tile_height)
-    If tile_y >= tilesY : tile_y = tilesY - 1 : EndIf
+    ; --- Précalculs des paramètres ---
+    Protected tilesX.i = \option[0]
+    Protected tilesY.i = \option[1]
     
-    ; Position Y dans l'image source (centre de la tuile)
-    src_y = tile_y * ht / tilesY + (ht / tilesY / 2)
-    If src_y >= ht : src_y = ht - 1 : EndIf
-    
-    offset_dst = y * lg * 4
+    ; Protections minimales
+    If tilesX < 1 : tilesX = 1 : EndIf
+    If tilesY < 1 : tilesY = 1 : EndIf
 
-    For x = 0 To lg - 1
-      ; Calcul de l'index de la tuile horizontale
-      tile_x = Int(x / tile_width)
-      If tile_x >= tilesX : tile_x = tilesX - 1 : EndIf
+    ; Taille d'une tuile (en pixels réels)
+    Protected tile_width.f  = lg / tilesX
+    Protected tile_height.f = ht / tilesY
+
+    ; --- Configuration Multithreading ---
+    Protected startY.i = (\thread_pos * ht) / \thread_max
+    Protected stopY.i  = ((\thread_pos + 1) * ht) / \thread_max - 1
+    If stopY > ht - 1 : stopY = ht - 1 : EndIf
+
+    Protected offset_dst.i, offset_src.i
+    Protected current_tile_y.i = -1
+    Protected src_y_cached.i
+
+    ; --- Traitement principal ---
+    For y = startY To stopY
+      ; Calcul de la ligne source (centre de la tuile verticale)
+      tile_y = Int(y / tile_height)
+      If tile_y >= tilesY : tile_y = tilesY - 1 : EndIf
       
-      ; Position X dans l'image source (centre de la tuile)
-      src_x = tile_x * lg / tilesX + (lg / tilesX / 2)
-      If src_x >= lg : src_x = lg - 1 : EndIf
+      ; Optimisation : ne recalculer src_y que si on change de tuile verticale
+      If tile_y <> current_tile_y
+        src_y_cached = (tile_y * ht / tilesY) + (ht / tilesY / 2)
+        If src_y_cached >= ht : src_y_cached = ht - 1 : EndIf
+        current_tile_y = tile_y
+      EndIf
+      
+      offset_dst = y * lg * 4
 
-      ; Échantillonnage du pixel source et copie dans toute la tuile
-      offset_src = (src_y * lg + src_x) * 4
-      PokeL(*cible + offset_dst, PeekL(*source + offset_src))
+      For x = 0 To lg - 1
+        ; Calcul de la colonne source (centre de la tuile horizontale)
+        tile_x = Int(x / tile_width)
+        If tile_x >= tilesX : tile_x = tilesX - 1 : EndIf
+        
+        src_x = (tile_x * lg / tilesX) + (lg / tilesX / 2)
+        If src_x >= lg : src_x = lg - 1 : EndIf
 
-      offset_dst + 4
-    Next x
-  Next y
+        ; Échantillonnage du pixel central de la tuile et duplication
+        offset_src = (src_y_cached * lg + src_x) * 4
+        PokeL(*cible + offset_dst, PeekL(*source + offset_src))
+
+        offset_dst + 4
+      Next x
+    Next y
+  EndWith
 EndProcedure
 
-
-; -------------------------------------------------------------------------------
-; Tile - Filtre de pixelisation/mosaïque
-;
-; Paramètres:
-;   *param.parametre - Structure de paramètres du filtre
-;
-; Description:
-;   Crée un effet de pixelisation en divisant l'image en tuiles rectangulaires.
-;   Chaque tuile affiche un seul pixel agrandi, créant un effet de "gros pixels"
-;   ou mosaïque. Plus le nombre de tuiles est faible, plus les pixels sont gros.
-;
-; Paramètres utilisateur:
-;   [0] Nombre de tuiles horizontales (1-100, défaut=10)
-;       Valeurs faibles = gros pixels, valeurs élevées = petits pixels
-;   [1] Nombre de tuiles verticales (1-100, défaut=10)
-;       Valeurs faibles = gros pixels, valeurs élevées = petits pixels
-;
-; Utilisations:
-;   - Effet de pixelisation/mosaïque
-;   - Style rétro 8-bit/16-bit
-;   - Censure/anonymisation de zones
-;   - Effet artistique low-poly
-; -------------------------------------------------------------------------------
-Procedure Tile(*param.parametre)
-  Protected i.i
-
-  If *param\info_active
-    *param\typ = #FilterType_Deformation
-    *param\subtype = 0  ; "Géométrique"
-    *param\name = "Tile (Pixelisation)"
-    *param\remarque = "Effet de pixelisation avec gros pixels (mosaïque)"
-    
-    *param\info[0] = "Tuiles horizontales (moins = plus gros pixels)"
-    *param\info[1] = "Tuiles verticales (moins = plus gros pixels)"
-    *param\info[2] = "masque"
-    
-    ; Configuration tuiles horizontales (1-100, défaut 10)
-    *param\info_data(0, 0) = 1
-    *param\info_data(0, 1) = 100
-    *param\info_data(0, 2) = 10
-    
-    ; Configuration tuiles verticales (1-100, défaut 10)
-    *param\info_data(1, 0) = 1
-    *param\info_data(1, 1) = 100
-    *param\info_data(1, 2) = 10
-    
-    ; Configuration du masque
-    *param\info_data(2, 0) = 0
-    *param\info_data(2, 1) = 2
-    *param\info_data(2, 2) = 0
-    
-    ProcedureReturn
-  EndIf
-
-  ; Lancement du traitement multi-threadé (2 paramètres, 1 buffer destination)
-  filter_start(@Tile_MT(), 2, 1)
+Procedure TileEx(*FilterCtx.FilterParams)
+  Restore Tile_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  With *FilterCtx
+    Create_MultiThread_MT(@Tile_MT())
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 136
-; FirstLine = 67
+
+Procedure Tile(source, cible, mask, tilesX=10, tilesY=10)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = tilesX ; Nombre de divisions horizontales
+    \option[1] = tilesY ; Nombre de divisions verticales
+  EndWith
+  TileEx(FilterCtx)
+EndProcedure
+
+DataSection
+  Tile_Data:
+  Data.s "Tile"
+  Data.s "Effet de pixelisation (mosaïque) par division en tuiles"
+  Data.i #FilterType_Deformation, #Artistic_Other
+  Data.s "Tuiles Horiz." : Data.i 1, 100, 10
+  Data.s "Tuiles Vert."  : Data.i 1, 100, 10
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 79
+; FirstLine = 47
 ; Folding = -
 ; EnableXP
 ; DPIAware

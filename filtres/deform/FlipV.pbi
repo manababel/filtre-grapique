@@ -1,93 +1,68 @@
-﻿;-------------------------------------------------------------------------------
-; FlipV_MT - Thread de traitement pour le retournement vertical
-;
-; Paramètres:
-;   *p.parametre - Pointeur vers la structure de paramètres contenant:
-;                  - lg: largeur de l'image en pixels
-;                  - ht: hauteur de l'image en pixels
-;                  - addr[0]: pointeur vers l'image source
-;                  - addr[1]: pointeur vers l'image destination
-;                  - thread_pos: position de ce thread (0 à thread_max-1)
-;                  - thread_max: nombre total de threads
-;
-; Description:
-;   Effectue un retournement vertical (haut/bas) de l'image.
-;   La ligne y est copiée vers la position (ht - 1 - y).
-;   Chaque thread traite une portion des lignes pour paralléliser le calcul.
-;
-; Optimisations:
-;   - Copie complète de ligne avec CopyMemory (très rapide)
-;   - Précalcul de y1 pour éviter les recalculs
-;   - Typage explicite des variables pour de meilleures performances
-;-------------------------------------------------------------------------------
-Procedure FlipV_MT(*p.parametre)
-  Protected start.i, stop.i
-  Protected lg.i = *p\lg
-  Protected ht.i = *p\ht
-  Protected y0.i, y1.i
-  Protected ligne_source.i, ligne_dest.i
-  Protected taille_ligne.i
-  
-  ; Calcul de la portion de lignes à traiter par ce thread
-  start = (*p\thread_pos * ht) / *p\thread_max
-  stop  = ((*p\thread_pos + 1) * ht) / *p\thread_max - 1
-  
-  ; Sécurité : ne pas dépasser la dernière ligne
-  If stop > ht - 1
-    stop = ht - 1
-  EndIf
-  
-  ; Précalcul de la taille d'une ligne en octets (optimisation)
-  taille_ligne = lg * 4
-  
-  ; Copier chaque ligne vers sa position miroir
-  For y0 = start To stop
-    ; Calculer la position miroir de la ligne
-    y1 = ht - y0 - 1
+﻿; ==============================================================================
+; FILTRE FLIPV (MIROIR VERTICAL) - STRUCTURE RÉVISÉE
+; ==============================================================================
+
+Procedure FlipV_MT(*p.FilterParams)
+  With *p
+    Protected start.i, stop.i
+    Protected lg.i = \image_lg[0]
+    Protected ht.i = \image_ht[0]
+    Protected y0.i, y1.i
+    Protected ligne_source.i, ligne_dest.i
+    Protected taille_ligne.i
     
-    ; Précalculer les adresses pour plus de clarté
-    ligne_source = *p\addr[0] + y0 * taille_ligne
-    ligne_dest   = *p\addr[1] + y1 * taille_ligne
+    ; --- Configuration Multithreading (macro_calcul_thread) ---
+    start = (\thread_pos * ht) / \thread_max
+    stop  = ((\thread_pos + 1) * ht) / \thread_max - 1
+    If stop > ht - 1 : stop = ht - 1 : EndIf
     
-    ; Copier toute la ligne d'un coup (très efficace)
-    CopyMemory(ligne_source, ligne_dest, taille_ligne)
-  Next y0
+    ; Précalcul de la taille d'une ligne en octets
+    taille_ligne = lg * 4
+    
+    ; --- Traitement principal ---
+    For y0 = start To stop
+      ; Calculer la position miroir de la ligne
+      y1 = ht - y0 - 1
+      
+      ; Adresses des lignes
+      ligne_source = \addr[0] + y0 * taille_ligne
+      ligne_dest   = \addr[1] + y1 * taille_ligne
+      
+      ; Copie bloc mémoire (optimisé pour le vertical)
+      CopyMemory(ligne_source, ligne_dest, taille_ligne)
+    Next y0
+  EndWith
 EndProcedure
 
-;-------------------------------------------------------------------------------
-; FlipV - Filtre de retournement vertical
-;
-; Paramètres:
-;   *param.parametre - Structure de paramètres du filtre
-;
-; Description:
-;   Point d'entrée du filtre FlipV. En mode info, définit les métadonnées.
-;   En mode traitement, lance le processus multi-threadé.
-;
-; Configuration:
-;   - Type: Déformation géométrique
-;   - Nécessite 2 buffers (source et destination)
-;   - Thread-safe, multi-threadé automatiquement par filter_start()
-;-------------------------------------------------------------------------------
-Procedure FlipV(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Deformation
-    *param\subtype = 0
-    *param\name = "FlipV (Miroir vertical)"
-    *param\remarque = "Inverse l'image verticalement (haut/bas)"
-    *param\info[0] = "Retournement vertical"
-    
-    ; Configuration: 0 paramètres, 2 buffers (source+dest), 0 buffer supplémentaire
-    *param\info_data(0, 0) = 0 : *param\info_data(0, 1) = 2 : *param\info_data(0, 2) = 0
-    ProcedureReturn
-  EndIf
+Procedure FlipVEx(*FilterCtx.FilterParams)
+  Restore FlipV_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  ; Lancement du traitement multi-threadé
-  filter_start(@FlipV_MT(), 0, 1)
+  With *FilterCtx
+    Create_MultiThread_MT(@FlipV_MT())
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 54
-; FirstLine = 13
+
+Procedure FlipV(source, cible, mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  ; Aucune option spécifique pour ce filtre
+  FlipVEx(FilterCtx)
+EndProcedure
+
+DataSection
+  FlipV_Data:
+  Data.s "FlipV"
+  Data.s "Inverse l'image verticalement (haut vers bas)"
+  Data.i #FilterType_Deformation, #Artistic_Other
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 47
+; FirstLine = 10
 ; Folding = -
 ; EnableXP
 ; DPIAware

@@ -171,7 +171,6 @@ Procedure MultiScale_UpscaleImage(*src, srcW, srcH, *dst, dstW, dstH)
       fx = sx - x0
       fx1 = 1.0 - fx
       
-      ; 4 pixels source
       idx00 = (y0 * srcW + x0) << 2
       idx01 = (y0 * srcW + x1) << 2
       idx10 = (y1 * srcW + x0) << 2
@@ -197,7 +196,6 @@ Procedure MultiScale_UpscaleImage(*src, srcW, srcH, *dst, dstW, dstH)
       g11 = PeekA(*src + idx11 + 1)
       b11 = PeekA(*src + idx11)
       
-      ; Interpolation bilinéaire
       a0 = a00 * fx1 + a01 * fx
       a1 = a10 * fx1 + a11 * fx
       a = a0 * fy1 + a1 * fy
@@ -223,120 +221,133 @@ Procedure MultiScale_UpscaleImage(*src, srcW, srcH, *dst, dstW, dstH)
   Next
 EndProcedure
 
-; --- Procédure principale ---
-Procedure MultiScaleBilateralBlur_sp(*param.parametre)
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected levels = *param\option[0]
-  Protected radius = *param\option[1]
-  Protected sigmaColor.f = *param\option[2]
-  
-  If levels < 1 : levels = 1 : EndIf
-  If levels > 5 : levels = 5 : EndIf
-  If radius < 1 : radius = 1 : EndIf
-  If sigmaColor < 1.0 : sigmaColor = 10.0 : EndIf
-  
-  Protected l, w, h
-  Protected *temp
-  
-  ; Calculer les dimensions de chaque niveau
-  Dim levelW.i(levels - 1)
-  Dim levelH.i(levels - 1)
-  Dim pyramid.i(levels - 1)
-  
-  For l = 0 To levels - 1
-    levelW(l) = lg >> l
-    levelH(l) = ht >> l
-    If levelW(l) < 1 : levelW(l) = 1 : EndIf
-    If levelH(l) < 1 : levelH(l) = 1 : EndIf
-  Next
-  
-  ; Allocation des niveaux
-  For l = 0 To levels - 1
-    pyramid(l) = AllocateMemory(levelW(l) * levelH(l) * 4)
-    If Not pyramid(l)
-      ; Libération en cas d'erreur
+; --- Procédure de traitement interne (sp) ---
+Procedure MultiScaleBilateralBlur_sp(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[1]
+    Protected levels = \option[0]
+    Protected radius = \option[1]
+    Protected sigmaColor.f = \option[2]
+    
+    If levels < 1 : levels = 1 : EndIf
+    If levels > 5 : levels = 5 : EndIf
+    If radius < 1 : radius = 1 : EndIf
+    If sigmaColor < 1.0 : sigmaColor = 10.0 : EndIf
+    
+    Protected l, w, h
+    Protected *temp
+    
+    Dim levelW.i(levels - 1)
+    Dim levelH.i(levels - 1)
+    Dim pyramid.i(levels - 1)
+    
+    For l = 0 To levels - 1
+      levelW(l) = lg >> l
+      levelH(l) = ht >> l
+      If levelW(l) < 1 : levelW(l) = 1 : EndIf
+      If levelH(l) < 1 : levelH(l) = 1 : EndIf
+    Next
+    
+    For l = 0 To levels - 1
+      pyramid(l) = AllocateMemory(levelW(l) * levelH(l) * 4)
+      If Not pyramid(l)
+        For l = 0 To levels - 1
+          If pyramid(l) : FreeMemory(pyramid(l)) : EndIf
+        Next
+        ProcedureReturn
+      EndIf
+    Next
+    
+    *temp = AllocateMemory(lg * ht * 4)
+    If Not *temp
       For l = 0 To levels - 1
-        If pyramid(l) : FreeMemory(pyramid(l)) : EndIf
+        FreeMemory(pyramid(l))
       Next
       ProcedureReturn
     EndIf
-  Next
-  
-  *temp = AllocateMemory(lg * ht * 4)
-  If Not *temp
+    
+    CopyMemory(\addr[0], pyramid(0), lg * ht * 4)
+    
+    For l = 1 To levels - 1
+      MultiScale_DownscaleImage(pyramid(l - 1), levelW(l - 1), levelH(l - 1), 
+                                 pyramid(l), levelW(l), levelH(l))
+    Next
+    
+    For l = 0 To levels - 1
+      Protected effectiveRadius = radius >> l
+      If effectiveRadius < 1 : effectiveRadius = 1 : EndIf
+      
+      MultiScale_BilateralBlurBuffer(pyramid(l), levelW(l), levelH(l), 
+                                      effectiveRadius, sigmaColor)
+    Next
+    
+    For l = levels - 1 To 1 Step -1
+      MultiScale_UpscaleImage(pyramid(l), levelW(l), levelH(l), 
+                               *temp, levelW(l - 1), levelH(l - 1))
+      
+      Protected idx, alpha.f = 0.5
+      For idx = 0 To levelW(l - 1) * levelH(l - 1) * 4 - 1
+        Protected v1 = PeekA(pyramid(l - 1) + idx)
+        Protected v2 = PeekA(*temp + idx)
+        PokeA(pyramid(l - 1) + idx, v1 * alpha + v2 * (1.0 - alpha) + 0.5)
+      Next
+    Next
+    
+    CopyMemory(pyramid(0), \addr[1], lg * ht * 4)
+    
     For l = 0 To levels - 1
       FreeMemory(pyramid(l))
     Next
-    ProcedureReturn
-  EndIf
-  
-  ; Construction de la pyramide (downscaling)
-  CopyMemory(*param\addr[0], pyramid(0), lg * ht * 4)
-  
-  For l = 1 To levels - 1
-    MultiScale_DownscaleImage(pyramid(l - 1), levelW(l - 1), levelH(l - 1), 
-                               pyramid(l), levelW(l), levelH(l))
-  Next
-  
-  ; Application du bilateral blur à chaque niveau
-  For l = 0 To levels - 1
-    ; Adapter le rayon au niveau (plus petit rayon pour les niveaux plus petits)
-    Protected effectiveRadius = radius >> l
-    If effectiveRadius < 1 : effectiveRadius = 1 : EndIf
-    
-    MultiScale_BilateralBlurBuffer(pyramid(l), levelW(l), levelH(l), 
-                                    effectiveRadius, sigmaColor)
-  Next
-  
-  ; Reconstruction de la pyramide (upscaling + fusion)
-  For l = levels - 1 To 1 Step -1
-    MultiScale_UpscaleImage(pyramid(l), levelW(l), levelH(l), 
-                             *temp, levelW(l - 1), levelH(l - 1))
-    
-    ; Moyenne pondérée entre le niveau upscalé et le niveau actuel
-    Protected idx, alpha.f = 0.5
-    For idx = 0 To levelW(l - 1) * levelH(l - 1) * 4 - 1
-      Protected v1 = PeekA(pyramid(l - 1) + idx)
-      Protected v2 = PeekA(*temp + idx)
-      PokeA(pyramid(l - 1) + idx, v1 * alpha + v2 * (1.0 - alpha) + 0.5)
-    Next
-  Next
-  
-  ; Copier le résultat final
-  CopyMemory(pyramid(0), *param\addr[1], lg * ht * 4)
-  
-  ; Libération
-  For l = 0 To levels - 1
-    FreeMemory(pyramid(l))
-  Next
-  FreeMemory(*temp)
+    FreeMemory(*temp)
+  EndWith
 EndProcedure
 
-; --- Wrapper ---
-Procedure MultiScaleBilateralBlur(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_EdgeAware
-    *param\name = "MultiScale Bilateral Blur"
-    *param\remarque = "Lissage multi-échelle préservant les contours"
-    *param\info[0] = "Niveaux pyramide"
-    *param\info[1] = "Rayon spatial"
-    *param\info[2] = "Sigma couleur"
-    *param\info[3] = "Masque"
-    *param\info_data(0, 0) = 1 : *param\info_data(0, 1) = 5  : *param\info_data(0, 2) = 3
-    *param\info_data(1, 0) = 1 : *param\info_data(1, 1) = 16 : *param\info_data(1, 2) = 4
-    *param\info_data(2, 0) = 5 : *param\info_data(2, 1) = 100: *param\info_data(2, 2) = 25
-    *param\info_data(3, 0) = 0 : *param\info_data(3, 1) = 2  : *param\info_data(3, 2) = 0
-    ProcedureReturn
-  EndIf
+; --- Procédure principale renommée ---
+Procedure MultiScaleBilateralBlurEx(*FilterCtx.FilterParams)
+  Restore MultiScaleBilateralBlur_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  filter_start(@MultiScaleBilateralBlur_sp(),1)
+  Create_MultiThread_MT(@MultiScaleBilateralBlur_sp())
+  
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 287
-; FirstLine = 245
-; Folding = -
+; --- Nouvelle procédure principale (Appel) ---
+Procedure MultiScaleBilateralBlur(source, cible, mask, levels, radius, sigmaColor, mask_type)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = levels
+    \option[1] = radius
+    \option[2] = sigmaColor
+    \option[3] = mask_type
+  EndWith
+  MultiScaleBilateralBlurEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  MultiScaleBilateralBlur_data:
+  Data.s "MultiScaleBilateralBlur"
+  Data.s "Lissage multi-échelle préservant les contours"
+  Data.i #FilterType_Blur
+  Data.i #Blur_EdgeAware
+  
+  Data.s "Niveaux pyramide"       
+  Data.i 1, 5, 3
+  Data.s "Rayon spatial"   
+  Data.i 1, 16, 4
+  Data.s "Sigma couleur"        
+  Data.i 5, 100, 25
+  Data.s "Masque"  
+  Data.i 0, 2, 0
+  Data.s "XXX"  
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 311
+; FirstLine = 295
+; Folding = --
 ; EnableXP
 ; DPIAware

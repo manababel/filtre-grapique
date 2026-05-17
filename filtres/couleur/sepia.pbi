@@ -1,71 +1,104 @@
-﻿; ────────────────────────────────────────────────────────────────
-; Applique un filtre sépia à une image ARGB 32 bits.
-;
-; Chaque pixel est converti avec la transformation :
-;   R' = (R×0.393 + G×0.769 + B×0.189)
-;   G' = (R×0.349 + G×0.686 + B×0.168)
-;   B' = (R×0.272 + G×0.534 + B×0.131)
-;
-; Un paramètre de température permet d'ajuster entre sépia chaud et froid.
-; ────────────────────────────────────────────────────────────────
-Procedure Sepia_MT(*p.parametre)
-  Protected i, r, g, b, a, var
-  Protected totalPixels = *p\lg * *p\ht
-  Protected *src.Pixel32
-  Protected *dst.Pixel32
-  
-  ; Facteur de température : 0-200, où 100 = sépia standard
-  Protected temperature = *p\option[0]
-  Protected tempOffset = temperature - 100  ; -100 à +100
-  
-  Protected start = (*p\thread_pos * totalPixels) / *p\thread_max
-  Protected stop  = ((*p\thread_pos + 1) * totalPixels) / *p\thread_max
-  
-  *src = *p\addr[0] + (start << 2)
-  *dst = *p\addr[1] + (start << 2)
-  
-  For i = start To stop - 1
-    var = *src\l
-    getargb(var, a, r, g, b)
+﻿; ----------------------------------------------------------------------------------
+; Procédure thread pour l'effet Sépia Vintage
+; ----------------------------------------------------------------------------------
+
+Procedure Sepia_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected i, a, r, g, b, r2, g2, b2, pixel.l
+    Protected totalPixels = \image_lg[0] * \image_ht[1]
     
-    ; Transformation sépia (coefficients entiers approximés / 256)
-    ; R' ≈ 0.393R + 0.769G + 0.189B → (101R + 197G + 48B) / 256
-    ; G' ≈ 0.349R + 0.686G + 0.168B → (89R + 175G + 43B) / 256
-    ; B' ≈ 0.272R + 0.534G + 0.131B → (70R + 137G + 33B) / 256
-    Protected r2 = (r * 101 + g * 197 + b * 48) >> 8
-    Protected g2 = (r * 89  + g * 175 + b * 43) >> 8
-    Protected b2 = (r * 70  + g * 137 + b * 33) >> 8
+    ; Facteur de température : 100 = neutre. 
+    ; Calcul de l'offset en dehors de la boucle pour la performance.
+    Protected offset = (\option[0] - 100) * 0.4 ; On simplifie le (tempOffset * 40 / 100)
     
-    ; Ajustement de température
-    ; tempOffset > 0 : plus chaud (rouge++, bleu--)
-    ; tempOffset < 0 : plus froid (rouge--, bleu++)
-    r2 + (tempOffset * 40) / 100
-    b2 - (tempOffset * 40) / 100
+    macro_calul_tread(totalPixels)
     
-    Clamp_RGB(r2, g2, b2)
-    *dst\l = (a << 24) | (r2 << 16) | (g2 << 8) | b2
+    Protected *srcPixel.Pixel32 = \addr[0] + (thread_start << 2)
+    Protected *dstPixel.Pixel32 = \addr[1] + (thread_start << 2)
     
-    *src + 4
-    *dst + 4
-  Next
+    For i = thread_start To thread_stop - 1
+      pixel = *srcPixel\l
+      
+      ; Extraction ARGB
+      a = (pixel >> 24) & $FF
+      r = (pixel >> 16) & $FF
+      g = (pixel >> 8)  & $FF
+      b = pixel & $FF
+      
+      ; Transformation Sépia (Coefficients entiers / 256)
+      ; R' = 0.393R + 0.769G + 0.189B
+      ; G' = 0.349R + 0.686G + 0.168B
+      ; B' = 0.272R + 0.534G + 0.131B
+      r2 = (r * 101 + g * 197 + b * 48) >> 8
+      g2 = (r * 89  + g * 175 + b * 43) >> 8
+      b2 = (r * 70  + g * 137 + b * 33) >> 8
+      
+      ; Application de la température (Chaud = Rouge+, Bleu- | Froid = Rouge-, Bleu+)
+      r2 + offset
+      b2 - offset
+      
+      ; Clamp intégré pour la rapidité
+      If r2 < 0 : r2 = 0 : ElseIf r2 > 255 : r2 = 255 : EndIf
+      If g2 < 0 : g2 = 0 : ElseIf g2 > 255 : g2 = 255 : EndIf
+      If b2 < 0 : b2 = 0 : ElseIf b2 > 255 : b2 = 255 : EndIf
+      
+      ; Reconstruction
+      *dstPixel\l = (a << 24) | (r2 << 16) | (g2 << 8) | b2
+      
+      *srcPixel + 4
+      *dstPixel + 4
+    Next
+  EndWith
 EndProcedure
 
-Procedure Sepia(*param.parametre)
-  If *param\info_active
-    param\typ = #FilterType_ColorEffect
-    param\name = "Sepia Tone"
-    param\remarque = "Effet sépia vintage avec contrôle de température"
-    *param\info[0] = "Température"
-    *param\info[1] = "Masque"
-    param\info_data(0,0) = 0   : param\info_data(0,1) = 200 : param\info_data(0,2) = 100
-    param\info_data(1,0) = 0   : param\info_data(1,1) = 2   : param\info_data(1,2) = 0
-    ProcedureReturn
-  EndIf
+; ----------------------------------------------------------------------------------
+; Procédure d'appel et définition des métadonnées
+; ----------------------------------------------------------------------------------
+
+Procedure SepiaEx(*FilterCtx.FilterParams)
+  Restore Sepia_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  filter_start(@Sepia_MT(), 1, 1)
+  With *FilterCtx
+    Create_MultiThread_MT(@Sepia_MT())
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 65
+
+; ----------------------------------------------------------------------------------
+; Interface simplifiée
+; ----------------------------------------------------------------------------------
+
+Procedure Sepia(source, cible, mask, temperature)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = temperature
+  EndWith
+  SepiaEx(FilterCtx)
+EndProcedure
+
+; ----------------------------------------------------------------------------------
+; Données du filtre
+; ----------------------------------------------------------------------------------
+
+DataSection
+  Sepia_Data:
+  Data.s "Sepia Tone"         ; Nom
+  Data.s "Effet photo vintage avec ajustement de température (froid à chaud)" ; Description
+  Data.i #FilterType_ColorEffect
+  Data.i 0                    ; Sous-type
+  
+  Data.s "Température"        ; Label option 0
+  Data.i 0, 200, 100          ; Min, Max, Défaut (100 = Sépia classique)
+  
+  Data.s "XXX"                ; Fin des options
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 72
+; FirstLine = 46
 ; Folding = -
 ; EnableXP
 ; DPIAware

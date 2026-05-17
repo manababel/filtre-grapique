@@ -1,48 +1,75 @@
-﻿; ────────────────────────────────────────────────────────────────
-; Procédure thread pour inversion négative d'une image ARGB 32 bits
-;
-; - Inversion bit à bit de chaque pixel ARGB (effet négatif)
-; - Appliqué uniquement si masque absent ou alpha >= 128
-; - Optimisé pour multithread
-; ────────────────────────────────────────────────────────────────
-Procedure Negatif_MT(*p.parametre)
-  Protected i, a, r, g, b, alpha, var
-  Protected totalPixels = *p\lg * *p\ht
-  Protected *srcPixel.Pixel32
-  Protected *dstPixel.Pixel32
-  Protected *mask = *p\mask
+﻿; ----------------------------------------------------------------------------------
+; Procédure thread pour l'effet Négatif (Inversion des couleurs)
+; ----------------------------------------------------------------------------------
 
-  Protected startPos = (*p\thread_pos * totalPixels) / *p\thread_max
-  Protected endPos   = ((*p\thread_pos + 1) * totalPixels) / *p\thread_max
-
-  For i = startPos To endPos - 1
-    *srcPixel = *p\addr[0] + (i << 2)
-    *dstPixel = *p\addr[1] + (i << 2)
-
-    var = *srcPixel\l
-    GetARGB(var, a, r, g, b)
-
-    ; Inversion négative : on inverse tous les bits (ARGB)
-    *dstPixel\l = ~var
-  Next
+Procedure Negatif_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected i, pixel.l
+    Protected totalPixels = \image_lg[0] * \image_ht[1]
+    
+    macro_calul_tread(totalPixels)
+    
+    Protected *srcPixel.Pixel32 = \addr[0] + (thread_start << 2)
+    Protected *dstPixel.Pixel32 = \addr[1] + (thread_start << 2)
+    
+    For i = thread_start To thread_stop - 1
+      pixel = *srcPixel\l
+      
+      ; On inverse uniquement les bits RGB ($00FFFFFF) 
+      ; Le canal Alpha (bits 24-31) est conservé tel quel via le XOR
+      ; XOR avec $00FFFFFF inverse r, g, et b sans toucher à l'alpha.
+      *dstPixel\l = pixel ! $00FFFFFF
+      
+      *srcPixel + 4
+      *dstPixel + 4
+    Next
+  EndWith
 EndProcedure
 
+; ----------------------------------------------------------------------------------
+; Procédure d'appel et définition des métadonnées
+; ----------------------------------------------------------------------------------
 
-Procedure Negatif(*param.parametre)
-  If param\info_active
-    param\typ = #FilterType_ColorEffect
-    param\name = "Négatif"
-    param\remarque = ""
-    param\info[0] = "Masque"
-    param\info_data(0,0) = 0 : param\info_data(0,1) = 2 : param\info_data(0,2) = 0
-    ProcedureReturn
-  EndIf
-
-  filter_start(@Negatif_MT(), 0, 1)
+Procedure NegatifEx(*FilterCtx.FilterParams)
+  Restore Negatif_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  With *FilterCtx
+    Create_MultiThread_MT(@Negatif_MT())
+    
+    ; Gestion du masque et de la fusion finale
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 19
+; ----------------------------------------------------------------------------------
+; Interface simplifiée
+; ----------------------------------------------------------------------------------
+
+Procedure Negatif(source, cible, mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  NegatifEx(FilterCtx)
+EndProcedure
+
+; ----------------------------------------------------------------------------------
+; Données du filtre
+; ----------------------------------------------------------------------------------
+
+DataSection
+  Negatif_Data:
+  Data.s "Négatif"            ; Nom
+  Data.s "Inverse les couleurs de l'image (effet négatif photo)" ; Description
+  Data.i #FilterType_ColorEffect
+  Data.i 0                    ; Sous-type
+  
+  Data.s "XXX"                ; Pas d'options nécessaires
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 49
+; FirstLine = 17
 ; Folding = -
 ; EnableXP
 ; DPIAware

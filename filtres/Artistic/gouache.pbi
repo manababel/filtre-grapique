@@ -1,11 +1,9 @@
-﻿Procedure gouache_MT(*p.parametre)
-  ; ============================================================================
-  ; DÉCLARATION DES VARIABLES
-  ; ============================================================================
-  
+﻿Procedure gouache_MT(*FilterCtx.FilterParams)
+
+  With *FilterCtx
   ; --- Dimensions de l'image ---
-  Protected w = *p\lg  ; Largeur de l'image en pixels
-  Protected h = *p\ht  ; Hauteur de l'image en pixels
+  Protected w = \image_lg[0]  ; Largeur de l'image en pixels
+  Protected h = \image_ht[0]  ; Hauteur de l'image en pixels
   
   ; --- Coordonnées ---
   Protected x, y, i, j  ; Positions et indices de boucle
@@ -37,33 +35,33 @@
   ; ============================================================================
   
   ; --- Paramètre 0 : Taille des coups de pinceau ---
-  Protected brushSize = *p\option[0]
+  Protected brushSize = \option[0]
   If brushSize < 1 : brushSize = 1 : EndIf
   If brushSize > 12 : brushSize = 12 : EndIf
   
   ; --- Paramètre 1 : Intensité de texture ---
-  Protected textureStrength.f = *p\option[1] * 0.01  ; 0-100 -> 0-1.0
+  Protected textureStrength.f = \option[1] * 0.01  ; 0-100 -> 0-1.0
   
   ; --- Paramètre 2 : Opacité/Matité ---
-  Protected opacity.f = *p\option[2] * 0.01  ; 0-100 -> 0-1.0
+  Protected opacity.f = \option[2] * 0.01  ; 0-100 -> 0-1.0
   
   ; --- Paramètre 3 : Quantification des couleurs ---
-  Protected colorLevels = *p\option[3]
+  Protected colorLevels = \option[3]
   If colorLevels < 3 : colorLevels = 3 : EndIf
   If colorLevels > 24 : colorLevels = 24 : EndIf
   
   ; --- Paramètre 4 : Direction des coups de pinceau ---
-  Protected brushDirection = *p\option[4]  ; 0=Auto, 1=H, 2=V, 3=Diag1, 4=Diag2
+  Protected brushDirection = \option[4]  ; 0=Auto, 1=H, 2=V, 3=Diag1, 4=Diag2
   
   ; --- Paramètre 5 : Contraste ---
-  Protected contrastBoost.f = *p\option[5] * 0.01  ; 50-200 -> 0.5-2.0
+  Protected contrastBoost.f = \option[5] * 0.01  ; 50-200 -> 0.5-2.0
   
   ; ============================================================================
   ; CONFIGURATION MULTITHREADING
   ; ============================================================================
   
-  Protected startY = (*p\thread_pos * h) / *p\thread_max
-  Protected endY   = ((*p\thread_pos + 1) * h) / *p\thread_max
+  Protected startY = (\thread_pos * h) / \thread_max
+  Protected endY   = ((\thread_pos + 1) * h) / \thread_max
   
   ; --- Protection des bordures ---
   Protected border = brushSize + 1
@@ -80,7 +78,7 @@
       ; ------------------------------------------------------------------------
       ; ÉTAPE 1 : LECTURE DU PIXEL CENTRAL
       ; ------------------------------------------------------------------------
-      *src = *p\addr[0] + ((y * w + x) << 2)
+      *src = \addr[0] + ((y * w + x) << 2)
       GetARGB(*src\l, a, rC, gC, bC)
       
       ; ------------------------------------------------------------------------
@@ -89,19 +87,19 @@
       
       If brushDirection = 0  ; Mode automatique
         ; Calcule le gradient pour déterminer la direction du pinceau
-        *src = *p\addr[0] + ((y * w + (x - 1)) << 2)
+        *src = \addr[0] + ((y * w + (x - 1)) << 2)
         GetARGB(*src\l, a, rN, gN, bN)
         Protected grayL.f = rN * 0.299 + gN * 0.587 + bN * 0.114
         
-        *src = *p\addr[0] + ((y * w + (x + 1)) << 2)
+        *src = \addr[0] + ((y * w + (x + 1)) << 2)
         GetARGB(*src\l, a, rN, gN, bN)
         Protected grayR.f = rN * 0.299 + gN * 0.587 + bN * 0.114
         
-        *src = *p\addr[0] + (((y - 1) * w + x) << 2)
+        *src = \addr[0] + (((y - 1) * w + x) << 2)
         GetARGB(*src\l, a, rN, gN, bN)
         Protected grayU.f = rN * 0.299 + gN * 0.587 + bN * 0.114
         
-        *src = *p\addr[0] + (((y + 1) * w + x) << 2)
+        *src = \addr[0] + (((y + 1) * w + x) << 2)
         GetARGB(*src\l, a, rN, gN, bN)
         Protected grayD.f = rN * 0.299 + gN * 0.587 + bN * 0.114
         
@@ -148,7 +146,7 @@
           Protected dist.f = Abs(i)
           Protected weight.f = 1.0 / (1.0 + dist * 0.3)
           
-          *src = *p\addr[0] + ((py * w + px) << 2)
+          *src = \addr[0] + ((py * w + px) << 2)
           GetARGB(*src\l, a, rN, gN, bN)
           
           sumR + rN * weight
@@ -287,96 +285,78 @@
       ; ÉTAPE 11 : ÉCRITURE DU PIXEL RÉSULTAT
       ; ------------------------------------------------------------------------
       
-      *dst = *p\addr[1] + ((y * w + x) << 2)
+      *dst = \addr[1] + ((y * w + x) << 2)
       *dst\l = (255 << 24) | (r << 16) | (g << 8) | b
       
     Next  ; Pixel suivant (x)
   Next    ; Ligne suivante (y)
-  
+  EndWith
 EndProcedure
 
-; ==============================================================================
-; PROCÉDURE D'INITIALISATION DU FILTRE
-; ==============================================================================
-
-Procedure gouache(*param.parametre)
+; -----------------------------------------------------------------------------
+; PROCÉDURE D'APPEL : gouacheEx
+; -----------------------------------------------------------------------------
+Procedure gouacheEx(*FilterCtx.FilterParams)
+  Restore gouache_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  ; Si appelé en mode "info", on configure les paramètres de l'interface
-  If *param\info_active
-    
-    ; --- Métadonnées du filtre ---
-    *param\typ = #FilterType_Artistic         ; Catégorie : artistique
-    *param\subtype = #Artistic_Material
-    *param\name = "Gouache"                   ; Nom affiché
-    *param\remarque = "Simule une peinture à la gouache avec texture opaque et coups de pinceau"
-    
-    ; --------------------------------------------------------------------------
-    ; PARAMÈTRE 0 : TAILLE DES COUPS DE PINCEAU
-    ; --------------------------------------------------------------------------
-    *param\info[0] = "Taille pinceau"
-    *param\info_data(0, 0) = 1     ; Valeur minimale (très fin)
-    *param\info_data(0, 1) = 12    ; Valeur maximale (très large)
-    *param\info_data(0, 2) = 5     ; Valeur par défaut (moyen)
-    
-    ; --------------------------------------------------------------------------
-    ; PARAMÈTRE 1 : INTENSITÉ DE TEXTURE
-    ; --------------------------------------------------------------------------
-    *param\info[1] = "Texture"
-    *param\info_data(1, 0) = 0     ; Min = lisse
-    *param\info_data(1, 1) = 100   ; Max = très texturé
-    *param\info_data(1, 2) = 50    ; Défaut = moyen
-    
-    ; --------------------------------------------------------------------------
-    ; PARAMÈTRE 2 : OPACITÉ/MATITÉ
-    ; --------------------------------------------------------------------------
-    *param\info[2] = "Matité"
-    *param\info_data(2, 0) = 0     ; Transparent/brillant
-    *param\info_data(2, 1) = 100   ; Très opaque/mat
-    *param\info_data(2, 2) = 70    ; Défaut = assez mat
-    
-    ; --------------------------------------------------------------------------
-    ; PARAMÈTRE 3 : NIVEAUX DE COULEUR
-    ; --------------------------------------------------------------------------
-    *param\info[3] = "Niveaux couleur"
-    *param\info_data(3, 0) = 3     ; Peu de couleurs
-    *param\info_data(3, 1) = 24    ; Beaucoup de couleurs
-    *param\info_data(3, 2) = 10    ; Défaut = moyen
-    
-    ; --------------------------------------------------------------------------
-    ; PARAMÈTRE 4 : DIRECTION DES COUPS DE PINCEAU
-    ; --------------------------------------------------------------------------
-    *param\info[4] = "Direction (0=Auto/1=H/2=V/3=D1/4=D2)"
-    *param\info_data(4, 0) = 0     ; 0 = Automatique
-    *param\info_data(4, 1) = 4     ; 4 = Diagonale 2
-    *param\info_data(4, 2) = 0     ; Défaut = Auto
-    
-    ; --------------------------------------------------------------------------
-    ; PARAMÈTRE 5 : CONTRASTE
-    ; --------------------------------------------------------------------------
-    *param\info[5] = "Contraste (100=normal)"
-    *param\info_data(5, 0) = 50    ; Faible contraste
-    *param\info_data(5, 1) = 200   ; Contraste élevé
-    *param\info_data(5, 2) = 130   ; Défaut = légèrement boosté
-    
-    ; --------------------------------------------------------------------------
-    ; PARAMÈTRE 6 : MASQUE (standard)
-    ; --------------------------------------------------------------------------
-    *param\info[6] = "masque"
-    *param\info_data(6, 0) = 0 
-    *param\info_data(6, 1) = 2
-    *param\info_data(6, 2) = 0
-    
-    ProcedureReturn  ; Sort sans lancer le traitement
-  EndIf
-  
-  ; Si pas en mode "info", on lance le traitement multithreadé
-  ; Paramètres : fonction worker, nombre de passes, nombre de buffers
-  filter_start(@gouache_MT(), 3, 1)
-  
+  With *FilterCtx
+    Create_MultiThread_MT(@gouache_MT())
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 307
-; FirstLine = 247
+
+; -----------------------------------------------------------------------------
+; INTERFACE SIMPLIFIÉE
+; -----------------------------------------------------------------------------
+Procedure gouache(source, cible, mask, brushSize=5, texture=50, matte=70, levels=10, dir=0, contrast=130)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = brushSize
+    \option[1] = texture
+    \option[2] = matte
+    \option[3] = levels
+    \option[4] = dir
+    \option[5] = contrast
+  EndWith
+  gouacheEx(FilterCtx)
+EndProcedure
+
+; -----------------------------------------------------------------------------
+; DONNÉES DU FILTRE
+; -----------------------------------------------------------------------------
+DataSection
+  gouache_Data:
+  Data.s "Gouache"
+  Data.s "Simule une peinture à la gouache avec texture opaque et coups de pinceau"
+  Data.i #FilterType_Artistic
+  Data.i #Artistic_Material
+  
+  Data.s "Taille pinceau"
+  Data.i 1, 12, 5
+  
+  Data.s "Texture"
+  Data.i 0, 100, 50
+  
+  Data.s "Matité"
+  Data.i 0, 100, 70
+  
+  Data.s "Niveaux couleur"
+  Data.i 3, 24, 10
+  
+  Data.s "Direction (0=Auto/1=H/2=V/3=D1/4=D2)"
+  Data.i 0, 4, 0
+  
+  Data.s "Contraste (100=normal)"
+  Data.i 50, 200, 130
+  
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 5
 ; Folding = -
 ; EnableXP
 ; DPIAware

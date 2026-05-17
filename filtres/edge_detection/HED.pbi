@@ -112,229 +112,239 @@ Procedure.f HED_ColorGradientMultiScale(Array r3(1), Array g3(1), Array b3(1))
   ProcedureReturn v
 EndProcedure
 
-Procedure HED_MT(*param.parametre)
-  Protected *source = *param\addr[0]
-  Protected *cible  = *param\addr[1]
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  
-  Protected threshold.f = *param\option[0]   ; Seuil de détection (1-100)
-  Protected scales = *param\option[1]        ; Nombre d'échelles (1-3)
-  Protected toGray = *param\option[2]
-  Protected inverse = *param\option[3]
-  Protected fusion = *param\option[4]        ; Mode fusion (0=Max, 1=Moyenne, 2=Pondéré)
-  
-  ; Normalisation du seuil
-  Clamp(threshold, 1, 100)
-  threshold * 0.01  ; 0.01 - 1.0
-  
-  Clamp(scales, 1, 3)
-  
-  ; Tableaux pour noyau 5x5 (25 pixels)
-  Protected Dim r3(24)
-  Protected Dim g3(24)
-  Protected Dim b3(24)
-  Protected Dim gray(24)
-  
-  Protected *srcPixel.Long
-  Protected *dstPixel.Long
-  Protected r, g, b
-  Protected x, y, i, j, idx
-  
-  ; Variables de calcul multi-échelle
-  Protected scale1.f, scale2.f, scale3.f
-  Protected variance.f, orientation.f
-  Protected edgeStrength.f, fusedEdge.f
-  Protected magnitude
-  
-  ; Poids de fusion hiérarchique
-  Protected w1.f = 0.5  ; Détails fins
-  Protected w2.f = 0.3  ; Structures moyennes
-  Protected w3.f = 0.2  ; Contexte global
-  
-  ; Limites de traitement pour ce thread
-  Protected kRadius = 2  ; Rayon du noyau 5x5
-  Protected startPos = (*param\thread_pos * (ht - 4)) / *param\thread_max + kRadius
-  Protected endPos   = ((*param\thread_pos + 1) * (ht - 4)) / *param\thread_max + kRadius - 1
-  
-  Clamp(startPos, kRadius, ht - kRadius - 1)
-  Clamp(endPos, kRadius, ht - kRadius - 1)
-  
-  If startPos > endPos
-    ProcedureReturn
-  EndIf
-  
-  ; ========================================================================
-  ; Traitement des pixels
-  ; ========================================================================
-  For y = startPos To endPos
-    For x = kRadius To lg - kRadius - 1
-      
-      ; Lecture du voisinage 5x5
-      idx = 0
-      For j = -kRadius To kRadius
-        For i = -kRadius To kRadius
-          *srcPixel = *source + ((y + j) * lg + (x + i)) * 4
-          HED_ReadPixel(idx)
-          idx + 1
+Procedure HED_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected *source = \addr[0]
+    Protected *cible  = \addr[1]
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[1]
+    
+    Protected threshold.f = \option[0]   ; Seuil de détection (1-100)
+    Protected scales = \option[1]         ; Nombre d'échelles (1-3)
+    Protected toGray = \option[2]
+    Protected inverse = \option[3]
+    Protected fusion = \option[4]         ; Mode fusion (0=Max, 1=Moyenne, 2=Pondéré)
+    
+    ; Normalisation du seuil
+    Clamp(threshold, 1, 100)
+    threshold * 0.01  ; 0.01 - 1.0
+    
+    Clamp(scales, 1, 3)
+    
+    ; Tableaux pour noyau 5x5 (25 pixels)
+    Protected Dim r3(24)
+    Protected Dim g3(24)
+    Protected Dim b3(24)
+    Protected Dim gray(24)
+    
+    Protected *srcPixel.Long
+    Protected *dstPixel.Long
+    Protected r, g, b
+    Protected x, y, i, j, idx
+    
+    ; Variables de calcul multi-échelle
+    Protected scale1.f, scale2.f, scale3.f
+    Protected variance.f, orientation.f
+    Protected edgeStrength.f, fusedEdge.f
+    Protected magnitude
+    
+    ; Poids de fusion hiérarchique
+    Protected w1.f = 0.5  ; Détails fins
+    Protected w2.f = 0.3  ; Structures moyennes
+    Protected w3.f = 0.2  ; Contexte global
+    
+    ; Limites de traitement pour ce thread
+    Protected kRadius = 2  ; Rayon du noyau 5x5
+    
+    macro_calul_tread((ht - 4))
+    
+    ; ========================================================================
+    ; Traitement des pixels
+    ; ========================================================================
+    For y = thread_start + kRadius To thread_stop + kRadius - 1
+      For x = kRadius To lg - kRadius - 1
+        
+        ; Lecture du voisinage 5x5
+        idx = 0
+        For j = -kRadius To kRadius
+          For i = -kRadius To kRadius
+            *srcPixel = *source + ((y + j) * lg + (x + i)) * 4
+            HED_ReadPixel(idx)
+            idx + 1
+          Next
         Next
-      Next
-      
-      If toGray
-        ; ====================================================================
-        ; MODE NIVEAU DE GRIS
-        ; ====================================================================
         
-        ; Calcul multi-échelle
-        scale1 = HED_GradientScale1(gray())  ; Fins détails
-        
-        If scales >= 2
-          scale2 = HED_GradientScale2(gray())  ; Structures moyennes
+        If toGray
+          ; ====================================================================
+          ; MODE NIVEAU DE GRIS
+          ; ====================================================================
+          
+          ; Calcul multi-échelle
+          scale1 = HED_GradientScale1(gray())  ; Fins détails
+          
+          If scales >= 2
+            scale2 = HED_GradientScale2(gray())  ; Structures moyennes
+          Else
+            scale2 = 0
+          EndIf
+          
+          If scales >= 3
+            scale3 = HED_GradientScale3(gray())  ; Contexte global
+            variance = HED_LocalVariance(gray(), 5)
+          Else
+            scale3 = 0
+            variance = 0
+          EndIf
+          
+          ; Fusion hiérarchique des échelles
+          Select fusion
+            Case 0  ; Maximum (contours les plus forts)
+                Max(fusedEdge , scale2 , scale3)
+                Max(fusedEdge , fusedEdge, scale1)
+              
+            Case 1  ; Moyenne (équilibrée)
+              If scales = 1
+                fusedEdge = scale1
+              ElseIf scales = 2
+                fusedEdge = (scale1 + scale2) * 0.5
+              Else
+                fusedEdge = (scale1 + scale2 + scale3) / 3.0
+              EndIf
+              
+            Case 2  ; Pondérée (hiérarchique - méthode HED originale)
+              fusedEdge = scale1 * w1 + scale2 * w2 + scale3 * w3 + variance
+          EndSelect
+          
+          ; Application du seuil et normalisation
+          edgeStrength = fusedEdge * threshold
+          magnitude = edgeStrength * 10.0
+          
+          Clamp(magnitude, 0, 255)
+          If inverse : magnitude = 255 - magnitude : EndIf
+          
+          ; Écriture du pixel
+          *dstPixel = *cible + (y * lg + x) * 4
+          PokeL(*dstPixel, $FF000000 | (Int(magnitude) * $010101))
+          
         Else
-          scale2 = 0
-        EndIf
-        
-        If scales >= 3
-          scale3 = HED_GradientScale3(gray())  ; Contexte global
-          variance = HED_LocalVariance(gray(), 5)
-        Else
-          scale3 = 0
-          variance = 0
-        EndIf
-        
-        ; Fusion hiérarchique des échelles
-        Select fusion
-          Case 0  ; Maximum (contours les plus forts)
+          ; ====================================================================
+          ; MODE COULEUR
+          ; ====================================================================
+          
+          ; Calcul multi-échelle sur les canaux couleur
+          scale1 = HED_ColorGradientMultiScale(r3(), g3(), b3())
+          
+          If scales >= 2
+            ; Échelle 2: gradient moyen (sous-échantillonnage)
+            scale2 = (Abs(r3(24) - r3(0)) + Abs(g3(24) - g3(0)) + Abs(b3(24) - b3(0))) * 0.5
+          Else
+            scale2 = 0
+          EndIf
+          
+          If scales >= 3
+            ; Échelle 3: contexte couleur
+            scale3 = HED_LocalVariance(gray(), 5)
+          Else
+            scale3 = 0
+          EndIf
+          
+          ; Fusion hiérarchique
+          Select fusion
+            Case 0
               Max(fusedEdge , scale2 , scale3)
               Max(fusedEdge , fusedEdge, scale1)
-            
-          Case 1  ; Moyenne (équilibrée)
-            If scales = 1
-              fusedEdge = scale1
-            ElseIf scales = 2
-              fusedEdge = (scale1 + scale2) * 0.5
-            Else
-              fusedEdge = (scale1 + scale2 + scale3) / 3.0
-            EndIf
-            
-          Case 2  ; Pondérée (hiérarchique - méthode HED originale)
-            fusedEdge = scale1 * w1 + scale2 * w2 + scale3 * w3 + variance
-        EndSelect
-        
-        ; Application du seuil et normalisation
-        edgeStrength = fusedEdge * threshold
-        magnitude = edgeStrength * 10.0
-        
-        Clamp(magnitude, 0, 255)
-        If inverse : magnitude = 255 - magnitude : EndIf
-        
-        ; Écriture du pixel
-        *dstPixel = *cible + (y * lg + x) * 4
-        PokeL(*dstPixel, $FF000000 | (Int(magnitude) * $010101))
-        
-      Else
-        ; ====================================================================
-        ; MODE COULEUR
-        ; ====================================================================
-        
-        ; Calcul multi-échelle sur les canaux couleur
-        scale1 = HED_ColorGradientMultiScale(r3(), g3(), b3())
-        
-        If scales >= 2
-          ; Échelle 2: gradient moyen (sous-échantillonnage)
-          scale2 = (Abs(r3(24) - r3(0)) + Abs(g3(24) - g3(0)) + Abs(b3(24) - b3(0))) * 0.5
-        Else
-          scale2 = 0
+            Case 1
+              If scales = 1
+                fusedEdge = scale1
+              ElseIf scales = 2
+                fusedEdge = (scale1 + scale2) * 0.5
+              Else
+                fusedEdge = (scale1 + scale2 + scale3) / 3.0
+              EndIf
+            Case 2
+              fusedEdge = scale1 * w1 + scale2 * w2 + scale3 * w3
+          EndSelect
+          
+          ; Application sur chaque canal avec légère variation
+          edgeStrength = fusedEdge * threshold * 10.0
+          
+          r = edgeStrength * 1.0
+          g = edgeStrength * 0.97
+          b = edgeStrength * 0.94
+          
+          Clamp(r, 0, 255)
+          Clamp(g, 0, 255)
+          Clamp(b, 0, 255)
+          
+          If inverse
+            r = 255 - r
+            g = 255 - g
+            b = 255 - b
+          EndIf
+          
+          ; Écriture du pixel
+          *dstPixel = *cible + (y * lg + x) * 4
+          PokeL(*dstPixel, $FF000000 | (Int(r) << 16) | (Int(g) << 8) | Int(b))
         EndIf
         
-        If scales >= 3
-          ; Échelle 3: contexte couleur
-          scale3 = HED_LocalVariance(gray(), 5)
-        Else
-          scale3 = 0
-        EndIf
-        
-        ; Fusion hiérarchique
-        Select fusion
-          Case 0
-            Max(fusedEdge , scale2 , scale3)
-            Max(fusedEdge , fusedEdge, scale1)
-          Case 1
-            If scales = 1
-              fusedEdge = scale1
-            ElseIf scales = 2
-              fusedEdge = (scale1 + scale2) * 0.5
-            Else
-              fusedEdge = (scale1 + scale2 + scale3) / 3.0
-            EndIf
-          Case 2
-            fusedEdge = scale1 * w1 + scale2 * w2 + scale3 * w3
-        EndSelect
-        
-        ; Application sur chaque canal avec légère variation
-        edgeStrength = fusedEdge * threshold * 10.0
-        
-        r = edgeStrength * 1.0
-        g = edgeStrength * 0.97
-        b = edgeStrength * 0.94
-        
-        Clamp(r, 0, 255)
-        Clamp(g, 0, 255)
-        Clamp(b, 0, 255)
-        
-        If inverse
-          r = 255 - r
-          g = 255 - g
-          b = 255 - b
-        EndIf
-        
-        ; Écriture du pixel
-        *dstPixel = *cible + (y * lg + x) * 4
-        PokeL(*dstPixel, $FF000000 | (Int(r) << 16) | (Int(g) << 8) | Int(b))
-      EndIf
-      
+      Next
     Next
-  Next
-  
-  ; Libération des tableaux
-  FreeArray(r3())
-  FreeArray(g3())
-  FreeArray(b3())
-  FreeArray(gray())
+    
+    ; Libération des tableaux
+    FreeArray(r3())
+    FreeArray(g3())
+    FreeArray(b3())
+    FreeArray(gray())
+  EndWith
 EndProcedure
 
-Procedure HED(*param.parametre)
-  ; Configuration du filtre (métadonnées)
-  If *param\info_active
-    *param\typ = #FilterType_EdgeDetection
-    *param\subtype = #EdgeDetect_Advanced
-    *param\name = "HED (Holistically-Nested)"
-    *param\remarque = "Détection multi-échelle avec fusion hiérarchique"
-    
-    ; Description des paramètres
-    *param\info[0] = "Seuil de détection"
-    *param\info[1] = "Nombre d'échelles (1-3)"
-    *param\info[2] = "Noir et blanc"
-    *param\info[3] = "Inversion"
-    *param\info[4] = "Fusion (0=Max/1=Moy/2=Pond)"
-    *param\info[5] = "masque"
-    
-    ; Paramètres: [min, max, défaut]
-    *param\info_data(0, 0) = 1   : *param\info_data(0, 1) = 100 : *param\info_data(0, 2) = 30
-    *param\info_data(1, 0) = 1   : *param\info_data(1, 1) = 3   : *param\info_data(1, 2) = 3
-    *param\info_data(2, 0) = 0   : *param\info_data(2, 1) = 1   : *param\info_data(2, 2) = 0
-    *param\info_data(3, 0) = 0   : *param\info_data(3, 1) = 1   : *param\info_data(3, 2) = 0
-    *param\info_data(4, 0) = 0   : *param\info_data(4, 1) = 2   : *param\info_data(4, 2) = 2
-    *param\info_data(5, 0) = 0   : *param\info_data(5, 1) = 2   : *param\info_data(5, 2) = 0
-    ProcedureReturn
-  EndIf
-  
-  ; Lancement du traitement multi-thread
-  filter_start(@HED_MT(), 5)
+Procedure HEDEx(*FilterCtx.FilterParams)
+  Restore HED_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+
+  With *FilterCtx
+    Create_MultiThread_MT(@HED_MT())
+    mask_update(*FilterCtx.FilterParams , last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 258
-; FirstLine = 234
+
+Procedure HED(source , cible , mask , seuil , echelles , gris , inversion , fusion)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = seuil
+    \option[1] = echelles
+    \option[2] = gris
+    \option[3] = inversion
+    \option[4] = fusion
+  EndWith
+  HEDEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  HED_data:
+  Data.s "HED (Holistically-Nested)"
+  Data.s "Détection multi-échelle avec fusion hiérarchique"
+  Data.i #FilterType_EdgeDetection
+  Data.i #EdgeDetect_Advanced
+  
+  Data.s "Seuil de détection"       
+  Data.i 1,100,30
+  Data.s "Nombre d'échelles (1-3)"   
+  Data.i 1,3,3
+  Data.s "Noir et blanc"        
+  Data.i 0,1,0
+  Data.s "Inversion"  
+  Data.i 0,1,0
+  Data.s "Fusion (0=Max/1=Moy/2=Pond)" 
+  Data.i 0,2,2
+  Data.s "XXX"  
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 311
+; FirstLine = 292
 ; Folding = --
 ; EnableXP
 ; DPIAware

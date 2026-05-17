@@ -1,88 +1,66 @@
-﻿Procedure YUVtoRGB_MT(*p.parametre)
-  Protected *src = *p\source
-  Protected *dst = *p\cible
-  Protected lg = *p\lg
-  Protected ht = *p\ht
-
-  Protected adjustY.f = *p\option[0] / 127.5
-  Protected adjustU.f = *p\option[1] / 127.5
-  Protected adjustV.f = *p\option[2] / 127.5
-  Protected grayscaleMode = *p\option[3]
-
-  Protected i, color
-  Protected a, r, g, b
-  Protected r2.f, g2.f, b2.f
-  Protected y.f, u.f, v.f
-  Protected total = lg * ht
-  Protected start = (*p\thread_pos * total) / *p\thread_max
-  Protected stop  = ((*p\thread_pos + 1) * total) / *p\thread_max - 1
-  If stop > total - 1 : stop = total - 1 : EndIf
-
-  For i = start To stop
-    color = PeekL(*src + i * 4)
-    getargb(color, a, r, g, b)
-
-    ; Ici on suppose que R=Y, G=U, B=V dans l'image source (stockage YUV dans RGB)
-    y = r * adjustY
-    u = g * adjustU
-    v = b * adjustV
-
-    If grayscaleMode
-      r2 = y
-      g2 = y
-      b2 = y
-    Else
-      ; Conversion YUV → RGB
-      r2 = y + 1.13983 * v
-      g2 = y - 0.39465 * u - 0.58060 * v
-      b2 = y + 2.03211 * u
-    EndIf
-
-    Clamp(r2, 0, 255)
-    Clamp(g2, 0, 255)
-    Clamp(b2, 0, 255)
-
-    PokeL(*dst + i * 4, (a << 24) | (Int(r2) << 16) | (Int(g2) << 8) | Int(b2))
-  Next
+﻿Procedure YUVtoRGB_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected *src.PixelArray32 = \addr[0]
+    Protected *dst.PixelArray32 = \addr[1]
+    Protected adjustY.f = \option[0] / 127.5
+    Protected adjustU.f = \option[1] / 127.5
+    Protected adjustV.f = \option[2] / 127.5
+    Protected.l a , r ,g , b, r2 , g2 , b2 , i
+    Protected.f y , u , v
+    macro_calul_tread((\image_lg[0] * \image_ht[0]))
+    For i = thread_start To thread_stop - 1
+      getargb(*src\pixel[i], a, r, g, b)
+      ; Ici on suppose que R=Y, G=U, B=V dans l'image source (stockage YUV dans RGB)
+      y = r * adjustY
+      u = (g - 128) * adjustU
+      v = (b - 128) * adjustV 
+      ; Conversion YUV → RGB (BT.601)
+      r2 = y + 1.402 * v
+      g2 = y - 0.344136 * u - 0.714136 * v
+      b2 = y + 1.772 * u
+      Clamp_rgb(r2, g2 , b2)
+      *dst\pixel[i] = (a << 24) | (Int(r2) << 16) | (Int(g2) << 8) | Int(b2)
+    Next
+  EndWith
 EndProcedure
 
-Procedure YUVtoRGB(*param.parametre)
-  If param\info_active
-    param\typ = #FilterType_ColorSpace
-    param\name = "YUVtoRGB"
-    param\remarque = "Inverse la conversion YUV vers RGB"
-    param\info[0] = "Y"
-    param\info[1] = "U"
-    param\info[2] = "V"
-    param\info[3] = "Grayscale"
-    param\info[4] = "Masque binaire"
-
-    param\info_data(0,0) = 0 : param\info_data(0,1) = 255 : param\info_data(0,2) = 128
-    param\info_data(1,0) = 0 : param\info_data(1,1) = 255 : param\info_data(1,2) = 128
-    param\info_data(2,0) = 0 : param\info_data(2,1) = 255 : param\info_data(2,2) = 128
-    param\info_data(3,0) = 0 : param\info_data(3,1) = 1   : param\info_data(3,2) = 0
-    param\info_data(4,0) = 0 : param\info_data(4,1) = 1   : param\info_data(4,2) = 0
-    ProcedureReturn
-  EndIf
-
-  Protected *source = *param\source
-  Protected *cible  = *param\cible
-  Protected *mask   = *param\mask
-  Protected i
-  If *source = 0 Or *cible = 0 : ProcedureReturn : EndIf
-
-  Protected thread = CountCPUs(#PB_System_CPUs)
-  Clamp(thread, 1, 128)
-  Protected Dim tr(thread)
-
-  MultiThread_MT(@YUVtoRGB_MT())
-  If *mask : *param\mask_type = *param\option[4] : MultiThread_MT(@_mask()) : EndIf
-
-  FreeArray(tr())
+Procedure YUVtoRGBEx(*FilterCtx.FilterParams)
+  Restore YUVtoRGB_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  Create_MultiThread_MT(@YUVtoRGB_MT())
+  mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
 
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 50
+Procedure YUVtoRGB(source , cible , mask , y , u , v )
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = y
+    \option[1] = u
+    \option[2] = v
+  EndWith
+  YUVtoRGBEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  YUVtoRGB_data:
+  Data.s "YUV to RGB"
+  Data.s ""
+  Data.i #FilterType_ColorSpace
+  Data.i 0
+  
+  Data.s "Y"   
+  Data.i 0,255,127
+  Data.s "U"       
+  Data.i 0,255,127
+  Data.s "V" 
+  Data.i 0,255,127
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 31
 ; Folding = -
 ; EnableXP
 ; DPIAware

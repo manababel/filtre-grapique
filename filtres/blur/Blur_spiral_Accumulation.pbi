@@ -4,14 +4,15 @@
 ; Gain : 3-5x plus rapide, excellente qualit√©
 ; ============================================================================
 
-Procedure SpiralBlur_Accumulation_MT(*param.parametre)
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected Radius = *param\option[0]
-  Protected cx.f = (*param\option[1] * lg) / 100
-  Protected cy.f = (*param\option[2] * ht) / 100
-  Protected force.i = *param\option[3]
-  Protected quality = *param\option[4]
+Procedure SpiralBlur_Accumulation_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+  Protected lg = \image_lg[0]
+  Protected ht = \image_ht[0]
+  Protected Radius = \option[0]
+  Protected cx.f = (\option[1] * lg) / 100
+  Protected cy.f = (\option[2] * ht) / 100
+  Protected force.i = \option[3]
+  Protected quality = \option[4]
   
   ; Downsampling adaptatif selon le rayon
   Protected sampleStep = 1
@@ -22,8 +23,8 @@ Procedure SpiralBlur_Accumulation_MT(*param.parametre)
   Protected angleStep
   Max(angleStep , 1, angleCount / 32) ; Seulement 32 angles au lieu de 360*quality
   
-  Protected *src.Pixel32 = *param\addr[0]
-  Protected *dst.Pixel32 = *param\addr[1]
+  Protected *src.Pixel32 = \addr[0]
+  Protected *dst.Pixel32 = \addr[1]
   Protected angleIdx , dist , tt , rx , ry , i
   
   ; Buffers d'accumulation (√©vite les allocations r√©p√©t√©es)
@@ -107,66 +108,87 @@ Procedure SpiralBlur_Accumulation_MT(*param.parametre)
   FreeArray(accumB())
   FreeArray(accumA())
   FreeArray(accumCount())
+  EndWith
 EndProcedure
 
-Procedure spiral_Accumulation(*param.parametre)
+Procedure spiral_AccumulationEx(*FilterCtx.FilterParams)
   
-  If *param\info_active
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_Directional
-    *param\name = "spiral_Accumulation"
-    *param\remarque = "appliquer un filtre de flou en spirale (optimisÈ)"
-    *param\info[0] = "Rayon du filtre"          
-    *param\info[1] = "Pos X"           
-    *param\info[2] = "Pos Y"          
-    *param\info[3] = "Force de rotation"   
-    *param\info[4] = "QualitÈ" 
-    *param\info[5] = "Rayon actif"   
-    *param\info[6] = "sens"   
-    *param\info[7] = "Masque binaire"    
-    *param\info_data(0,0) = 1 : *param\info_data(0,1) = 99 : *param\info_data(0,2) = 50
-    *param\info_data(1,0) = 0 : *param\info_data(1,1) = 100 : *param\info_data(1,2) = 50
-    *param\info_data(2,0) = 0 : *param\info_data(2,1) = 100 : *param\info_data(2,2) = 50
-    *param\info_data(3,0) = 0 : *param\info_data(3,1) = 100 : *param\info_data(3,2) = 10
-    *param\info_data(4,0) = 16 : *param\info_data(4,1) = 64 : *param\info_data(4,2) = 32
-    *param\info_data(5,0) = 0 : *param\info_data(5,1) = 100 : *param\info_data(5,2) = 100
-    *param\info_data(6,0) = 0 : *param\info_data(6,1) = 1 : *param\info_data(6,2) = 0
-    *param\info_data(7,0) = 0 : *param\info_data(7,1) = 2 : *param\info_data(7,2) = 0
-    ProcedureReturn
-  EndIf
+  Restore spiral_Accumulation_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  Filter_BufferPrepare(*param.parametre)
   
-  Protected i, angle.f
-  Protected quality = *param\option[4]
-  Protected inv_quality.f = 1.0 / quality
-  Protected angleCount = 360 * quality
-  
-  ; Allocation optimisÈe avec mÈmoire alignÈe
-  Dim cosTable.f(angleCount)
-  Dim sinTable.f(angleCount) 
-  
-  ; PrÈcalcul optimisÈ des tables trigonomÈtriques
-  For i = 0 To angleCount - 1
-    angle = Radian(i * inv_quality)
-    cosTable(i) = Cos(angle)
-    sinTable(i) = Sin(angle)
-  Next
-  
-  *param\addr[2] = @cosTable()
-  *param\addr[3] = @sinTable()
-  
-  MultiThread_MT(@SpiralBlur_IIR_MT())
-  
-  macro_Filter_BufferFinalize(7)
-  
-  FreeArray(cosTable())
-  FreeArray(sinTable())
-  
+  With *FilterCtx
+    Protected i, angle.f
+    Protected quality = \option[4]
+    Protected inv_quality.f = 1.0 / quality
+    Protected angleCount = 360 * quality
+    
+    ; Allocation optimisÈe avec mÈmoire alignÈe
+    Dim cosTable.f(angleCount)
+    Dim sinTable.f(angleCount) 
+    
+    ; PrÈcalcul optimisÈ des tables trigonomÈtriques
+    For i = 0 To angleCount - 1
+      angle = Radian(i * inv_quality)
+      cosTable(i) = Cos(angle)
+      sinTable(i) = Sin(angle)
+    Next
+    
+    \addr[2] = @cosTable()
+    \addr[3] = @sinTable()
+    
+    Create_MultiThread_MT(@SpiralBlur_Accumulation_MT())
+    
+    mask_update(*FilterCtx.FilterParams , last_data)
+    
+    FreeArray(cosTable())
+    FreeArray(sinTable())
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 116
-; FirstLine = 96
+
+Procedure spiral_Accumulation(source , cible , mask , rayon , posx , posy , force , qualite , ra , sens)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = rayon
+    \option[1] = posx
+    \option[2] = posy
+    \option[3] = force
+    \option[4] = qualite
+    \option[5] = ra
+    \option[6] = sens
+  EndWith
+  SpiralBlur_IIREx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  spiral_Accumulation_data:
+  Data.s "spiral_Accumulation"
+  Data.s "appliquer un filtre de flou en spirale"
+  Data.i #FilterType_Blur
+  Data.i #Blur_Directional
+  
+  Data.s "Rayon du filtre"       
+  Data.i 1,99,50
+  Data.s "Pos X"   
+  Data.i 0,100,50
+  Data.s "Pos Y"        
+  Data.i 0,100,50
+  Data.s "Force de rotation"  
+  Data.i 0,100,10
+  Data.s "QualitÈ" 
+  Data.i 16,64,32
+  Data.s "Rayon actif"   
+  Data.i 0,100,100
+  Data.s "sens"  
+  Data.i 0,1,0
+  Data.s "XXX"  
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 160
+; FirstLine = 128
 ; Folding = -
 ; EnableXP
 ; DPIAware

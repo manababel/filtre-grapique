@@ -20,7 +20,7 @@ Macro Blur_IIR_init_reg_sse4()
   !mov rax,[p.p_save]
   !movdqu [rax + 000], xmm4
   !movdqu [rax + 128], xmm5
-  *tmp32 = *param\addr[1]
+  *tmp32 = *FilterCtx\addr[1]
   !pxor xmm3, xmm3
   !mov eax, $80
   !movd xmm2, eax
@@ -224,32 +224,32 @@ EndMacro
 ; ============================================================================
 
 Macro Blur_IIR_sp_001_sse4()
-  Protected *cible = *param\addr[1]
-  Protected lg = *param\lg, ht = *param\ht
+  Protected *cible = *FilterCtx\addr[1]
+  Protected lg = *FilterCtx\image_lg[0], ht = *FilterCtx\image_ht[0]
   Protected alpha, inv_alpha
   Protected *tmp32.pixel32
 EndMacro
 
-Procedure Blur_IIR_sp1_sse4_blocked(*param.parametre)
+Procedure Blur_IIR_sp1_sse4_blocked(*FilterCtx.FilterParams)
   Blur_IIR_sp_001_sse4()
   macro_calul_tread(ht)
-  alpha = Int((Exp(-2.3 / (*param\option[0] + 1.0))) * 256)
+  alpha = Int((Exp(-2.3 / (*FilterCtx\option[0] + 1.0))) * 256)
   Clamp(alpha, 1, 255)
   inv_alpha = 256 - alpha
   Blur_IIR_blurH_sse4_blocked()
 EndProcedure
 
-Procedure Blur_IIR_sp2_sse4_blocked(*param.parametre)
+Procedure Blur_IIR_sp2_sse4_blocked(*FilterCtx.FilterParams)
   Blur_IIR_sp_001_sse4()
   macro_calul_tread(lg)
-  alpha = Int((Exp(-2.3 / (*param\option[1] + 1.0))) * 256)
+  alpha = Int((Exp(-2.3 / (*FilterCtx\option[1] + 1.0))) * 256)
   inv_alpha = 256 - alpha
   Blur_IIR_blurV_sse4_blocked()
 EndProcedure
 
 
-;-- Version PB avec blocs (inchangée)
 
+;-- Version PB a
 Macro Blur_IIR_get_rgb_32(a,r,g,b)
   *pix32 = *dst32 + (pos * 4)
   a = (*pix32\l >> 16) & $ff00
@@ -272,61 +272,32 @@ Macro Blur_IIR_sp1_32()
 EndMacro
 
 Macro Blur_IIR_blurH()
-  For block_y_start = thread_start To thread_stop - 1 Step #BLOCK_SIZE
-    block_y_end = block_y_start + #BLOCK_SIZE - 1
-    If block_y_end >= thread_stop
-      block_y_end = thread_stop - 1
-    EndIf
-    
-    For y = block_y_start To block_y_end
-      pos = (y * w)
-      mem = pos
-      Blur_IIR_get_rgb_32(a, r, g, b)
-      
-      For x = 1 To w - 1
-        pos = (mem + x)
-        Blur_IIR_sp1_32()
-      Next
-      
-      pos = (mem + (w - 1))
-      Blur_IIR_get_rgb_32(a, r, g, b)
-      For x = w - 2 To 0 Step -1
-        pos = (y * w + x)
-        Blur_IIR_sp1_32()
-      Next
-    Next
+  For y = thread_start To thread_stop - 1
+    pos = (y * w)
+    mem = pos
+    Blur_IIR_get_rgb_32(a, r, g, b)
+    For x = 1 To w - 1 : pos = (mem + x) : Blur_IIR_sp1_32() : Next
+    pos = (mem + (w - 1))
+    Blur_IIR_get_rgb_32(a, r, g, b)
+    For x = w - 2 To 0 Step -1 : pos = (y * w + x) : Blur_IIR_sp1_32() : Next
   Next
 EndMacro
 
 Macro Blur_IIR_blurV()
-  For block_x_start = thread_start To thread_stop - 1 Step #BLOCK_SIZE
-    block_x_end = block_x_start + #BLOCK_SIZE - 1
-    If block_x_end >= thread_stop
-      block_x_end = thread_stop - 1
-    EndIf
-    
-    For x = block_x_start To block_x_end
-      pos = x
-      Blur_IIR_get_rgb_32(a, r, g, b)
-      
-      For y = 1 To h - 1
-        pos = (y * w + x)
-        Blur_IIR_sp1_32()
-      Next
-      
-      pos = ((h - 1) * w + x)
-      Blur_IIR_get_rgb_32(a, r, g, b)
-      For y = h - 2 To 0 Step -1
-        pos = (y * w + x)
-        Blur_IIR_sp1_32()
-      Next
-    Next
+  For x = thread_start To thread_stop - 1
+    pos = x
+    Blur_IIR_get_rgb_32(a, r, g, b)
+    For y = 1 To h - 1 : pos = (y * w + x) : Blur_IIR_sp1_32() : Next
+    pos = ((h - 1) * w + x)
+    Blur_IIR_get_rgb_32(a, r, g, b)
+    For y = h - 2 To 0 Step -1 : pos = (y * w + x) : Blur_IIR_sp1_32() : Next
   Next
 EndMacro
 
 Macro Blur_IIR_sp_001(var, opt, opt2)
-  Protected *cible = *param\addr[1]
-  Protected w = *param\lg, h = *param\ht
+  Protected *cible = *FilterCtx\addr[1]
+  Protected w = *FilterCtx\image_lg[0]
+  Protected h = *FilterCtx\image_ht[0]
   Protected a, r, g, b, a1, r1, g1.l, b1
   Protected alpha, inv_alpha, alphaX, inv_alphaX, alphaY, inv_alphaY
   Protected x, y, mem, pos
@@ -336,17 +307,17 @@ Macro Blur_IIR_sp_001(var, opt, opt2)
   Protected.l block_x_start, block_x_end
   
   macro_calul_tread(var)
-  alpha#opt = Int((Exp(-2.3 / (*param\option[opt2] + 1.0))) * 256)
+  alpha#opt = Int((Exp(-2.3 / (*FilterCtx\option[opt2] + 1.0))) * 256)
   inv_alpha#opt = 256 - alpha#opt
   alpha = alphax : inv_alpha = inv_alphax
 EndMacro
 
-Procedure Blur_IIR_sp1(*param.parametre)
+Procedure Blur_IIR_sp1(*FilterCtx.FilterParams)
   Blur_IIR_sp_001(h, x, 0)
   Blur_IIR_blurH()
 EndProcedure
 
-Procedure Blur_IIR_sp2(*param.parametre)
+Procedure Blur_IIR_sp2(*FilterCtx.FilterParams)
   Blur_IIR_sp_001(w, y, 1)
   alpha = alphay : inv_alpha = inv_alphay
   Blur_IIR_blurV()
@@ -354,99 +325,82 @@ EndProcedure
 
 
 ; ============================================================================
-; CALCUL ADAPTATIF DU NOMBRE DE THREADS
-; ============================================================================
-Macro CalculerThreadsOptimal(thread)
-  thread = 1
-  Select (*param\lg * *param\ht)
-    Case 0 To 650000 : thread = 1
-    Case 650001 To 2620000 : thread = 2
-    Case 2620001 To 10000000 : thread = 4
-    Case 10000001 To 40000000 : thread = 8
-    Default : thread = 16
-  EndSelect
-  If thread > CountCPUs(#PB_System_ProcessCPUs) : thread = CountCPUs(#PB_System_ProcessCPUs) : EndIf
-EndMacro
-
-
-; ============================================================================
 ; PROCÉDURE PRINCIPALE OPTIMISÉE
 ; ============================================================================
 
-Procedure Blur_IIR_sp0(*param.parametre)
-  CopyMemory(*param\addr[0], *param\addr[1], (*param\lg * *param\ht * 4))
+Procedure Blur_IIREx(*FilterCtx.FilterParams)
   
-  ; Calculer le nombre optimal de threads
-  Protected.l nb_threads
-  CalculerThreadsOptimal(nb_threads)
-  Protected passe
+  Restore Blur_IIR_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  Debug "Blur IIR Optimisé - Threads: " + Str(nb_threads)
+
+  With FilterCtx
+    Protected.l lg = \image_lg[0]
+    Protected.l ht = \image_ht[0]
+
+    CopyMemory(\image[0], \image[1], (lg * ht * 4))
+    \addr[4] = AllocateMemory(lg * ht * 4)
+    If \addr[4] = 0 : ProcedureReturn : EndIf
+    
+    \addr[0] = \image[0]
+    \addr[1] = \image[1]
+    ; Calculer le nombre optimal de threads
+    
+    Protected.l nb_threads = 1
+    Protected passe
+    
+    ;CompilerIf #PB_Compiler_Processor = #PB_Processor_x64 And #PB_Compiler_Backend = #PB_Backend_Asm
+      ;For passe = 0 To *FilterCtx\option[2] - 1
+        ;Create_MultiThread_MT(@Blur_IIR_sp1_sse4_blocked(), nb_threads)
+        ;Create_MultiThread_MT(@Blur_IIR_sp2_sse4_blocked(), nb_threads)
+      ;Next
+    ;CompilerElse
+      ; Version PureBasic avec blocs
+      For passe = 0 To *FilterCtx\option[2] - 1
+        Create_MultiThread_MT(@Blur_IIR_sp1(), nb_threads)
+        Create_MultiThread_MT(@Blur_IIR_sp2(), nb_threads)
+
+      Next
+    ;CompilerEndIf
+    ;macro_Filter_BufferFinalize(3)
+
   
-  CompilerIf #PB_Compiler_Processor = #PB_Processor_x64 And #PB_Compiler_Backend = #PB_Backend_Asm
-    ; Version SSE3 avec blocs cache-friendly
-    For passe = 0 To *param\option[2] - 1
-      MultiThread_MT(@Blur_IIR_sp1_sse4_blocked(), nb_threads)
-      MultiThread_MT(@Blur_IIR_sp2_sse4_blocked(), nb_threads)
-    Next
-  CompilerElse
-    ; Version PureBasic avec blocs
-    For passe = 0 To *param\option[2] - 1
-      MultiThread_MT(@Blur_IIR_sp1(), nb_threads)
-      MultiThread_MT(@Blur_IIR_sp2(), nb_threads)
-    Next
-  CompilerEndIf
+  EndWith
 EndProcedure
 
-Procedure Blur_IIR(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_Classic
-    *param\name = "Blur_IIR"
-    *param\remarque = "Flou IIR ultra-optimisé (multi-thread + cache-friendly)"
-    *param\info[0] = "Rayon X"
-    *param\info[1] = "Rayon Y"
-    *param\info[2] = "Nombre de passe"
-    *param\info[3] = "Masque"
-    *param\info_data(0,0) = 0 : *param\info_data(0,1) = 100 : *param\info_data(0,2) = 1
-    *param\info_data(1,0) = 0 : *param\info_data(1,1) = 100 : *param\info_data(1,2) = 1
-    *param\info_data(2,0) = 1 : *param\info_data(2,1) = 3   : *param\info_data(2,2) = 1
-    *param\info_data(3,0) = 0 : *param\info_data(3,1) = 2   : *param\info_data(3,2) = 0
-    ProcedureReturn
-  EndIf
-  
-  clamp(*param\option[2], 1, 3)
-  If Filter_BufferPrepare(*param.parametre) <> 0
-    Blur_IIR_sp0(*param.parametre)
-    macro_Filter_BufferFinalize(3)
-  EndIf
+Procedure Blur_IIR(source , cible , mask , rx , ry , ndp = 1)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = rx
+    \option[1] = ry
+    \option[2] = ndp
+  EndWith
+  Blur_IIREx(FilterCtx.FilterParams)
 EndProcedure
 
-
-; ============================================================================
-; OPTIMISATIONS IMPLÉMENTÉES
-; ============================================================================
-;
-; 1. ✅ Traitement par blocs de 64 lignes/colonnes (cache L1)
-; 2. ✅ Prefetch SSE (prefetchnta) pour améliorer le cache
-; 3. ✅ Nombre de threads adaptatif selon taille d'image
-; 4. ✅ Registres optimisés (r10-r15 pour variables de boucle)
-; 5. ✅ Instructions conditionnelles (cmovge) pour éviter les branches
-;
-; GAINS ATTENDUS:
-; - Traitement par blocs: +10-15% (meilleur cache hit rate)
-; - Prefetch: +5-8% (données chargées à l'avance)
-; - Threads adaptatifs: +10-15% (meilleur équilibrage)
-; - TOTAL: +25-35% plus rapide que la version originale
-;
-; PERFORMANCE ESTIMÉE (2048x2048, rayon 20):
-; - Version originale: ~32 ms
-; - Version optimisée: ~22-24 ms
+DataSection
+  Blur_IIR_data:
+  Data.s "Blur_IIR"
+  Data.s "Flou IIR"
+  Data.i #FilterType_Blur
+  Data.i #Blur_Classic
+  
+  Data.s "Rayon X"           ; Rayon horizontal
+  Data.i 1,100,1
+  Data.s "Rayon Y"           ; Rayon vertical
+  Data.i 1,100,1
+  Data.s "Nombre de passe"   ; Nombre d'itérations du filtre
+  Data.i 1,3,1
+  Data.s "XXX"
+EndDataSection
 ;
 ; ============================================================================
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 389
-; FirstLine = 376
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 384
+; FirstLine = 348
 ; Folding = ----
 ; Optimizer
 ; EnableThread

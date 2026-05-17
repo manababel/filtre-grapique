@@ -1,114 +1,115 @@
-﻿Procedure SharpenBlur_sp(*param.parametre)
-  Protected lg = *param\lg, ht = *param\ht
-  Protected blurRadius = *param\option[0]
-  Protected sharpenAmount.f = *param\option[1] / 100.0  ; Force netteté
-  Protected blendRatio.f = *param\option[2] / 100.0     ; Mélange flou/net
-  
-  If blurRadius < 1 : blurRadius = 1 : EndIf
-  
-  Protected x, y, dx, dy, px, py, index, value
-  Protected r, g, b, a
-  Protected blurR, blurG, blurB
-  Protected origR, origG, origB, origA
-  Protected sumR, sumG, sumB, count
-  Protected sharpR, sharpG, sharpB
-  Protected finalR, finalG, finalB
-  
-  macro_calul_tread(ht)
-  
-  For y = thread_start To thread_stop - 1
-    For x = 0 To lg - 1
-      ; Pixel original
-      index = (y * lg + x) << 2
-      value = PeekL(*param\addr[0] + index)
-      origA = (value >> 24) & $FF
-      origR = (value >> 16) & $FF
-      origG = (value >> 8) & $FF
-      origB = value & $FF
-      
-      ; Calcul du flou
-      sumR = 0 : sumG = 0 : sumB = 0 : count = 0
-      
-      For dy = -blurRadius To blurRadius
-        py = y + dy
-        If py < 0 Or py >= ht : Continue : EndIf
+﻿Procedure SharpenBlur_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected *srcPixel.Pixel32
+    Protected *dstPixel.Pixel32
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected blurRadius = \option[0]
+    Protected sharpenAmount.f = \option[1] / 100.0  ; Force netteté
+    Protected blendRatio.f = \option[2] / 100.0     ; Mélange flou/net
+    
+    Protected x, y, dx, dy, px, py
+    Protected r, g, b, a
+    Protected blurR, blurG, blurB
+    Protected origR, origG, origB, origA
+    Protected sumR, sumG, sumB, count
+    Protected sharpR.f, sharpG.f, sharpB.f
+    Protected finalR.f, finalG.f, finalB.f
+    
+    macro_calul_tread(ht)
+    
+    For y = thread_start To thread_stop - 1
+      For x = 0 To lg - 1
+        ; Pixel original
+        *srcPixel = \addr[0] + ((y * lg + x) << 2)
+        getargb(*srcPixel\l, origA, origR, origG, origB)
         
-        For dx = -blurRadius To blurRadius
-          px = x + dx
-          If px < 0 Or px >= lg : Continue : EndIf
+        ; Calcul du flou
+        sumR = 0 : sumG = 0 : sumB = 0 : count = 0
+        
+        For dy = -blurRadius To blurRadius
+          py = y + dy
+          If py < 0 : py = 0 : ElseIf py >= ht : py = ht - 1 : EndIf
           
-          index = (py * lg + px) << 2
-          value = PeekL(*param\addr[0] + index)
-          
-          sumR + ((value >> 16) & $FF)
-          sumG + ((value >> 8) & $FF)
-          sumB + (value & $FF)
-          count + 1
+          For dx = -blurRadius To blurRadius
+            px = x + dx
+            If px < 0 : px = 0 : ElseIf px >= lg : px = lg - 1 : EndIf
+            
+            *srcPixel = \addr[0] + ((py * lg + px) << 2)
+            sumR + ((*srcPixel\l >> 16) & $FF)
+            sumG + ((*srcPixel\l >> 8) & $FF)
+            sumB + (*srcPixel\l & $FF)
+            count + 1
+          Next
         Next
-      Next
-      
-      If count > 0
+        
         blurR = sumR / count
         blurG = sumG / count
         blurB = sumB / count
-      Else
-        blurR = origR
-        blurG = origG
-        blurB = origB
-      EndIf
-      
-      ; Netteté accentuée
-      sharpR = origR + sharpenAmount * (origR - blurR)
-      sharpG = origG + sharpenAmount * (origG - blurG)
-      sharpB = origB + sharpenAmount * (origB - blurB)
-      
-      Clamp(sharpR, 0, 255)
-      Clamp(sharpG, 0, 255)
-      Clamp(sharpB, 0, 255)
-      
-      ; Mélange entre flou et netteté
-      finalR = blurR * blendRatio + sharpR * (1.0 - blendRatio)
-      finalG = blurG * blendRatio + sharpG * (1.0 - blendRatio)
-      finalB = blurB * blendRatio + sharpB * (1.0 - blendRatio)
-      
-      Clamp(finalR, 0, 255)
-      Clamp(finalG, 0, 255)
-      Clamp(finalB, 0, 255)
-      
-      r = finalR
-      g = finalG
-      b = finalB
-      a = origA
-      
-      PokeL(*param\addr[1] + (y * lg + x) << 2, (a << 24) | (r << 16) | (g << 8) | b)
+        
+        ; Netteté accentuée (Masque flou inversé)
+        sharpR = origR + sharpenAmount * (origR - blurR)
+        sharpG = origG + sharpenAmount * (origG - blurG)
+        sharpB = origB + sharpenAmount * (origB - blurB)
+        
+        ; Mélange entre flou et netteté
+        finalR = (blurR * blendRatio) + (sharpR * (1.0 - blendRatio))
+        finalG = (blurG * blendRatio) + (sharpG * (1.0 - blendRatio))
+        finalB = (blurB * blendRatio) + (sharpB * (1.0 - blendRatio))
+        
+        ; Clamping
+        If finalR < 0 : finalR = 0 : ElseIf finalR > 255 : finalR = 255 : EndIf
+        If finalG < 0 : finalG = 0 : ElseIf finalG > 255 : finalG = 255 : EndIf
+        If finalB < 0 : finalB = 0 : ElseIf finalB > 255 : finalB = 255 : EndIf
+        
+        ; Écriture du résultat
+        *dstPixel = \addr[1] + ((y * lg + x) << 2)
+        *dstPixel\l = (origA << 24) | (Int(finalR) << 16) | (Int(finalG) << 8) | Int(finalB)
+      Next
     Next
-  Next
+  EndWith
 EndProcedure
 
-Procedure SharpenBlur(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_Specialized
-    *param\name = "SharpenBlur"
-    *param\remarque = "Combinaison flou et netteté avec dosage"
-    *param\info[0] = "Rayon flou"
-    *param\info_data(0, 0) = 1 : *param\info_data(0, 1) = 20 : *param\info_data(0, 2) = 5
-    *param\info[1] = "Force netteté (%)"
-    *param\info_data(1, 0) = 0 : *param\info_data(1, 1) = 300 : *param\info_data(1, 2) = 150
-    *param\info[2] = "Ratio flou (%)"
-    *param\info_data(2, 0) = 0 : *param\info_data(2, 1) = 100 : *param\info_data(2, 2) = 30
-    ProcedureReturn
-  EndIf
+Procedure SharpenBlurEx(*FilterCtx.FilterParams)
+  Restore SharpenBlur_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+
+  Create_MultiThread_MT(@SharpenBlur_MT())
   
-  Clamp(*param\option[0], 1, 20)
-  Clamp(*param\option[1], 0, 300)
-  Clamp(*param\option[2], 0, 100)
-  
-  filter_start(@SharpenBlur_sp(), 1)
+  mask_update(*FilterCtx, last_data)
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 87
-; FirstLine = 38
+
+Procedure SharpenBlur(source, cible, mask, rayon_flou, force_nettete, ratio_flou)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = rayon_flou
+    \option[1] = force_nettete
+    \option[2] = ratio_flou
+  EndWith
+  SharpenBlurEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  SharpenBlur_data:
+  Data.s "SharpenBlur"
+  Data.s "Combinaison ajustable de flou et de netteté accentuée"
+  Data.i #FilterType_Blur
+  Data.i #Blur_Specialized
+  
+  Data.s "Rayon flou"
+  Data.i 1, 20, 5
+  Data.s "Force netteté (%)"
+  Data.i 0, 300, 150
+  Data.s "Ratio flou (%)"
+  Data.i 0, 100, 30
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 82
+; FirstLine = 57
 ; Folding = -
 ; EnableXP
 ; DPIAware

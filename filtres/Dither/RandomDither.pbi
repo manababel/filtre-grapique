@@ -1,78 +1,105 @@
 ﻿; ------------------------------------------------------------------------------
 ; RANDOM DITHER (bruit aléatoire)
 ; ------------------------------------------------------------------------------
-Procedure RandomDither_MT(*param.parametre)
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected x, y, currentPos
-  Protected oldR, oldG, oldB, newR, newG, newB
-  Protected a, r, g, b, alphaValue
-  Protected *dstPixel.Pixel32
-  Protected levels = *param\option[0]
-  Protected gray = *param\option[1]
-  Protected intensity = *param\option[2]
-  
-  clamp(levels, 2, 64)
-  clamp(intensity, 1, 100)
-  
-  Protected Steping.f = 255.0 / (levels - 1)
-  Protected noiseRange.f = (intensity / 100.0) * Steping
-  
-  Protected startPos = (*param\thread_pos * ht) / *param\thread_max
-  Protected endPos = ((*param\thread_pos + 1) * ht) / *param\thread_max - 1
-  
-  ; Initialisation du générateur aléatoire avec seed basé sur thread
-  RandomSeed(*param\thread_pos * 12345)
-  
-  For y = startPos To endPos
-    For x = 0 To lg - 1
-      currentPos = y * lg + x
-      *dstPixel = *param\addr[1] + currentPos << 2
-      getargb(*dstPixel\l, a, oldR, oldG, oldB)
-      alphaValue = a << 24
-      
-      Protected noise.f = (Random(1000) / 500.0 - 1.0) * noiseRange
-      
-      If Not gray
-        ; Mode couleur
-        newR = Round((oldR + noise) / Steping, #PB_Round_Nearest) * Steping
-        newG = Round((oldG + noise) / Steping, #PB_Round_Nearest) * Steping
-        newB = Round((oldB + noise) / Steping, #PB_Round_Nearest) * Steping
-        clamp(newR, 0, 255)
-        clamp(newG, 0, 255)
-        clamp(newB, 0, 255)
-        *dstPixel\l = alphaValue | (newR << 16) | (newG << 8) | newB
-      Else
-        ; Mode gris
-        g = (oldR * 77 + oldG * 150 + oldB * 29) >> 8
-        newG = Round((g + noise) / Steping, #PB_Round_Nearest) * Steping
-        clamp(newG, 0, 255)
-        *dstPixel\l = alphaValue | newG * $10101
-      EndIf
+
+Procedure RandomDither_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[1]
+    Protected x, y, currentPos
+    Protected oldR, oldG, oldB, newR, newG, newB
+    Protected a, r, g, b, alphaValue
+    Protected *dstPixel.Pixel32
+    Protected levels = \option[0]
+    Protected gray = \option[1]
+    Protected intensity = \option[2]
+    
+    clamp(levels, 2, 64)
+    clamp(intensity, 1, 100)
+    
+    Protected Steping.f = 255.0 / (levels - 1)
+    Protected noiseRange.f = (intensity / 100.0) * Steping
+    
+    macro_calul_tread((ht))
+    
+    Protected startPos = thread_start
+    Protected endPos = thread_stop - 1
+    
+    ; Initialisation du générateur aléatoire avec seed basé sur thread
+    RandomSeed(\thread_pos * 12345)
+    
+    For y = startPos To endPos
+      For x = 0 To lg - 1
+        currentPos = y * lg + x
+        *dstPixel = \addr[1] + currentPos << 2
+        getargb(*dstPixel\l, a, oldR, oldG, oldB)
+        alphaValue = a << 24
+        
+        Protected noise.f = (Random(1000) / 500.0 - 1.0) * noiseRange
+        
+        If Not gray
+          ; Mode couleur
+          newR = Round((oldR + noise) / Steping, #PB_Round_Nearest) * Steping
+          newG = Round((oldG + noise) / Steping, #PB_Round_Nearest) * Steping
+          newB = Round((oldB + noise) / Steping, #PB_Round_Nearest) * Steping
+          clamp(newR, 0, 255)
+          clamp(newG, 0, 255)
+          clamp(newB, 0, 255)
+          *dstPixel\l = alphaValue | (newR << 16) | (newG << 8) | newB
+        Else
+          ; Mode gris
+          g = (oldR * 77 + oldG * 150 + oldB * 29) >> 8
+          newG = Round((g + noise) / Steping, #PB_Round_Nearest) * Steping
+          clamp(newG, 0, 255)
+          *dstPixel\l = alphaValue | newG * $10101
+        EndIf
+      Next
     Next
-  Next
+  EndWith
 EndProcedure
 
-Procedure RandomDither(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Dithering
-    *param\subtype = #Dither_Random
-    *param\name = "RandomDither"
-    *param\remarque = "Random noise dithering"
-    *param\info[0] = "Nb de niveaux"
-    *param\info[1] = "Noir et blanc"
-    *param\info[2] = "Intensité"
-    *param\info[3] = "Masque"
-    *param\info_data(0, 0) = 2   : *param\info_data(0, 1) = 64  : *param\info_data(0, 2) = 6
-    *param\info_data(1, 0) = 0   : *param\info_data(1, 1) = 1   : *param\info_data(1, 2) = 0
-    *param\info_data(2, 0) = 1   : *param\info_data(2, 1) = 100 : *param\info_data(2, 2) = 50
-    *param\info_data(3, 0) = 0   : *param\info_data(3, 1) = 2   : *param\info_data(3, 2) = 0
-    ProcedureReturn
-  EndIf
-  filter_start(@RandomDither_MT(), 2, 0)  ; Parallélisable
+Procedure RandomDitherEx(*FilterCtx.FilterParams)
+  Restore RandomDither_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  With *FilterCtx
+    ; Parallélisable
+    Create_MultiThread_MT(@RandomDither_MT())
+    
+    mask_update(*FilterCtx.FilterParams , last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 58
+
+Procedure RandomDither(source, cible, mask, levels, gray, intensity)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = levels
+    \option[1] = gray
+    \option[2] = intensity
+  EndWith
+  RandomDitherEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  RandomDither_data:
+  Data.s "RandomDither"
+  Data.s "Random noise dithering"
+  Data.i #FilterType_Dithering
+  Data.i #Dither_Random
+  
+  Data.s "Nb de niveaux"       
+  Data.i 2, 64, 6
+  Data.s "Noir et blanc"   
+  Data.i 0, 1, 0
+  Data.s "Intensité"
+  Data.i 1, 100, 50
+  Data.s "XXX"  
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 28
 ; FirstLine = 12
 ; Folding = -
 ; EnableXP

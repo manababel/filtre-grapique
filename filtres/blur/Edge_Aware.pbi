@@ -1,326 +1,249 @@
-﻿Procedure Edge_Aware_LoadImageToFloatArrays_MT(*param.parametre)
-  Protected *source = *param\source
-  Protected total = *param\lg * *param\ht
-  Protected r, g, b, i, offset
-  Protected rf.f, gf.f, bf.f
-  Protected inv255.f = 1.0 / 255.0
-  
-  Protected start = (*param\thread_pos * total) / *param\thread_max
-  Protected stop = ((*param\thread_pos + 1) * total) / *param\thread_max
-  
-  For i = start To stop - 1
-    offset = i << 2
-    getrgb(PeekL(*source + offset), r, g, b)
-    rf = r * inv255
-    gf = g * inv255
-    bf = b * inv255
-    PokeF(*param\addr[0] + offset, rf)
-    PokeF(*param\addr[1] + offset, gf)
-    PokeF(*param\addr[2] + offset, bf)
-  Next
+﻿; --- Procédures MT de conversion ---
+
+Procedure Edge_Aware_LoadImageToFloatArrays_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected *source = \addr[0] ; On utilise l'adresse source passée par le cycle
+    Protected total = \image_lg[0] * \image_ht[0]
+    Protected r, g, b, i, offset
+    Protected inv255.f = 1.0 / 255.0
+    
+    macro_calul_tread(total)
+    
+    For i = thread_start To thread_stop - 1
+      offset = i << 2
+      getrgb(PeekL(*source + offset), r, g, b)
+      PokeF(\addr[3] + offset, r * inv255)
+      PokeF(\addr[4] + offset, g * inv255)
+      PokeF(\addr[5] + offset, b * inv255)
+    Next
+  EndWith
 EndProcedure
 
-Procedure Edge_Aware_FloatArraysToLoadImage_MT(*param.parametre)
-  Protected *cible = *param\cible
-  Protected total = *param\lg * *param\ht
-  Protected r.f, g.f, b.f
-  Protected ri, gi, bi, i, offset
-  
-  Protected start = (*param\thread_pos * total) / *param\thread_max
-  Protected stop = ((*param\thread_pos + 1) * total) / *param\thread_max
-  
-  For i = start To stop - 1
-    offset = i << 2
-    r = (PeekF(*param\addr[0] + offset) * 255.0) + 0.5
-    g = (PeekF(*param\addr[1] + offset) * 255.0) + 0.5
-    b = (PeekF(*param\addr[2] + offset) * 255.0) + 0.5
-    ri = r : gi = g : bi = b
-    clamp_rgb(ri, gi, bi)
-    PokeL(*cible + offset, (255 << 24) | (ri << 16) | (gi << 8) | bi)
-  Next
+Procedure Edge_Aware_FloatArraysToLoadImage_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected *cible = \addr[1]
+    Protected total = \image_lg[0] * \image_ht[0]
+    Protected r.f, g.f, b.f
+    Protected ri, gi, bi, i, offset
+    
+    macro_calul_tread(total)
+    
+    For i = thread_start To thread_stop - 1
+      offset = i << 2
+      ri = (PeekF(\addr[3] + offset) * 255.0) + 0.5
+      gi = (PeekF(\addr[4] + offset) * 255.0) + 0.5
+      bi = (PeekF(\addr[5] + offset) * 255.0) + 0.5
+      clamp_rgb(ri, gi, bi)
+      PokeL(*cible + offset, (255 << 24) | (ri << 16) | (gi << 8) | bi)
+    Next
+  EndWith
 EndProcedure
 
-Procedure Edge_Aware_RecursiveFilter_H_MT(*param.parametre)
-  Protected w = *param\lg
-  Protected h = *param\ht
-  Protected sigma_s.f = *param\option[5]  ; Sigma spatial pour cette itération
-  Protected sigma_r.f = *param\option[6]  ; Sigma range (couleur)
-  
-  If sigma_s <= 0.0 : sigma_s = 1.0 : EndIf
-  If sigma_r <= 0.0 : sigma_r = 0.1 : EndIf
-  
-  Protected a.f = Exp(-Sqr(2.0) / sigma_s)  ; Coefficient de récursion
-  Protected inv_sigma_r.f = 1.0 / sigma_r
-  
-  Protected start = (*param\thread_pos * h) / *param\thread_max
-  Protected stop = ((*param\thread_pos + 1) * h) / *param\thread_max
-  
-  Protected x, y, idx, prevIdx, offset, prevOffset
-  Protected r0.f, g0.f, b0.f, r1.f, g1.f, b1.f
-  Protected diff.f, weight.f
-  Protected wMinus1 = w - 1
-  
-  ; Buffer temporaire pour la ligne
-  Protected *tempR = AllocateMemory(w << 2)
-  Protected *tempG = AllocateMemory(w << 2)
-  Protected *tempB = AllocateMemory(w << 2)
-  
-  If Not *tempR Or Not *tempG Or Not *tempB
-    If *tempR : FreeMemory(*tempR) : EndIf
-    If *tempG : FreeMemory(*tempG) : EndIf
-    If *tempB : FreeMemory(*tempB) : EndIf
-    ProcedureReturn
-  EndIf
-  
-  For y = start To stop - 1
-    ; Charger la ligne
-    For x = 0 To wMinus1
-      idx = y * w + x
-      offset = idx << 2
-      PokeF(*tempR + (x << 2), PeekF(*param\addr[0] + offset))
-      PokeF(*tempG + (x << 2), PeekF(*param\addr[1] + offset))
-      PokeF(*tempB + (x << 2), PeekF(*param\addr[2] + offset))
-    Next
+; --- Procédures MT de Filtrage ---
+
+Procedure Edge_Aware_RecursiveFilter_H_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected w = \image_lg[0]
+    Protected h = \image_ht[0]
+    Protected sigma_s.f = \option[5]
+    Protected sigma_r.f = \option[6]
+    Protected a.f = Exp(-Sqr(2.0) / sigma_s)
+    Protected inv_sigma_r.f = 1.0 / sigma_r
+    Protected wMinus1 = w - 1
+    Protected x, y, idx, prevIdx, offset, prevOffset
+    Protected r0.f, g0.f, b0.f, r1.f, g1.f, b1.f
+    Protected diff.f, weight.f
     
-    ; Passe gauche vers droite
-    For x = 1 To wMinus1
-      offset = x << 2
-      prevOffset = (x - 1) << 2
-      
-      r0 = PeekF(*tempR + offset)
-      g0 = PeekF(*tempG + offset)
-      b0 = PeekF(*tempB + offset)
-      r1 = PeekF(*tempR + prevOffset)
-      g1 = PeekF(*tempG + prevOffset)
-      b1 = PeekF(*tempB + prevOffset)
-      
-      ; Différence de couleur
-      diff = Sqr((r0 - r1) * (r0 - r1) + (g0 - g1) * (g0 - g1) + (b0 - b1) * (b0 - b1))
-      weight = a * Exp(-diff * inv_sigma_r)
-      
-      PokeF(*tempR + offset, r0 + weight * (r1 - r0))
-      PokeF(*tempG + offset, g0 + weight * (g1 - g0))
-      PokeF(*tempB + offset, b0 + weight * (b1 - b0))
-    Next
+    macro_calul_tread(h)
     
-    ; Passe droite vers gauche
-    For x = wMinus1 - 1 To 0 Step -1
-      offset = x << 2
-      prevOffset = (x + 1) << 2
-      
-      r0 = PeekF(*tempR + offset)
-      g0 = PeekF(*tempG + offset)
-      b0 = PeekF(*tempB + offset)
-      r1 = PeekF(*tempR + prevOffset)
-      g1 = PeekF(*tempG + prevOffset)
-      b1 = PeekF(*tempB + prevOffset)
-      
-      diff = Sqr((r0 - r1) * (r0 - r1) + (g0 - g1) * (g0 - g1) + (b0 - b1) * (b0 - b1))
-      weight = a * Exp(-diff * inv_sigma_r)
-      
-      PokeF(*tempR + offset, r0 + weight * (r1 - r0))
-      PokeF(*tempG + offset, g0 + weight * (g1 - g0))
-      PokeF(*tempB + offset, b0 + weight * (b1 - b0))
-    Next
+    Protected *tempR = AllocateMemory(w << 2)
+    Protected *tempG = AllocateMemory(w << 2)
+    Protected *tempB = AllocateMemory(w << 2)
     
-    ; Sauvegarder la ligne filtrée
-    For x = 0 To wMinus1
-      idx = y * w + x
-      offset = idx << 2
-      r0 = PeekF(*tempR + (x << 2))
-      g0 = PeekF(*tempG + (x << 2))
-      b0 = PeekF(*tempB + (x << 2))
-      clamp(r0, 0, 1)
-      clamp(g0, 0, 1)
-      clamp(b0, 0, 1)
-      PokeF(*param\addr[0] + offset, r0)
-      PokeF(*param\addr[1] + offset, g0)
-      PokeF(*param\addr[2] + offset, b0)
+    For y = thread_start To thread_stop - 1
+      ; Charger ligne
+      For x = 0 To wMinus1
+        idx = y * w + x : offset = idx << 2
+        PokeF(*tempR + (x << 2), PeekF(\addr[3] + offset))
+        PokeF(*tempG + (x << 2), PeekF(\addr[4] + offset))
+        PokeF(*tempB + (x << 2), PeekF(\addr[5] + offset))
+      Next
+      
+      ; Gauche -> Droite
+      For x = 1 To wMinus1
+        offset = x << 2 : prevOffset = (x - 1) << 2
+        r0 = PeekF(*tempR + offset) : g0 = PeekF(*tempG + offset) : b0 = PeekF(*tempB + offset)
+        r1 = PeekF(*tempR + prevOffset) : g1 = PeekF(*tempG + prevOffset) : b1 = PeekF(*tempB + prevOffset)
+        diff = Sqr((r0-r1)*(r0-r1) + (g0-g1)*(g0-g1) + (b0-b1)*(b0-b1))
+        weight = a * Exp(-diff * inv_sigma_r)
+        PokeF(*tempR + offset, r0 + weight * (r1 - r0))
+        PokeF(*tempG + offset, g0 + weight * (g1 - g0))
+        PokeF(*tempB + offset, b0 + weight * (b1 - b0))
+      Next
+      
+      ; Droite -> Gauche
+      For x = wMinus1 - 1 To 0 Step -1
+        offset = x << 2 : prevOffset = (x + 1) << 2
+        r0 = PeekF(*tempR + offset) : g0 = PeekF(*tempG + offset) : b0 = PeekF(*tempB + offset)
+        r1 = PeekF(*tempR + prevOffset) : g1 = PeekF(*tempG + prevOffset) : b1 = PeekF(*tempB + prevOffset)
+        diff = Sqr((r0-r1)*(r0-r1) + (g0-g1)*(g0-g1) + (b0-b1)*(b0-b1))
+        weight = a * Exp(-diff * inv_sigma_r)
+        PokeF(*tempR + offset, r0 + weight * (r1 - r0))
+        PokeF(*tempG + offset, g0 + weight * (g1 - g0))
+        PokeF(*tempB + offset, b0 + weight * (b1 - b0))
+      Next
+      
+      ; Sauvegarder
+      For x = 0 To wMinus1
+        idx = y * w + x : offset = idx << 2
+        PokeF(\addr[3] + offset, PeekF(*tempR + (x << 2)))
+        PokeF(\addr[4] + offset, PeekF(*tempG + (x << 2)))
+        PokeF(\addr[5] + offset, PeekF(*tempB + (x << 2)))
+      Next
     Next
-  Next
-  
-  FreeMemory(*tempR)
-  FreeMemory(*tempG)
-  FreeMemory(*tempB)
+    FreeMemory(*tempR) : FreeMemory(*tempG) : FreeMemory(*tempB)
+  EndWith
 EndProcedure
 
-Procedure Edge_Aware_RecursiveFilter_V_MT(*param.parametre)
-  Protected w = *param\lg
-  Protected h = *param\ht
-  Protected sigma_s.f = *param\option[5]
-  Protected sigma_r.f = *param\option[6]
-  
-  If sigma_s <= 0.0 : sigma_s = 1.0 : EndIf
-  If sigma_r <= 0.0 : sigma_r = 0.1 : EndIf
-  
-  Protected a.f = Exp(-Sqr(2.0) / sigma_s)
-  Protected inv_sigma_r.f = 1.0 / sigma_r
-  
-  Protected start = (*param\thread_pos * w) / *param\thread_max
-  Protected stop = ((*param\thread_pos + 1) * w) / *param\thread_max
-  
+Procedure Edge_Aware_RecursiveFilter_V_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected w = \image_lg[0]
+    Protected h = \image_ht[0]
+    Protected sigma_s.f = \option[5]
+    Protected sigma_r.f = \option[6]
+    Protected a.f = Exp(-Sqr(2.0) / sigma_s)
+    Protected inv_sigma_r.f = 1.0 / sigma_r
+
   Protected x, y, idx, prevIdx, offset, prevOffset
   Protected r0.f, g0.f, b0.f, r1.f, g1.f, b1.f
   Protected diff.f, weight.f
   Protected hMinus1 = h - 1
-  
-  ; Buffer temporaire pour la colonne
-  Protected *tempR = AllocateMemory(h << 2)
-  Protected *tempG = AllocateMemory(h << 2)
-  Protected *tempB = AllocateMemory(h << 2)
-  
-  If Not *tempR Or Not *tempG Or Not *tempB
-    If *tempR : FreeMemory(*tempR) : EndIf
-    If *tempG : FreeMemory(*tempG) : EndIf
-    If *tempB : FreeMemory(*tempB) : EndIf
-    ProcedureReturn
-  EndIf
-  
-  For x = start To stop - 1
-    ; Charger la colonne
-    For y = 0 To hMinus1
-      idx = y * w + x
-      offset = idx << 2
-      PokeF(*tempR + (y << 2), PeekF(*param\addr[0] + offset))
-      PokeF(*tempG + (y << 2), PeekF(*param\addr[1] + offset))
-      PokeF(*tempB + (y << 2), PeekF(*param\addr[2] + offset))
-    Next
+    macro_calul_tread(w)
     
-    ; Passe haut vers bas
-    For y = 1 To hMinus1
-      offset = y << 2
-      prevOffset = (y - 1) << 2
-      
-      r0 = PeekF(*tempR + offset)
-      g0 = PeekF(*tempG + offset)
-      b0 = PeekF(*tempB + offset)
-      r1 = PeekF(*tempR + prevOffset)
-      g1 = PeekF(*tempG + prevOffset)
-      b1 = PeekF(*tempB + prevOffset)
-      
-      diff = Sqr((r0 - r1) * (r0 - r1) + (g0 - g1) * (g0 - g1) + (b0 - b1) * (b0 - b1))
-      weight = a * Exp(-diff * inv_sigma_r)
-      
-      PokeF(*tempR + offset, r0 + weight * (r1 - r0))
-      PokeF(*tempG + offset, g0 + weight * (g1 - g0))
-      PokeF(*tempB + offset, b0 + weight * (b1 - b0))
-    Next
+    Protected *tempR = AllocateMemory(h << 2)
+    Protected *tempG = AllocateMemory(h << 2)
+    Protected *tempB = AllocateMemory(h << 2)
     
-    ; Passe bas vers haut
-    For y = hMinus1 - 1 To 0 Step -1
-      offset = y << 2
-      prevOffset = (y + 1) << 2
+    For x = thread_start To thread_stop - 1
+      ; Charger colonne
+      For y = 0 To hMinus1
+        idx = y * w + x : offset = idx << 2
+        PokeF(*tempR + (y << 2), PeekF(\addr[3] + offset))
+        PokeF(*tempG + (y << 2), PeekF(\addr[4] + offset))
+        PokeF(*tempB + (y << 2), PeekF(\addr[5] + offset))
+      Next
       
-      r0 = PeekF(*tempR + offset)
-      g0 = PeekF(*tempG + offset)
-      b0 = PeekF(*tempB + offset)
-      r1 = PeekF(*tempR + prevOffset)
-      g1 = PeekF(*tempG + prevOffset)
-      b1 = PeekF(*tempB + prevOffset)
+      ; Haut -> Bas
+      For y = 1 To hMinus1
+        offset = y << 2 : prevOffset = (y - 1) << 2
+        r0 = PeekF(*tempR + offset) : g0 = PeekF(*tempG + offset) : b0 = PeekF(*tempB + offset)
+        r1 = PeekF(*tempR + prevOffset) : g1 = PeekF(*tempG + prevOffset) : b1 = PeekF(*tempB + prevOffset)
+        diff = Sqr((r0-r1)*(r0-r1) + (g0-g1)*(g0-g1) + (b0-b1)*(b0-b1))
+        weight = a * Exp(-diff * inv_sigma_r)
+        PokeF(*tempR + offset, r0 + weight * (r1 - r0))
+        PokeF(*tempG + offset, g0 + weight * (g1 - g0))
+        PokeF(*tempB + offset, b0 + weight * (b1 - b0))
+      Next
       
-      diff = Sqr((r0 - r1) * (r0 - r1) + (g0 - g1) * (g0 - g1) + (b0 - b1) * (b0 - b1))
-      weight = a * Exp(-diff * inv_sigma_r)
+      ; Bas -> Haut
+      For y = hMinus1 - 1 To 0 Step -1
+        offset = y << 2 : prevOffset = (y + 1) << 2
+        r0 = PeekF(*tempR + offset) : g0 = PeekF(*tempG + offset) : b0 = PeekF(*tempB + offset)
+        r1 = PeekF(*tempR + prevOffset) : g1 = PeekF(*tempG + prevOffset) : b1 = PeekF(*tempB + prevOffset)
+        diff = Sqr((r0-r1)*(r0-r1) + (g0-g1)*(g0-g1) + (b0-b1)*(b0-b1))
+        weight = a * Exp(-diff * inv_sigma_r)
+        PokeF(*tempR + offset, r0 + weight * (r1 - r0))
+        PokeF(*tempG + offset, g0 + weight * (g1 - g0))
+        PokeF(*tempB + offset, b0 + weight * (b1 - b0))
+      Next
       
-      PokeF(*tempR + offset, r0 + weight * (r1 - r0))
-      PokeF(*tempG + offset, g0 + weight * (g1 - g0))
-      PokeF(*tempB + offset, b0 + weight * (b1 - b0))
+      ; Sauvegarder
+      For y = 0 To hMinus1
+        idx = y * w + x : offset = idx << 2
+        PokeF(\addr[3] + offset, PeekF(*tempR + (y << 2)))
+        PokeF(\addr[4] + offset, PeekF(*tempG + (y << 2)))
+        PokeF(\addr[5] + offset, PeekF(*tempB + (y << 2)))
+      Next
     Next
-    
-    ; Sauvegarder la colonne filtrée
-    For y = 0 To hMinus1
-      idx = y * w + x
-      offset = idx << 2
-      r0 = PeekF(*tempR + (y << 2))
-      g0 = PeekF(*tempG + (y << 2))
-      b0 = PeekF(*tempB + (y << 2))
-      clamp(r0, 0, 1)
-      clamp(g0, 0, 1)
-      clamp(b0, 0, 1)
-      PokeF(*param\addr[0] + offset, r0)
-      PokeF(*param\addr[1] + offset, g0)
-      PokeF(*param\addr[2] + offset, b0)
-    Next
-  Next
-  
-  FreeMemory(*tempR)
-  FreeMemory(*tempG)
-  FreeMemory(*tempB)
+    FreeMemory(*tempR) : FreeMemory(*tempG) : FreeMemory(*tempB)
+  EndWith
 EndProcedure
 
-Procedure Edge_Aware(*param.parametre)
-  If *param\info_active
-    *param\name = "Edge_Aware"
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_EdgeAware
-    *param\remarque = "Lisse sans détruire les contours"
-    *param\info[0] = "Rayon spatial"
-    *param\info[1] = "Préservation contours"
-    *param\info[2] = "Nombre de passes"
-    *param\info[3] = "Masque"
-    *param\info_data(0,0) = 1   : *param\info_data(0,1) = 100  : *param\info_data(0,2) = 20
-    *param\info_data(1,0) = 1   : *param\info_data(1,1) = 100  : *param\info_data(1,2) = 20
-    *param\info_data(2,0) = 1   : *param\info_data(2,1) = 10   : *param\info_data(2,2) = 3
-    *param\info_data(3,0) = 0   : *param\info_data(3,1) = 2    : *param\info_data(3,2) = 0
-    ProcedureReturn
-  EndIf
+; --- Cycle principal ---
+
+Procedure Edge_AwareEx(*FilterCtx.FilterParams)
+  Restore Edge_Aware_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  If *param\source = 0 Or *param\cible = 0 : ProcedureReturn : EndIf
-  
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected size = lg * ht << 2
-  
-  *param\addr[0] = AllocateMemory(size)
-  *param\addr[1] = AllocateMemory(size)
-  *param\addr[2] = AllocateMemory(size)
-  
-  If Not *param\addr[0] Or Not *param\addr[1] Or Not *param\addr[2]
-    Debug "Erreur allocation mémoire Edge_Aware"
-    If *param\addr[0] : FreeMemory(*param\addr[0]) : EndIf
-    If *param\addr[1] : FreeMemory(*param\addr[1]) : EndIf
-    If *param\addr[2] : FreeMemory(*param\addr[2]) : EndIf
-    ProcedureReturn
-  EndIf
-  
-  ; Charger l'image en floats normalisés
-  MultiThread_MT(@Edge_Aware_LoadImageToFloatArrays_MT())
-  
-  ; Paramètres
-  Protected iterations = *param\option[2]
-  Protected sigma_s.f = *param\option[0]  ; Rayon spatial (1-100)
-  Protected sigma_r.f = *param\option[1] * 0.01  ; Préservation contours (0.01-1.0)
-  
-  Clamp(iterations, 1, 10)
-  Clamp(sigma_s, 1.0, 100.0)
-  Clamp(sigma_r, 0.01, 1.0)
-  
-  Protected i
-  For i = 1 To iterations
-    ; Calculer sigma_s pour cette itération (décroissance progressive)
-    *param\option[5] = sigma_s * Pow(0.5, i - 1)
-    *param\option[6] = sigma_r
+  With *FilterCtx
+    Protected size = \image_lg[0] * \image_ht[0] << 2
+    \addr[3] = AllocateMemory(size) ; Buffer R float
+    \addr[4] = AllocateMemory(size) ; Buffer G float
+    \addr[5] = AllocateMemory(size) ; Buffer B float
     
-    ; Filtrage horizontal puis vertical
-    MultiThread_MT(@Edge_Aware_RecursiveFilter_H_MT())
-    MultiThread_MT(@Edge_Aware_RecursiveFilter_V_MT())
-  Next
-  
-  ; Convertir les floats en image
-  MultiThread_MT(@Edge_Aware_FloatArraysToLoadImage_MT())
-  
-  ; Appliquer le masque si nécessaire
-  If *param\mask And *param\option[3]
-    *param\mask_type = *param\option[3] - 1
-    MultiThread_MT(@_mask())
-  EndIf
-  
-  FreeMemory(*param\addr[0])
-  FreeMemory(*param\addr[1])
-  FreeMemory(*param\addr[2])
+    If Not \addr[3] Or Not \addr[4] Or Not \addr[5]
+      If \addr[3] : FreeMemory(\addr[3]) : EndIf
+      If \addr[4] : FreeMemory(\addr[4]) : EndIf
+      If \addr[5] : FreeMemory(\addr[5]) : EndIf
+      ProcedureReturn 0
+    EndIf
+    
+    ; 1. Vers Float
+    Create_MultiThread_MT(@Edge_Aware_LoadImageToFloatArrays_MT())
+    
+    ; 2. Filtrage
+    Protected i, iterations = \option[2]
+    Protected sigma_s.f = \option[0]
+    Protected sigma_r.f = \option[1] * 0.01
+    
+    For i = 1 To iterations
+      \option[5] = sigma_s * Pow(0.5, i - 1)
+      \option[6] = sigma_r
+      Create_MultiThread_MT(@Edge_Aware_RecursiveFilter_H_MT())
+      Create_MultiThread_MT(@Edge_Aware_RecursiveFilter_V_MT())
+    Next
+    
+    ; 3. Retour vers Image
+    Create_MultiThread_MT(@Edge_Aware_FloatArraysToLoadImage_MT())
+    
+    ; Nettoyage
+    FreeMemory(\addr[3]) : FreeMemory(\addr[4]) : FreeMemory(\addr[5])
+    \addr[3] = 0 : \addr[4] = 0 : \addr[5] = 0
+    
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 319
-; FirstLine = 250
-; Folding = -
+
+Procedure Edge_Aware(source, cible, mask, sigma_s, sigma_r, iterations)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = sigma_s
+    \option[1] = sigma_r
+    \option[2] = iterations
+  EndWith
+  Edge_AwareEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  Edge_Aware_data:
+  Data.s "Edge_Aware"
+  Data.s "Lissage récursif avec préservation des contours"
+  Data.i #FilterType_Blur
+  Data.i #Blur_EdgeAware
+  Data.s "Rayon spatial"
+  Data.i 1, 100, 20
+  Data.s "Contraste (%)"
+  Data.i 1, 100, 20
+  Data.s "Passes"
+  Data.i 1, 10, 3
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 115
+; FirstLine = 98
+; Folding = --
 ; EnableXP
 ; DPIAware

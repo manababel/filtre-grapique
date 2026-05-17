@@ -1,172 +1,151 @@
-﻿
-; -------------------------------------------------------------------------------
-; DrawTexturePerspective_MT - Transformation perspective avec homographie
-;
-; Paramètres:
-;   *p.parametre - Pointeur vers la structure de paramètres
-;                  - option[0-1]: coin haut-gauche (X, Y) en % décalage
-;                  - option[2-3]: coin haut-droit (X, Y)
-;                  - option[4-5]: coin bas-droit (X, Y)
-;                  - option[6-7]: coin bas-gauche (X, Y)
-;
-; Description:
-;   Applique une transformation perspective complète utilisant une matrice
-;   d'homographie 3x3. Plus précis que l'interpolation bilinéaire pour les
-;   déformations importantes.
-;
-; Algorithme:
-;   1. Calcule les 4 coins destination à partir des options
-;   2. Construit la matrice d'homographie inverse
-;   3. Pour chaque pixel destination, calcule la position source
-;   4. Échantillonne le pixel source
-;
-; Optimisations:
-;   - Précalcul complet de la matrice d'homographie
-;   - Test de déterminant pour éviter division par zéro
-;   - Calcul incrémental des offsets
-; -------------------------------------------------------------------------------
-Procedure DrawTexturePerspective_MT(*p.parametre)
-  Protected lg.i = *p\lg
-  Protected ht.i = *p\ht
-  Protected *source = *p\addr[0]  
-  Protected *cible  = *p\addr[1]  
-  Protected x.i, y.i
+﻿; ==============================================================================
+; FILTRE PERSPECTIVE HOMOGRAPHIQUE (MATRICE 3x3) - STRUCTURE RÉVISÉE
+; ==============================================================================
 
-  ; Précalcul des constantes
-  Protected half_lg.f = lg * 0.5
-  Protected half_ht.f = ht * 0.5
-  Protected lg_max.f = lg - 1
-  Protected ht_max.f = ht - 1
+Procedure PerspectiveHomography_MT(*p.FilterParams)
+  With *p
+    Protected lg.i = \image_lg[0]
+    Protected ht.i = \image_ht[0]
+    Protected *source.Long = \addr[0]  
+    Protected *cible.Long  = \addr[1]  
+    Protected x.i, y.i
 
-  ; Calcul des 4 coins destination à partir des options (en % de décalage)
-  Protected x0.f = ((*p\option[0] - 50.0) / 50.0) * half_lg + 0.0
-  Protected y0.f = ((*p\option[1] - 50.0) / 50.0) * half_ht + 0.0
-  Protected x1.f = ((*p\option[2] - 50.0) / 50.0) * half_lg + lg_max
-  Protected y1.f = ((*p\option[3] - 50.0) / 50.0) * half_ht + 0.0
-  Protected x2.f = ((*p\option[4] - 50.0) / 50.0) * half_lg + lg_max
-  Protected y2.f = ((*p\option[5] - 50.0) / 50.0) * half_ht + ht_max
-  Protected x3.f = ((*p\option[6] - 50.0) / 50.0) * half_lg + 0.0
-  Protected y3.f = ((*p\option[7] - 50.0) / 50.0) * half_ht + ht_max
+    ; --- Précalcul des constantes de dimensions ---
+    Protected half_lg.f = lg * 0.5
+    Protected half_ht.f = ht * 0.5
+    Protected lg_max.f = lg - 1
+    Protected ht_max.f = ht - 1
 
-  ; Construction de l'homographie inverse
-  ; Basé sur la transformation projective de 4 points
-  Protected dx1.f = x1 - x2
-  Protected dx2.f = x3 - x2
-  Protected dx3.f = x0 - x1 + x2 - x3
-  Protected dy1.f = y1 - y2
-  Protected dy2.f = y3 - y2
-  Protected dy3.f = y0 - y1 + y2 - y3
+    ; --- Calcul des 4 coins destination (en % de décalage autour des coins réels) ---
+    ; On transforme le 0-100% (défaut 50%) en un décalage relatif au coin
+    Protected x0.f = ((\option[0] - 50.0) / 50.0) * half_lg + 0.0
+    Protected y0.f = ((\option[1] - 50.0) / 50.0) * half_ht + 0.0
+    Protected x1.f = ((\option[2] - 50.0) / 50.0) * half_lg + lg_max
+    Protected y1.f = ((\option[3] - 50.0) / 50.0) * half_ht + 0.0
+    Protected x2.f = ((\option[4] - 50.0) / 50.0) * half_lg + lg_max
+    Protected y2.f = ((\option[5] - 50.0) / 50.0) * half_ht + ht_max
+    Protected x3.f = ((\option[6] - 50.0) / 50.0) * half_lg + 0.0
+    Protected y3.f = ((\option[7] - 50.0) / 50.0) * half_ht + ht_max
 
-  ; Calcul du déterminant
-  Protected det.f = dx1 * dy2 - dx2 * dy1
-  
-  ; Vérification de la validité de la transformation
-  If Abs(det) < 0.0001
-    ; Transformation dégénérée : copie simple
-    For y = 0 To ht - 1
-      CopyMemory(*source + y * lg * 4, *cible + y * lg * 4, lg * 4)
-    Next y
-    ProcedureReturn
-  EndIf
+    ; --- Construction de l'homographie inverse ---
+    Protected dx1.f = x1 - x2
+    Protected dx2.f = x3 - x2
+    Protected dx3.f = x0 - x1 + x2 - x3
+    Protected dy1.f = y1 - y2
+    Protected dy2.f = y3 - y2
+    Protected dy3.f = y0 - y1 + y2 - y3
 
-  ; Coefficients de la transformation
-  Protected a13.f = (dx3 * dy2 - dx2 * dy3) / det
-  Protected a23.f = (dx1 * dy3 - dx3 * dy1) / det
-
-  ; Matrice d'homographie inverse [H⁻¹]
-  Protected h11.f = x1 - x0 + a13 * x1
-  Protected h12.f = x3 - x0 + a23 * x3
-  Protected h13.f = x0
-  Protected h21.f = y1 - y0 + a13 * y1
-  Protected h22.f = y3 - y0 + a23 * y3
-  Protected h23.f = y0
-  Protected h31.f = a13
-  Protected h32.f = a23
-  Protected h33.f = 1.0
-
-  ; Calcul de la portion de lignes à traiter
-  Protected startY.i = (*p\thread_pos * ht) / *p\thread_max
-  Protected stopY.i  = ((*p\thread_pos + 1) * ht) / *p\thread_max - 1
-  If stopY > ht - 1 : stopY = ht - 1 : EndIf
-
-  ; Variables de transformation
-  Protected denom.f, u.f, v.f
-  Protected u_int.i, v_int.i
-  Protected offset_dst.i, offset_src.i
-
-  ; Application de la transformation inverse
-  For y = startY To stopY
-    offset_dst = y * lg * 4
-
-    For x = 0 To lg - 1
-      ; Transformation homographique inverse : (x,y) → (u,v)
-      denom = h31 * x + h32 * y + h33
-
-      If Abs(denom) > 0.0001
-        u = (h11 * x + h12 * y + h13) / denom
-        v = (h21 * x + h22 * y + h23) / denom
-
-        ; Vérification des limites et échantillonnage
-        u_int = Int(u)
-        v_int = Int(v)
-
-        If u_int >= 0 And u_int < lg And v_int >= 0 And v_int < ht
-          offset_src = (v_int * lg + u_int) * 4
-          PokeL(*cible + offset_dst, PeekL(*source + offset_src))
-        Else
-          PokeL(*cible + offset_dst, $FF000000)  ; Noir opaque
-        EndIf
-      Else
-        PokeL(*cible + offset_dst, $FF000000)  ; Noir opaque
-      EndIf
-
-      offset_dst + 4
-    Next x
-  Next y
-EndProcedure
-
-
-; -------------------------------------------------------------------------------
-; PerspectiveHomography - Filtre de perspective avec homographie complète
-;
-; Description:
-;   Version avancée avec transformation homographique précise.
-;   Recommandé pour les déformations importantes.
-; -------------------------------------------------------------------------------
-Procedure PerspectiveHomography(*param.parametre)
-  Protected i.i
-
-  If *param\info_active
-    *param\typ = #FilterType_Deformation
-    *param\subtype = 0;"Géométrique avancée"
-    *param\name = "Perspective Homographique"
-    *param\remarque = "Transformation perspective précise (matrice 3x3)"
+    Protected det.f = dx1 * dy2 - dx2 * dy1
     
-    *param\info[0] = "Coin haut-gauche X (%)"
-    *param\info[1] = "Coin haut-gauche Y (%)"
-    *param\info[2] = "Coin haut-droit X (%)"
-    *param\info[3] = "Coin haut-droit Y (%)"
-    *param\info[4] = "Coin bas-droit X (%)"
-    *param\info[5] = "Coin bas-droit Y (%)"
-    *param\info[6] = "Coin bas-gauche X (%)"
-    *param\info[7] = "Coin bas-gauche Y (%)"
+    ; Vérification de la validité (déterminant non nul)
+    If Abs(det) < 0.0001
+      ; Copie simple par thread si transformation impossible
+      Protected start_Y.i = (\thread_pos * ht) / \thread_max
+      Protected stop_Y.i  = ((\thread_pos + 1) * ht) / \thread_max - 1
+      If stop_Y > ht - 1 : stop_Y = ht - 1 : EndIf
+      For y = start_Y To stop_Y
+        CopyMemory(*source + y * lg * 4, *cible + y * lg * 4, lg * 4)
+      Next y
+      ProcedureReturn
+    EndIf
 
-    For i = 0 To 7
-      *param\info_data(i, 0) = 0
-      *param\info_data(i, 1) = 100
-      *param\info_data(i, 2) = 50
-    Next i
+    ; Coefficients de la matrice
+    Protected a13.f = (dx3 * dy2 - dx2 * dy3) / det
+    Protected a23.f = (dx1 * dy3 - dx3 * dy1) / det
 
-    ProcedureReturn
-  EndIf
+    ; Matrice d'homographie [H]
+    Protected h11.f = x1 - x0 + a13 * x1
+    Protected h12.f = x3 - x0 + a23 * x3
+    Protected h13.f = x0
+    Protected h21.f = y1 - y0 + a13 * y1
+    Protected h22.f = y3 - y0 + a23 * y3
+    Protected h23.f = y0
+    Protected h31.f = a13
+    Protected h32.f = a23
+    Protected h33.f = 1.0
 
-  filter_start(@DrawTexturePerspective_MT(), 8, 1)
+    ; --- Configuration Multithreading ---
+    Protected startY.i = (\thread_pos * ht) / \thread_max
+    Protected stopY.i  = ((\thread_pos + 1) * ht) / \thread_max - 1
+    If stopY > ht - 1 : stopY = ht - 1 : EndIf
+
+    Protected denom.f, u.f, v.f
+    Protected u_int.i, v_int.i
+    Protected offset_dst.i, offset_src.i
+
+    ; --- Boucle de rendu ---
+    For y = startY To stopY
+      offset_dst = y * lg * 4
+
+      For x = 0 To lg - 1
+        ; Transformation homographique inverse : (x,y) cible -> (u,v) source
+        denom = h31 * x + h32 * y + h33
+
+        If Abs(denom) > 0.0001
+          u = (h11 * x + h12 * y + h13) / denom
+          v = (h21 * x + h22 * y + h23) / denom
+
+          u_int = Int(u)
+          v_int = Int(v)
+
+          If u_int >= 0 And u_int < lg And v_int >= 0 And v_int < ht
+            offset_src = (v_int * lg + u_int) * 4
+            PokeL(*cible + offset_dst, PeekL(*source + offset_src))
+          Else
+            PokeL(*cible + offset_dst, $00000000) ; Vide (Alpha 0)
+          EndIf
+        Else
+          PokeL(*cible + offset_dst, $00000000)
+        EndIf
+
+        offset_dst + 4
+      Next x
+    Next y
+  EndWith
 EndProcedure
 
+Procedure PerspectiveHomographyEx(*FilterCtx.FilterParams)
+  Restore PerspectiveHomography_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  With *FilterCtx
+    Create_MultiThread_MT(@PerspectiveHomography_MT())
+    mask_update(*FilterCtx, last_data)
+  EndWith
+EndProcedure
 
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 30
-; FirstLine = 69
+Procedure PerspectiveHomography(source, cible, mask, x0=50, y0=50, x1=50, y1=50, x2=50, y2=50, x3=50, y3=50)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = x0 : \option[1] = y0 ; Coin Haut-Gauche
+    \option[2] = x1 : \option[3] = y1 ; Coin Haut-Droit
+    \option[4] = x2 : \option[5] = y2 ; Coin Bas-Droit
+    \option[6] = x3 : \option[7] = y3 ; Coin Bas-Gauche
+  EndWith
+  PerspectiveHomographyEx(FilterCtx)
+EndProcedure
+
+DataSection
+  PerspectiveHomography_Data:
+  Data.s "PerspectiveHomography (probleme)"
+  Data.s "Transformation perspective complète par homographie (matrice 3x3)"
+  Data.i #FilterType_Deformation, #Artistic_Other
+  Data.s "H-G X (%)" : Data.i 0, 100, 50
+  Data.s "H-G Y (%)" : Data.i 0, 100, 50
+  Data.s "H-D X (%)" : Data.i 0, 100, 50
+  Data.s "H-D Y (%)" : Data.i 0, 100, 50
+  Data.s "B-D X (%)" : Data.i 0, 100, 50
+  Data.s "B-D Y (%)" : Data.i 0, 100, 50
+  Data.s "B-G X (%)" : Data.i 0, 100, 50
+  Data.s "B-G Y (%)" : Data.i 0, 100, 50
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 132
+; FirstLine = 93
 ; Folding = -
 ; EnableXP
 ; DPIAware

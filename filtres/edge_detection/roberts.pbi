@@ -1,5 +1,4 @@
-﻿
-; Conversion HSV → RGB (simple)
+﻿; Conversion HSV → RGB pour le mode orientation
 Procedure Roberts_RGBFromHSV(*r.Integer, *g.Integer, *b.Integer, h.f, s.f, v.f)
   Protected c.f = v * s
   Protected x.f = c * (1.0 - Abs(Mod(h / 60.0, 2.0) - 1.0))
@@ -21,175 +20,164 @@ Procedure Roberts_RGBFromHSV(*r.Integer, *g.Integer, *b.Integer, h.f, s.f, v.f)
   *b\i = Int((b1 + m) * 255.0)
 EndProcedure
 
-
-Procedure Roberts_MT(*param.parametre)
-  Protected *source = *param\addr[0]
-  Protected *cible  = *param\addr[1]
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected mul.f = *param\option[0]
-  Protected math = *param\option[1]
-  Protected toGray = *param\option[2]
-  Protected inverse = *param\option[3]
-  Protected seuillage = *param\option[4]
-  Protected orientation = *param\option[5]
-  Protected angle_add.f = *param\option[6]
-  
-  clamp(mul, 0, 100)
-  mul = mul * 0.05
-
-  Protected a, r, g, b
-  Protected r1, g1, b1, r2, g2, b2, r3, g3, b3, r4, g4, b4
-  Protected gxR, gxG, gxB, gyR, gyG, gyB
-  Protected valR, valG, valB, gx, gy, mag.f, angle.f
-  Protected *srcPixel.Pixel32
-  Protected *dstPixel.Pixel32
-  Protected x, y
-  Protected pitch = lg * 4  ; Optimisation : précalcul du pitch
-
-  Protected startPos = (*param\thread_pos * (ht - 1)) / *param\thread_max
-  Protected endPos   = ((*param\thread_pos + 1) * (ht - 1)) / *param\thread_max
-  
-  If startPos < 0 : startPos = 0 : EndIf
-  If endPos > ht - 1 : endPos = ht - 1 : EndIf
-  
-  For y = startPos To endPos - 1
-    ; Optimisation : calcul de la position de ligne une seule fois
-    Protected *srcLine = *source + y * pitch
-    Protected *srcLineNext = *srcLine + pitch
-    Protected *dstLine = *cible + y * pitch
+Procedure Roberts_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected mul.f = \option[0] * 0.05
+    Protected math = \option[1]       ; 0: SQR, 1: ABS
+    Protected toGray = \option[2]     ; Boolean
+    Protected inverse = \option[3]    ; Boolean
+    Protected seuillage = \option[4]  ; 0-255
+    Protected orientation = \option[5]; Boolean
+    Protected angle_add.f = \option[6]
     
-    For x = 0 To lg - 2
-      ; Optimisation : accès direct via offset
-      Protected offset = x * 4
+    Protected x, y, pitch = lg << 2
+    Protected a, r, g, b
+    Protected r1, g1, b1, r2, g2, b2, r3, g3, b3, r4, g4, b4
+    Protected gxR, gxG, gxB, gyR, gyG, gyB
+    Protected valR.f, valG.f, valB.f, gx, gy, mag.f, angle.f
+    Protected *srcPixel.Pixel32
+    Protected *dstPixel.Pixel32
+    
+    macro_calul_tread(ht)
+    
+    ; On s'arrête à ht-1 et lg-1 car Roberts utilise un voisinage 2x2 (x+1, y+1)
+    For y = thread_start To thread_stop - 1
+      If y >= ht - 1 : Break : EndIf
       
-      ; Lire les 4 pixels 2x2 pour le masque Roberts
-      *srcPixel = *srcLine + offset
-      getargb(*srcPixel\l, a, r1, g1, b1)
-
-      *srcPixel = *srcLine + offset + 4
-      getrgb(*srcPixel\l, r2, g2, b2)
-
-      *srcPixel = *srcLineNext + offset
-      getrgb(*srcPixel\l, r3, g3, b3)
-
-      *srcPixel = *srcLineNext + offset + 4
-      getrgb(*srcPixel\l, r4, g4, b4)
-
-      ; Calcul Roberts : Gx = pixel haut gauche - pixel bas droite
-      gxR = r1 - r4
-      gxG = g1 - g4
-      gxB = b1 - b4
-
-      ; Gy = pixel haut droite - pixel bas gauche
-      gyR = r2 - r3
-      gyG = g2 - g3
-      gyB = b2 - b3
+      Protected *srcLine = \addr[0] + (y * pitch)
+      Protected *srcLineNext = *srcLine + pitch
+      Protected *dstLine = \addr[1] + (y * pitch)
       
-      If orientation
-        ; ---- Mode orientation couleur ----
-        gx = gxR + gxG + gxB
-        gy = gyR + gyG + gyB
-        mag = Sqr(gx * gx + gy * gy) * mul
-        angle = ATan2(gy, gx) * 180.0 / #PI
+      For x = 0 To lg - 2
+        Protected offset = x << 2
         
-        ; Normalisation de l'angle entre 0 et 360
-        angle + angle_add
-        While angle < 0.0
-          angle + 360.0
-        Wend
-        While angle >= 360.0
-          angle - 360.0
-        Wend
+        ; Pixel (x, y)
+        *srcPixel = *srcLine + offset
+        getargb(*srcPixel\l, a, r1, g1, b1)
+        ; Pixel (x+1, y)
+        *srcPixel = *srcLine + offset + 4
+        getrgb(*srcPixel\l, r2, g2, b2)
+        ; Pixel (x, y+1)
+        *srcPixel = *srcLineNext + offset
+        getrgb(*srcPixel\l, r3, g3, b3)
+        ; Pixel (x+1, y+1)
+        *srcPixel = *srcLineNext + offset + 4
+        getrgb(*srcPixel\l, r4, g4, b4)
+
+        ; Gx = P(x,y) - P(x+1, y+1)
+        gxR = r1 - r4 : gxG = g1 - g4 : gxB = b1 - b4
+        ; Gy = P(x+1, y) - P(x, y+1)
+        gyR = r2 - r3 : gyG = g2 - g3 : gyB = b2 - b3
         
-        ; Clamp magnitude
-        If mag > 255.0 : mag = 255.0 : EndIf
-        
-        Roberts_RGBFromHSV(@valR, @valG, @valB, angle, 1.0, mag / 255.0)
-      Else
-        ; Calcul de la magnitude du gradient
-        If math
-          valR = Abs(gxR) + Abs(gyR)
-          valG = Abs(gxG) + Abs(gyG)
-          valB = Abs(gxB) + Abs(gyB)
+        If orientation
+          gx = gxR + gxG + gxB
+          gy = gyR + gyG + gyB
+          mag = Sqr(gx * gx + gy * gy) * mul
+          angle = ATan2(gx, gy) * 180.0 / #PI + angle_add
+          
+          ; Wrap angle
+          While angle < 0.0 : angle + 360.0 : Wend
+          While angle >= 360.0 : angle - 360.0 : Wend
+          
+          If mag > 255.0 : mag = 255.0 : EndIf
+          Roberts_RGBFromHSV(@r, @g, @b, angle, 1.0, mag / 255.0)
         Else
-          valR = Sqr(gxR * gxR + gyR * gyR) 
-          valG = Sqr(gxG * gxG + gyG * gyG) 
-          valB = Sqr(gxB * gxB + gyB * gyB) 
+          If math ; Mode ABS
+            valR = Abs(gxR) + Abs(gyR)
+            valG = Abs(gxG) + Abs(gyG)
+            valB = Abs(gxB) + Abs(gyB)
+          Else   ; Mode SQR
+            valR = Sqr(gxR * gxR + gyR * gyR) 
+            valG = Sqr(gxG * gxG + gyG * gyG) 
+            valB = Sqr(gxB * gxB + gyB * gyB) 
+          EndIf
+          
+          r = Int(valR * mul)
+          g = Int(valG * mul)
+          b = Int(valB * mul)
         EndIf
         
-        ; Appliquer multiplicateur
-        valR = valR * mul
-        valG = valG * mul
-        valB = valB * mul
-      EndIf
-      
-      ; Conversion en entier et clamp
-      r = Int(valR)
-      g = Int(valG)
-      b = Int(valB)
-      
-      clamp_rgb(r, g, b)
-      
-      ; Seuillage
-      If seuillage > 0
-        If r > seuillage : r = 255 : Else : r = 0 : EndIf
-        If g > seuillage : g = 255 : Else : g = 0 : EndIf
-        If b > seuillage : b = 255 : Else : b = 0 : EndIf
-      EndIf
-      
-      ; Passage en niveaux de gris si demandé
-      If toGray
-        r = (r * 77 + g * 150 + b * 29) >> 8
-        g = r
-        b = r
-      EndIf
+        ; Clamping et Seuillage
+        If r < 0 : r = 0 : ElseIf r > 255 : r = 255 : EndIf
+        If g < 0 : g = 0 : ElseIf g > 255 : g = 255 : EndIf
+        If b < 0 : b = 0 : ElseIf b > 255 : b = 255 : EndIf
+        
+        If seuillage > 0
+          If r > seuillage : r = 255 : Else : r = 0 : EndIf
+          If g > seuillage : g = 255 : Else : g = 0 : EndIf
+          If b > seuillage : b = 255 : Else : b = 0 : EndIf
+        EndIf
+        
+        If toGray
+          r = (r * 77 + g * 150 + b * 29) >> 8
+          g = r : b = r
+        EndIf
 
-      ; Inversion si demandé
-      If inverse
-        r = 255 - r
-        g = 255 - g
-        b = 255 - b
-      EndIf
+        If inverse
+          r = 255 - r : g = 255 - g : b = 255 - b
+        EndIf
 
-      ; Écrire le pixel dans la cible
-      *dstPixel = *dstLine + offset
-      *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
+        *dstPixel = *dstLine + offset
+        *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
+      Next
     Next
-  Next
+  EndWith
 EndProcedure
 
-Procedure Roberts(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_EdgeDetection
-    *param\subtype = #EdgeDetect_Gradient
-    *param\subtype = #EdgeDetect_Gradient
-    *param\name = "Roberts"
-    *param\remarque = "Détection 2 directions"
-    *param\info[0] = "multiply"
-    *param\info[1] = "math (ABS ou SQR)"
-    *param\info[2] = "Noir et blanc"
-    *param\info[3] = "inversion"
-    *param\info[4] = "seuillage : 0 = off"
-    *param\info[5] = "orientation"
-    *param\info[6] = "angle"
-    *param\info[7] = "masque"
-    *param\info_data(0, 0) = 0   : *param\info_data(0, 1) = 100 : *param\info_data(0, 2) = 10
-    *param\info_data(1, 0) = 0   : *param\info_data(1, 1) = 1   : *param\info_data(1, 2) = 0
-    *param\info_data(2, 0) = 0   : *param\info_data(2, 1) = 1   : *param\info_data(2, 2) = 0
-    *param\info_data(3, 0) = 0   : *param\info_data(3, 1) = 1   : *param\info_data(3, 2) = 0
-    *param\info_data(4, 0) = 0   : *param\info_data(4, 1) = 255 : *param\info_data(4, 2) = 0
-    *param\info_data(5, 0) = 0   : *param\info_data(5, 1) = 1   : *param\info_data(5, 2) = 0
-    *param\info_data(6, 0) = 0   : *param\info_data(6, 1) = 360 : *param\info_data(6, 2) = 0
-    *param\info_data(7, 0) = 0   : *param\info_data(7, 1) = 2   : *param\info_data(7, 2) = 0
-    ProcedureReturn
-  EndIf
-  filter_start(@Roberts_MT(), 7)
+Procedure RobertsEx(*FilterCtx.FilterParams)
+  Restore Roberts_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+
+  Create_MultiThread_MT(@Roberts_MT())
+  
+  mask_update(*FilterCtx, last_data)
 EndProcedure
 
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 187
-; FirstLine = 118
+Procedure Roberts(source, cible, mask, multiply=10, math=0, gray=0, inverse=0, seuil=0, orient=0, angle=0)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = multiply
+    \option[1] = math
+    \option[2] = gray
+    \option[3] = inverse
+    \option[4] = seuil
+    \option[5] = orient
+    \option[6] = angle
+  EndWith
+  RobertsEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  Roberts_data:
+  Data.s "Roberts"
+  Data.s "Détection de contours par l'opérateur de Roberts (gradient 2x2)"
+  Data.i #FilterType_EdgeDetection
+  Data.i #EdgeDetect_Gradient
+  
+  Data.s "Multiplicateur"
+  Data.i 0, 100, 10
+  Data.s "Math (0:SQR, 1:ABS)"
+  Data.i 0, 1, 0
+  Data.s "Niveaux de gris"
+  Data.i 0, 1, 0
+  Data.s "Inverser"
+  Data.i 0, 1, 0
+  Data.s "Seuillage (0=Off)"
+  Data.i 0, 255, 0
+  Data.s "Orientation (HSV)"
+  Data.i 0, 1, 0
+  Data.s "Angle d'ajustement"
+  Data.i 0, 360, 0
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 138
+; FirstLine = 125
 ; Folding = -
 ; EnableXP
 ; DPIAware

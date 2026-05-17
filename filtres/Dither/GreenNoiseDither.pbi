@@ -5,7 +5,7 @@
 ; Compromis entre Blue Noise (hautes fréquences) et White Noise (toutes fréquences)
 
 DataSection
-  GreenNoise:
+  GreenNoise_Matrix:
   Data.a 16, 48,  8, 40, 18, 50, 10, 42
   Data.a 32,  0, 56, 24, 34,  2, 58, 26
   Data.a 12, 44,  4, 36, 14, 46,  6, 38
@@ -16,114 +16,136 @@ DataSection
   Data.a 61, 29, 53, 21, 63, 31, 55, 23
 EndDataSection
 
-Procedure GreenNoise_MT(*param.parametre)
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected x, y, i, j
-  Protected oldR, oldG, oldB, newR, newG, newB
-  Protected a, r, g, b
-  Protected alphaValue, *currentPixel.Pixel32
-  Protected levels = *param\option[0]
-  Protected gray = *param\option[1]
-  Protected var.i
-  Protected threshold, noiseValue
-  Protected matrixDim = 8
-  Protected matrixMax.f = 63.0
-  Protected Dim greenNoise(7, 7)
-  
-  ; Charger la matrice Green Noise
-  Restore GreenNoise
-  For i = 0 To 7
-    For j = 0 To 7
-      Read.a greenNoise(i, j)
+Procedure GreenNoise_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[1]
+    Protected x, y, i, j
+    Protected oldR, oldG, oldB, newR, newG, newB
+    Protected a, r, g, b
+    Protected alphaValue, *currentPixel.Pixel32
+    Protected levels = \option[0]
+    Protected gray = \option[1]
+    Protected var.i
+    Protected threshold, noiseValue
+    Protected matrixDim = 8
+    Protected matrixMax.f = 63.0
+    Protected Dim greenNoise(7, 7)
+    
+    ; Charger la matrice Green Noise
+    Restore GreenNoise_Matrix
+    For i = 0 To 7
+      For j = 0 To 7
+        Read.a greenNoise(i, j)
+      Next
     Next
-  Next
-  
-  clamp(levels, 2, 64)
-  
-  ; Table de quantification (LUT)
-  Protected *ndc = AllocateMemory(256)
-  If Not *ndc : ProcedureReturn : EndIf
-  
-  Protected Steping.f = 255.0 / (levels - 1)
-  Protected reciprocal.f = 1.0 / Steping
-  
-  ; Précalcul de la table de quantification
-  For i = 0 To 255
-    var = Round(i * reciprocal, #PB_Round_Nearest)
-    var = var * Steping
-    clamp(var, 0, 255)
-    PokeA(*ndc + i, var)
-  Next
-  
-  Protected startPos = (*param\thread_pos * ht) / *param\thread_max
-  Protected endPos = ((*param\thread_pos + 1) * ht) / *param\thread_max - 1
-  
-  ; Facteur de seuil pour le dithering
-  Protected thresholdFactor.f = 255.0 / (matrixMax + 1.0)
-  
-  For y = startPos To endPos
-    For x = 0 To lg - 1
-      *currentPixel = *param\addr[1] + (y * lg + x) << 2
-      
-      ; Récupérer la valeur de la matrice Green Noise
-      noiseValue = greenNoise(y & 7, x & 7)
-      threshold = noiseValue * thresholdFactor
-      
-      getargb(*currentPixel\l, a, oldR, oldG, oldB)
-      alphaValue = a << 24
-      
-      If Not gray
-        ; Mode couleur
-        ; Ajouter le seuil avant quantification
-        r = oldR + threshold - 128
-        g = oldG + threshold - 128
-        b = oldB + threshold - 128
-        clamp(r, 0, 255)
-        clamp(g, 0, 255)
-        clamp(b, 0, 255)
-        
-        newR = PeekA(*ndc + r)
-        newG = PeekA(*ndc + g)
-        newB = PeekA(*ndc + b)
-        
-        *currentPixel\l = alphaValue | (newR << 16) | (newG << 8) | newB
-      Else
-        ; Mode niveaux de gris
-        g = (oldR * 77 + oldG * 150 + oldB * 29) >> 8
-        g + threshold - 128
-        clamp(g, 0, 255)
-        
-        newG = PeekA(*ndc + g)
-        *currentPixel\l = alphaValue | newG * $10101
-      EndIf
+    
+    clamp(levels, 2, 64)
+    
+    ; Table de quantification (LUT)
+    Protected *ndc = AllocateMemory(256)
+    If Not *ndc : ProcedureReturn : EndIf
+    
+    Protected Steping.f = 255.0 / (levels - 1)
+    Protected reciprocal.f = 1.0 / Steping
+    
+    ; Précalcul de la table de quantification
+    For i = 0 To 255
+      var = Round(i * reciprocal, #PB_Round_Nearest)
+      var = var * Steping
+      clamp(var, 0, 255)
+      PokeA(*ndc + i, var)
     Next
-  Next
-  
-  FreeMemory(*ndc)
+    
+    macro_calul_tread((ht))
+    
+    Protected startPos = thread_start
+    Protected endPos = thread_stop - 1
+    
+    ; Facteur de seuil pour le dithering
+    Protected thresholdFactor.f = 255.0 / (matrixMax + 1.0)
+    
+    For y = startPos To endPos
+      For x = 0 To lg - 1
+        *currentPixel = \addr[1] + (y * lg + x) << 2
+        
+        ; Récupérer la valeur de la matrice Green Noise
+        noiseValue = greenNoise(y & 7, x & 7)
+        threshold = noiseValue * thresholdFactor
+        
+        getargb(*currentPixel\l, a, oldR, oldG, oldB)
+        alphaValue = a << 24
+        
+        If Not gray
+          ; Mode couleur
+          ; Ajouter le seuil avant quantification
+          r = oldR + threshold - 128
+          g = oldG + threshold - 128
+          b = oldB + threshold - 128
+          clamp(r, 0, 255)
+          clamp(g, 0, 255)
+          clamp(b, 0, 255)
+          
+          newR = PeekA(*ndc + r)
+          newG = PeekA(*ndc + g)
+          newB = PeekA(*ndc + b)
+          
+          *currentPixel\l = alphaValue | (newR << 16) | (newG << 8) | newB
+        Else
+          ; Mode niveaux de gris
+          g = (oldR * 77 + oldG * 150 + oldB * 29) >> 8
+          g + threshold - 128
+          clamp(g, 0, 255)
+          
+          newG = PeekA(*ndc + g)
+          *currentPixel\l = alphaValue | newG * $10101
+        EndIf
+      Next
+    Next
+    
+    FreeMemory(*ndc)
+  EndWith
 EndProcedure
 
-Procedure GreenNoiseDither(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Dithering
-    *param\subtype = #Dither_Stochastic
-    *param\name = "Green Noise"
-    *param\remarque = "Green Noise ordered dithering (mid-frequency optimized)"
-    *param\info[0] = "Nb de niveaux"
-    *param\info[1] = "Noir et blanc"
-    *param\info[2] = "Masque"
-    *param\info_data(0, 0) = 2   : *param\info_data(0, 1) = 64  : *param\info_data(0, 2) = 6
-    *param\info_data(1, 0) = 0   : *param\info_data(1, 1) = 1   : *param\info_data(1, 2) = 0
-    *param\info_data(2, 0) = 0   : *param\info_data(2, 1) = 2   : *param\info_data(2, 2) = 0
-    
-    ProcedureReturn
-  EndIf
+Procedure GreenNoiseDitherEx(*FilterCtx.FilterParams)
+  Restore GreenNoise_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  filter_start(@GreenNoise_MT(), 2, 1)
+  With *FilterCtx
+    Create_MultiThread_MT(@GreenNoise_MT())
+    
+    mask_update(*FilterCtx.FilterParams , last_data)
+  EndWith
 EndProcedure
-; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 108
-; FirstLine = 53
+
+Procedure GreenNoiseDither(source, cible, mask, levels, gray)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = levels
+    \option[1] = gray
+  EndWith
+  GreenNoiseDitherEx(FilterCtx.FilterParams)
+EndProcedure
+
+DataSection
+  GreenNoise_data:
+  Data.s "GreenNoise"
+  Data.s "Green Noise ordered dithering (mid-frequency optimized)"
+  Data.i #FilterType_Dithering
+  Data.i #Dither_Stochastic
+  
+  Data.s "Nb de niveaux"       
+  Data.i 2, 64, 6
+  Data.s "Noir et blanc"   
+  Data.i 0, 1, 0
+  Data.s "XXX"  
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 121
+; FirstLine = 93
 ; Folding = -
 ; EnableXP
 ; DPIAware

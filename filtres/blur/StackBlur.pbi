@@ -1,11 +1,11 @@
 ﻿
 
-Procedure StackBlur_Horizontal_MT(*param.parametre)
-  Protected *source = *param\addr[0]
-  Protected *temp   = *param\addr[1]  ; image tampon
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected radiusX = *param\option[0]
+Procedure StackBlur_Horizontal_MT(*FilterCtx.FilterParams)
+  Protected *source = *FilterCtx\addr[0]
+  Protected *temp   = *FilterCtx\addr[1]  ; image tampon
+  Protected lg = *FilterCtx\image_lg[0]
+  Protected ht = *FilterCtx\image_ht[0]
+  Protected radiusX = *FilterCtx\option[0]
   If radiusX <= 0 Or *source = 0 Or *temp = 0 : ProcedureReturn : EndIf
   Protected x , y , i
   Protected r , g , b
@@ -63,12 +63,12 @@ Procedure StackBlur_Horizontal_MT(*param.parametre)
   FreeMemory(*stack)
 EndProcedure
 
-Procedure StackBlur_Vertical_MT(*param.parametre)
-  Protected *temp   = *param\addr[0]  ; image temp
-  Protected *cible  = *param\addr[1]
-  Protected lg = *param\lg
-  Protected ht = *param\ht
-  Protected radiusY = *param\option[1]
+Procedure StackBlur_Vertical_MT(*FilterCtx.FilterParams)
+  Protected *temp   = *FilterCtx\addr[0]  ; image temp
+  Protected *cible  = *FilterCtx\addr[1]
+  Protected lg = *FilterCtx\image_lg[0]
+  Protected ht = *FilterCtx\image_ht[0]
+  Protected radiusY = *FilterCtx\option[1]
   If radiusY <= 0 Or *temp = 0 Or *cible = 0 : ProcedureReturn : EndIf
   Protected x , y , i
   Protected r , g , b
@@ -126,60 +126,69 @@ Procedure StackBlur_Vertical_MT(*param.parametre)
   FreeMemory(*stack)
 EndProcedure
 
-Procedure StackBlur_boucle(*param.parametre)
+Procedure StackBlurEx(*FilterCtx.FilterParams)
+  
+  Restore StackBlur_data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
+  
+  With FilterCtx
+    Protected.l lg = \image_lg[0]
+    Protected.l ht = \image_ht[0]
+    ;-- Allocation mémoire pour l'image temporaire
+    \addr[2] = AllocateMemory(lg * ht * 4)
+    If \addr[2] = 0 : ProcedureReturn : EndIf
+
   Protected i 
-  CopyMemory(*param\addr[0] , *param\addr[1] , *param\lg * *param\ht * 4)
+  CopyMemory(\image[0] , \image[1] , \image_lg[0] * \image_ht[0] * 4)
   
-  For i = 1 To *param\option[2]
-    
-    *param\addr[0] = *param\addr[1]
-    *param\addr[1] = *param\addr[2]
-    MultiThread_MT(@StackBlur_Horizontal_MT())
-    
-    *param\addr[0] = *param\addr[2]
-    *param\addr[1] = *param\cible
-    MultiThread_MT(@StackBlur_Vertical_MT())
-    
+  For i = 1 To \option[2]
+    \addr[0] = \image[1]
+    \addr[1] = \addr[2]
+    Create_MultiThread_MT(@StackBlur_Horizontal_MT())
+    \addr[0] = \addr[2]
+    \addr[1] = \image[1]
+    Create_MultiThread_MT(@StackBlur_Vertical_MT())
   Next
+  
+  mask_update(*FilterCtx.FilterParams , last_data)
+  
+    If \addr[2] <> 0 : FreeMemory(\addr[2]) : EndIf
+  EndWith
 EndProcedure
 
-Procedure StackBlur(*param.parametre)
-  If *param\info_active
-    *param\typ = #FilterType_Blur
-    *param\subtype = #Blur_Classic
-    *param\name = "StackBlur"
-    *param\remarque = "Flou rapide par empilement"
-    *param\info[0] = "Radius X"
-    *param\info[1] = "Radius Y"
-    *param\info[2] = "Nombre de passe"
-    *param\info[3] = "Masque"
-    *param\info_data(0,0) = 1 : *param\info_data(0,1) = 100 : *param\info_data(0,2) = 5
-    *param\info_data(1,0) = 1 : *param\info_data(1,1) = 100 : *param\info_data(1,2) = 5
-    *param\info_data(2,0) = 1 : *param\info_data(2,1) = 3   : *param\info_data(2,2) = 1
-    *param\info_data(3,0) = 0 : *param\info_data(3,1) = 2   : *param\info_data(3,2) = 0
-    ProcedureReturn
-  EndIf
-  
-  clamp(*param\addr[0] , 1 , 100)
-  clamp(*param\addr[1] , 1 , 100)
-  clamp(*param\addr[2] , 1 , 3)
-  
-  *param\addr[2] = AllocateMemory(*param\lg * *param\ht * 4)
-  If *param\addr[2] = 0 : ProcedureReturn : EndIf
-  
-  Filter_BufferPrepare(*param.parametre)
-  StackBlur_boucle(*param.parametre)
-  macro_Filter_BufferFinalize(3)
-  
-  If *param\addr[2] <> 0 : FreeMemory(*param\addr[2]) : EndIf
-  
+Procedure StackBlur(source , cible , mask , rx , ry , ndp = 1)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = rx
+    \option[1] = ry
+    \option[2] = ndp
+  EndWith
+  StackBlurEx(FilterCtx.FilterParams)
 EndProcedure
 
+DataSection
+  StackBlur_data:
+  Data.s "StackBlur"
+  Data.s "Flou rapide par empilement"
+  Data.i #FilterType_Blur
+  Data.i #Blur_Classic
+  
+  Data.s "Rayon X"           ; Rayon horizontal
+  Data.i 1,100,1
+  Data.s "Rayon Y"           ; Rayon vertical
+  Data.i 1,100,1
+  Data.s "Nombre de passe"   ; Nombre d'itérations du filtre
+  Data.i 1,3,1
+  Data.s "XXX"
+EndDataSection
 
 
-
-; IDE Options = PureBasic 6.21 (Windows - x86)
-; CursorPosition = 103
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 142
+; FirstLine = 132
 ; Folding = -
 ; EnableXP
 ; DPIAware

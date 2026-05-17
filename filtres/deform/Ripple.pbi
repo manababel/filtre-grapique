@@ -1,146 +1,109 @@
-﻿; -------------------------------------------------------------------------------
-; Ripple_MT - Déformation sinusoïdale (ondulation) avec multi-threading
-;
-; Paramètres:
-;   *p.parametre - Pointeur vers la structure de paramètres
-;                  - option[0]: amplitude horizontale en pixels (0-100)
-;                  - option[1]: période horizontale en % de la hauteur (1-100%)
-;                  - option[2]: amplitude verticale en pixels (0-100)
-;                  - option[3]: période verticale en % de la largeur (1-100%)
-;
-; Description:
-;   Applique une déformation sinusoïdale (effet d'ondulation) à l'image.
-;   L'onde horizontale se propage verticalement (déplace les pixels sur X).
-;   L'onde verticale se propage horizontalement (déplace les pixels sur Y).
-;
-; Optimisations:
-;   - Précalcul des facteurs de normalisation
-;   - Précalcul des constantes trigonométriques
-;   - Utilisation d'offsets directs pour accès mémoire
-;   - Évitement des divisions répétées
-;   - Protection contre division par zéro sur les périodes
-; -------------------------------------------------------------------------------
-Procedure Ripple_MT(*p.parametre)
-  Protected x.i, y.i
-  Protected src_x.f, src_y.f
-  Protected src_x_int.i, src_y_int.i
-  Protected *source.Long = *p\addr[0]
-  Protected *cible.Long  = *p\addr[1]
-  Protected lg.i = *p\lg
-  Protected ht.i = *p\ht
+﻿; ==============================================================================
+; FILTRE RIPPLE (ONDULATION SINUSOÏDALE) - STRUCTURE RÉVISÉE
+; ==============================================================================
 
-  ; Précalcul des amplitudes (conversion directe en float)
-  Protected amp_x.f = *p\option[0]
-  Protected amp_y.f = *p\option[2]
+Procedure Ripple_MT(*p.FilterParams)
+  With *p
+    Protected x.i, y.i
+    Protected src_x.f, src_y.f
+    Protected src_x_int.i, src_y_int.i
+    Protected *source.Long = \addr[0]
+    Protected *cible.Long  = \addr[1]
+    Protected lg.i = \image_lg[0]
+    Protected ht.i = \image_ht[0]
 
-  ; Précalcul des périodes avec protection contre division par zéro
-  Protected period_x.f = (*p\option[1] / 100.0) * ht
-  Protected period_y.f = (*p\option[3] / 100.0) * lg
+    ; --- Précalculs des paramètres d'onde ---
+    Protected amp_x.f = \option[0] ; Amplitude en pixels
+    Protected amp_y.f = \option[2]
+
+    ; Périodes (évite division par zéro)
+    Protected period_x.f = (\option[1] / 100.0) * ht : If period_x < 0.1 : period_x = 0.1 : EndIf
+    Protected period_y.f = (\option[3] / 100.0) * lg : If period_y < 0.1 : period_y = 0.1 : EndIf
+
+    ; Facteurs de normalisation pour Sin()
+    Protected inv_period_x.f = (2.0 * #PI) / period_x
+    Protected inv_period_y.f = (2.0 * #PI) / period_y
+
+    ; --- Configuration Multithreading (macro_calcul_thread) ---
+    Protected startY.i = (\thread_pos * ht) / \thread_max
+    Protected stopY.i  = ((\thread_pos + 1) * ht) / \thread_max - 1
+    If stopY > ht - 1 : stopY = ht - 1 : EndIf
+
+    Protected offset_x.f, offset_y.f
+    Protected offset_dst.i, offset_src.i
+    Protected y_sin_factor.f
+
+    ; --- Traitement principal ---
+    For y = startY To stopY
+      ; L'onde horizontale (déplacement X) dépend de la position verticale (Y)
+      y_sin_factor = y * inv_period_x
+      offset_x = amp_x * Sin(y_sin_factor)
+      
+      offset_dst = y * lg * 4
+
+      For x = 0 To lg - 1
+        ; L'onde verticale (déplacement Y) dépend de la position horizontale (X)
+        offset_y = amp_y * Sin(x * inv_period_y)
+
+        ; Mapping inverse (backward mapping)
+        src_x = x + offset_x
+        src_y = y + offset_y
+
+        src_x_int = Int(src_x)
+        src_y_int = Int(src_y)
+
+        ; Échantillonnage avec gestion des limites
+        If src_x_int >= 0 And src_x_int < lg And src_y_int >= 0 And src_y_int < ht
+          offset_src = (src_y_int * lg + src_x_int) * 4
+          PokeL(*cible + offset_dst, PeekL(*source + offset_src))
+        Else
+          PokeL(*cible + offset_dst, $00000000) ; Vide (Alpha 0)
+        EndIf
+
+        offset_dst + 4
+      Next x
+    Next y
+  EndWith
+EndProcedure
+
+Procedure RippleEx(*FilterCtx.FilterParams)
+  Restore Ripple_Data
+  Protected last_data = Filter_InitAndValidate()
+  If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  If period_x < 0.1 : period_x = 0.1 : EndIf  ; Évite division par zéro
-  If period_y < 0.1 : period_y = 0.1 : EndIf
-
-  ; Précalcul des facteurs de normalisation pour la fonction sinus
-  Protected inv_period_x.f = (2.0 * #PI) / period_x
-  Protected inv_period_y.f = (2.0 * #PI) / period_y
-
-  ; Calcul de la portion de lignes à traiter par ce thread
-  Protected startY.i = (*p\thread_pos * ht) / *p\thread_max
-  Protected stopY.i  = ((*p\thread_pos + 1) * ht) / *p\thread_max - 1
-  If stopY > ht - 1 : stopY = ht - 1 : EndIf
-
-  ; Variables de boucle
-  Protected offset_x.f, offset_y.f
-  Protected offset_dst.i, offset_src.i
-  Protected y_sin_factor.f  ; Précalcul du facteur sinus pour Y (constant sur la ligne)
-
-  ; Traitement pixel par pixel
-  For y = startY To stopY
-    ; Précalcul de l'offset horizontal pour cette ligne (économise calculs répétés)
-    y_sin_factor = y * inv_period_x
-    offset_x = amp_x * Sin(y_sin_factor)
-    
-    offset_dst = y * lg * 4
-
-    For x = 0 To lg - 1
-      ; Calcul de l'offset vertical pour cette colonne
-      offset_y = amp_y * Sin(x * inv_period_y)
-
-      ; Calcul des coordonnées source avec déplacement sinusoïdal
-      src_x = x + offset_x
-      src_y = y + offset_y
-
-      ; Conversion en entiers et vérification des limites
-      src_x_int = Int(src_x)
-      src_y_int = Int(src_y)
-
-      If src_x_int >= 0 And src_x_int < lg And src_y_int >= 0 And src_y_int < ht
-        ; Échantillonnage du pixel source
-        offset_src = (src_y_int * lg + src_x_int) * 4
-        PokeL(*cible + offset_dst, PeekL(*source + offset_src))
-      Else
-        ; Pixel hors limites = noir transparent
-        PokeL(*cible + offset_dst, $00000000)
-      EndIf
-
-      offset_dst + 4
-    Next x
-  Next y
+  With *FilterCtx
+    Create_MultiThread_MT(@Ripple_MT())
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
 
-
-; -------------------------------------------------------------------------------
-; Ripple - Filtre de déformation sinusoïdale (ondulation)
-;
-; Paramètres:
-;   *param.parametre - Structure de paramètres du filtre
-;
-; Description:
-;   Applique un effet d'ondulation sinusoïdale à l'image.
-;   Permet de créer des vagues horizontales et/ou verticales.
-;
-; Paramètres utilisateur:
-;   [0] Amplitude horizontale en pixels (0-100, défaut=0)
-;   [1] Période horizontale en % de la hauteur (1-100%, défaut=1%)
-;   [2] Amplitude verticale en pixels (0-100, défaut=0)
-;   [3] Période verticale en % de la largeur (1-100%, défaut=1%)
-;
-; Utilisations:
-;   - Effet de drapeau flottant
-;   - Simulation d'ondulations aquatiques
-;   - Distorsions artistiques
-;   - Effet de chaleur/mirage
-; -------------------------------------------------------------------------------
-Procedure Ripple(*param.parametre)
-  Protected i.i
-
-  If *param\info_active
-    *param\typ = #FilterType_Deformation
-    *param\subtype = 0  ; "Géométrique"
-    *param\name = "Ripple (Ondulation)"
-    *param\remarque = "Déformation sinusoïdale créant un effet d'ondulation"
-    
-    *param\info[0] = "Amplitude horizontale (pixels)"
-    *param\info[1] = "Période horizontale (% hauteur)"
-    *param\info[2] = "Amplitude verticale (pixels)"
-    *param\info[3] = "Période verticale (% largeur)"
-    *param\info[4] = "masque"
-    
-    *param\info_data(0, 0) = 0 : *param\info_data(0, 1) = 100 : *param\info_data(0, 2) = 0
-    *param\info_data(2, 0) = 0 : *param\info_data(2, 1) = 100 : *param\info_data(2, 2) = 0
-    *param\info_data(1, 0) = 1 : *param\info_data(1, 1) = 100 : *param\info_data(1, 2) = 1
-    *param\info_data(3, 0) = 1 : *param\info_data(3, 1) = 100 : *param\info_data(3, 2) = 1
-    *param\info_data(4, 0) = 0 : *param\info_data(4, 1) = 2   : *param\info_data(4, 2) = 0
-    
-    ProcedureReturn
-  EndIf
-
-  ; Lancement du traitement multi-threadé (4 pour le masque, 1 nombre de thread)
-  filter_start(@Ripple_MT(), 4, 1)
+Procedure Ripple(source, cible, mask, ampX=5, perX=10, ampY=5, perY=10)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  With FilterCtx
+    \option[0] = ampX ; Amplitude X
+    \option[1] = perX ; Période X (% ht)
+    \option[2] = ampY ; Amplitude Y
+    \option[3] = perY ; Période Y (% lg)
+  EndWith
+  RippleEx(FilterCtx)
 EndProcedure
-; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 129
-; FirstLine = 70
+
+DataSection
+  Ripple_Data:
+  Data.s "Ripple"
+  Data.s "Déformation sinusoïdale simulant des ondes ou ondulations"
+  Data.i #FilterType_Deformation, #Artistic_Other
+  Data.s "Amp. Horiz (px)" : Data.i 0, 100, 5
+  Data.s "Pér. Horiz (%)"  : Data.i 1, 100, 10
+  Data.s "Amp. Vert (px)"  : Data.i 0, 100, 5
+  Data.s "Pér. Vert (%)"   : Data.i 1, 100, 10
+  Data.s "XXX"
+EndDataSection
+; IDE Options = PureBasic 6.40 (Windows - x64)
+; CursorPosition = 79
+; FirstLine = 51
 ; Folding = -
 ; EnableXP
 ; DPIAware
