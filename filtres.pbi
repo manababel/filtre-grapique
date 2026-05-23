@@ -28,6 +28,7 @@ DeclareModule filtres
     #FilterType_Convolution        ; Convolution personnalisée
     #FilterType_ColorSpace         ; Conversion d'espaces de couleur
     #FilterType_BlendModes         ; Modes de fusion / Mix
+    #FilterType_resize             ; redimensionne une image
     #FilterType_Other              ; Divers
   EndEnumeration
   
@@ -615,6 +616,31 @@ DeclareModule filtres
     #Filter_Blend_Glow                  ; Luminescence
     #Filter_Blend_Logarithmic           ; Logarithmique
     
+     
+    ; ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+    ; ▓ RESIZE
+    ; ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+    #Filter_2xSaIEx
+    #Filter_ResizeAdvMAME2x
+    #Filter_ResizeBell
+    #Filter_ResizeBicubic
+    #Filter_ResizeBilinear
+    #Filter_ResizeEPX
+    #Filter_ResizeHermite
+    #Filter_ResizeHq2x
+    #Filter_ResizeHq3x
+    #Filter_ResizeHq4x
+    #Filter_ResizeLanczos
+    #Filter_ResizeMitchell
+    #Filter_ResizeNearest
+    #Filter_ResizeScale2x
+    #Filter_ResizeSuperEagle
+    #Filter_ResizeXBRZ2x
+    #Filter_ResizeXBRZ3
+    #Filter_ResizeXBRZ4
+    #Filter_ResizeXBRZ5
+    #Filter_ResizeXBRZ6Ex
+    #Filter_SeamCarving_Energy
     
     ; ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
     ; ▓ OTHER / MISC FILTERS
@@ -646,6 +672,7 @@ DeclareModule filtres
     thread_pos.l         ; position du thread courant
     
     asm.l
+    asm_max.l ; language maximum supporter
     
     StructureUnion
       convol3.l[9] ; (3 * 3) 
@@ -686,6 +713,16 @@ DeclareModule filtres
   Declare Set_Mix(image)
   Declare Set_Mask(image)
   
+  Declare Set_thread(nb_de_thread)
+  Declare Set_language(langue)
+  Declare get_language()
+  Declare get_language_max()
+  
+  Declare DetectCPU()
+  
+  ;--
+  ;-- decalartion des fonctions
+  ;--
   ;-- DeclareModule Blur
   ;#Blur_Classic
   DeclareModule_filtresadd_function(BoxBlurEx , #Filter_BoxBlur)
@@ -1369,8 +1406,20 @@ DeclareModule filtres
   
   ;DeclareModule_filtresadd_function(fire , #Filter_other_fire)
   
-  Declare DetectCPU()
   
+  DeclareModule_filtresadd_function(resize2xSaIEx , #Filter_2xSaIEx)
+  Declare resize2xSaI(source, cible)
+  DeclareModule_filtresadd_function(ResizeAdvMAME2xEx , #Filter_ResizeAdvMAME2x)
+  Declare ResizeAdvMAME2x(source, cible)
+  
+  DeclareModule_filtresadd_function(ResizeHq2xEx , #Filter_ResizeHq2x)
+  Declare ResizeHq2x(source, cible)
+  
+  DeclareModule_filtresadd_function(ResizeScale2xEx , #Filter_ResizeScale2x)
+  Declare ResizeScale2x(source, cible)
+  
+  DeclareModule_filtresadd_function(ResizeXBRZ2xEx , #Filter_ResizeXBRZ2x)
+  Declare ResizeXBRZ2x(source, cible)
 EndDeclareModule
 
 
@@ -1495,14 +1544,11 @@ Module filtres
   
   ;----------------------------------------------------------
   ; Macro pour lancer un traitement multi-thread
-  Procedure Create_MultiThread_MT(proc , opt = 0)
-    Protected i
-    If opt > 0
-      clamp( opt , 1 , (CountCPUs(#PB_System_CPUs) * 0.5))
-    Else
-      opt = FilterCtx\thread
-      clamp( opt , 1 , (CountCPUs(#PB_System_CPUs) * 0.5))  
-    EndIf
+  Procedure Create_MultiThread_MT(proc , opt = 0) ; opt = nombre de threads imposé par le programme si différent de 0
+    Protected i , nombre_de_treads_max 
+    nombre_de_treads_max  = CountCPUs(#PB_System_CPUs) -1 ; maximum des threads - 1
+    If opt = 0 : opt = FilterCtx\thread : EndIf ; nombre de thread demandé par l'utimisateur
+    clamp( opt , 1 , nombre_de_treads_max)
     
     Protected Dim tr(opt)
     For i = 0 To opt - 1 : tr(i) = 0 : Next
@@ -1510,9 +1556,16 @@ Module filtres
       CopyStructure(@FilterCtx, @dim_FilterParams(i), FilterParams)
       dim_FilterParams(i)\thread_pos = i
       dim_FilterParams(i)\thread_max = opt
-      While tr(i) = 0 : tr(i) = CreateThread(proc, @dim_FilterParams(i)) : Delay(1) : Wend
+      tr(i) = CreateThread(proc, @dim_FilterParams(i))
+      If tr(i) = 0
+        Delay(10)
+        tr(i) = CreateThread(proc, @dim_FilterParams(i))
+        If tr(i) = 0
+          Break
+        EndIf
+      EndIf
     Next
-    For i = 0 To opt - 1 : If IsThread(tr(i)) > 0 : WaitThread(tr(i)) : EndIf : Next
+    For i = 0 To opt - 1 : If tr(i) And IsThread(tr(i)) > 0 : WaitThread(tr(i)) : EndIf : Next
     FreeArray(tr())
   EndProcedure
   
@@ -1566,12 +1619,14 @@ Module filtres
         ProcedureReturn -2
       EndIf
       
-      If test_taille = 0
+      If test_taille = 0 ; si test_taille = 0 , les tailles des image d'entree et de sortie doivent etre identique
         If (\image_lg[0] <> \image_lg[1]) Or (\image_ht[0] <> \image_ht[1])
           MessageRequester(\name, "les images doivent etre de la meme taille" , #PB_MessageRequester_Error)
           ProcedureReturn -2
         EndIf
       EndIf
+      
+      If \thread < 1 : \thread = 1 : EndIf
       
       \addr[0] = \image[0]
       \addr[1] = \image[1]
@@ -1957,6 +2012,26 @@ Module filtres
   
   ;-------------------------------------------------------------------
   
+  Procedure Set_thread(var)
+    FilterCtx\thread = var
+  EndProcedure
+  
+  Procedure Set_language(var)
+    clamp(var , 0 , 4)
+    FilterCtx\asm = var
+  EndProcedure
+  
+  Procedure get_language()
+    ProcedureReturn FilterCtx\asm
+  EndProcedure
+  
+  Procedure get_language_max()
+    ProcedureReturn FilterCtx\asm_max
+  EndProcedure
+  
+  
+  ;-------------------------------------------------------------------
+  
   Procedure LaplacianPyramidBlur_ScaleImage(*src, oldW, oldH, *dst, newW, newH)
     Protected x,y,sx,sy
     Protected fx.f, fy.f, dx, dy
@@ -2104,9 +2179,19 @@ Module filtres
     If ebx & #CPUID_EBX_AVX2   : Asm_Type = #Asm_AVX2   : EndIf
     If ebx & #CPUID_EBX_AVX512 : Asm_Type = #Asm_AVX512 : EndIf
     
+    FilterCtx\asm_max = 0
+    Select Asm_Type
+      Case #Asm_SSE2   : FilterCtx\asm_max = 1
+      Case #Asm_SSE42  : FilterCtx\asm_max = 2
+      Case #Asm_AVX2   : FilterCtx\asm_max = 3
+      Case #Asm_AVX512 : FilterCtx\asm_max = 4
+    EndSelect
+    
     ;Done = #True
     ProcedureReturn Asm_Type
   EndProcedure
+  
+  ;-- 
   
   ; --- Définition des tailles par thread ---
   #Reg_GP_Size  = 128   ; 16 registres * 8 octets
@@ -2277,8 +2362,9 @@ Module filtres
   ;#Blur_Classic
   XIncludeFile "blur_box_sse2.pbi"
   XIncludeFile "blur_box_sse4.pbi"
-  XIncludeFile "blur_box_avx2.pbi"
+  ;XIncludeFile "blur_box_avx2.pbi"
   XIncludeFile "blur_box.pbi"
+  
   XIncludeFile "blur_box_Guillossien.pbi"
   XIncludeFile "SummedArea.pbi"
   XIncludeFile "blur_IIR.pbi"
@@ -2586,12 +2672,35 @@ Module filtres
   ;IncludePath "filtres\other\"
   ;XIncludeFile "fire.pbi"
   ;CompilerEndIf
+  
+  IncludePath "filtres\scale\"
+  XIncludeFile "resize2xSaI.pbi"
+  XIncludeFile "ResizeAdvMAME2x.pbi"
+  XIncludeFile "ResizeBell.pbi"
+  XIncludeFile "ResizeBicubic.pbi"
+  XIncludeFile "ResizeBilinear.pbi"
+  XIncludeFile "ResizeEPX.pbi"
+  XIncludeFile "ResizeHermite.pbi"
+  XIncludeFile "ResizeHq2x.pbi"
+  XIncludeFile "ResizeHq3x.pbi"
+  XIncludeFile "ResizeHq4x.pbi"
+  XIncludeFile "ResizeLanczos.pbi"
+  XIncludeFile "ResizeMitchell.pbi"
+  XIncludeFile "ResizeNearest.pbi"
+  XIncludeFile "ResizeScale2x.pbi"
+  XIncludeFile "ResizeSuperEagle.pbi"
+  XIncludeFile "ResizeXBRZ2x.pbi"
+  XIncludeFile "ResizeXBRZ3.pbi"
+  XIncludeFile "ResizeXBRZ4.pbi"
+  XIncludeFile "ResizeXBRZ5.pbi"
+  XIncludeFile "ResizeXBRZ6Ex.pbi"
+  XIncludeFile "SeamCarving_Energy.pbi"
 EndModule
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 1658
-; FirstLine = 1643
-; Folding = -----------
+; CursorPosition = 1420
+; FirstLine = 1399
+; Folding = ------------
 ; Optimizer
 ; EnableXP
 ; DPIAware

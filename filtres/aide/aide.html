@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation Générale - Utilisation des Filtres Graphiques</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .header-banner {
+            background-color: #2c3e50;
+            color: #ffffff;
+            padding: 30px 25px;
+            margin-bottom: 30px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .header-banner h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .header-banner p {
+            margin: 10px 0 0 0;
+            font-size: 16px;
+            color: #3498db;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 8px;
+            margin-top: 40px;
+        }
+        h3 {
+            color: #34495e;
+            margin-top: 25px;
+            background: #eef2f5;
+            padding: 10px 14px;
+            border-left: 4px solid #3498db;
+            border-radius: 0 6px 6px 0;
+        }
+        ul, ol {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 12px;
+        }
+        strong {
+            color: #2c3e50;
+        }
+        .optimization-box {
+            background-color: #fcf8e3;
+            border: 1px solid #faebcc;
+            border-left: 5px solid #f0ad4e;
+            color: #8a6d3b;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 4px;
+        }
+        .optimization-box h4 {
+            margin: 0 0 10px 0;
+            color: #c9302c;
+            font-size: 18px;
+        }
+        .optimization-box strong {
+            color: #c9302c;
+        }
+        .info-box {
+            background-color: #e8f4fd;
+            border: 1px solid #d2e9fb;
+            border-left: 5px solid #3498db;
+            color: #2c3e50;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 4px;
+        }
+        .info-box h4 {
+            margin: 0 0 10px 0;
+            color: #2980b9;
+            font-size: 18px;
+        }
+        pre {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: "Consolas", "Courier New", Courier, monospace;
+            font-size: 14px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-top: 15px;
+        }
+        .comment {
+            color: #6a9955;
+            font-style: italic;
+        }
+        .keyword {
+            color: #569cd6;
+            font-weight: bold;
+        }
+        .string {
+            color: #ce9178;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-banner">
+        <h1>Guide d'Aide Général</h1>
+        <h1>Utilisation de la Bibliothèque de Filtres Graphiques sur CPU</h1>
+        <p>Principe de fonctionnement standardisé pour l'ensemble des filtres graphiques.</p>
+    </div>
+
+    <h2>Pourquoi ce guide général ?</h2>
+    <p>
+        La bibliothèque intègre beaucoup de filtres graphiques différents. Bien que les algorithmes mathématiques internes varient d'un filtre à l'autre (flous, détection de contours, ajustement de couleurs, distorsions, etc.), <strong>tous les filtres fonctionnent de façon similaire</strong> dans leur structure et leur syntaxe d'appel.
+    </p>
+    <p>Chaque filtre est systématiquement séparé en deux approches d'implémentation :</p>
+    <ul>
+        <li><strong>Option A (Fonction Standard) :</strong> Pour des appels directs, rapides, avec passage de paramètres classiques.</li>
+        <li><strong>Option B (Fonction Étendue "Ex") :</strong> Pour les structures de rendu complexes, la manipulation de pointeurs de mémoire brute ou les traitements par lots à l'aide d'un contexte persistant (<code>FilterCtx</code>).</li>
+    </ul>
+
+    <div class="info-box">
+        <h4>🖥️ Fonctionnement du logiciel de démonstration (Le Labo)</h4>
+        <p>
+            Bien que la bibliothèque propose de <strong>très nombreux filtres</strong>, sachez que la plupart sont présents à titre de pure démonstration technique et ne vous serviront pas tous . C'est pourquoi l'application vous permet de trier vos outils en ajoutant vos filtres préférés directement dans la section <strong>"Favoris"</strong> pour y accéder plus rapidement.
+        </p>
+        <p>
+            L'application de démonstration vous permet de manipuler et de combiner jusqu'à <strong>trois types d'images différents</strong> dans votre espace de travail :
+        </p>
+        <ul>
+            <li><strong>L'Image Source (Obligatoire) :</strong> C'est la base de votre travail, l'image principale qui subira la majorité des transformations.</li>
+            <li><strong>L'Image de Mixage (Optionnelle) :</strong> Cette image n'a qu'un seul but précis : fusionner son propre contenu avec l'image source. Pour l'activer, vous devez appliquer le filtre <strong>"Blend"</strong> situé dans le menu des filtres sous l'option <code>Filtre \ Blend modes</code>.</li>
+            <li><strong>L'Image de Masque (Optionnelle) :</strong> Cette couche sert exclusivement à appliquer un masque de détourage ou de transparence (niveaux de gris) sur votre image source afin de limiter la zone d'effet d'un traitement.</li>
+        </ul>
+        <p>
+            <strong>Comment cibler et appliquer un traitement ?</strong><br>
+            Les filtres de l'application sont polyvalents. Vous pouvez choisir d'appliquer un filtre sur n'importe laquelle de ces trois images en cours. Pour ce faire :
+        </p>
+        <ol>
+            <li><strong>Sélectionnez</strong> l'image désirée (Source, Mixage ou Masque) dans l'interface de la démo.</li>
+            <li>Choisissez votre filtre et configurez ses paramètres.</li>
+            <li>Cliquez sur le bouton <strong>"Appliquer =>"</strong> pour valider le traitement et mettre à jour le rendu en mémoire.</li>
+        </ol>
+    </div>
+
+    <div class="optimization-box">
+        <h4>💡 Astuce importante pour optimiser vos programmes</h4>
+        <p>
+            Étant donné que la bibliothèque a beaucoup de filtres similaires, inclure la totalité des fichiers peut alourdir inutilement votre exécutable final. 
+            <strong>Pour alléger la taille de votre programme et lui permettre de compiler beaucoup plus rapidement</strong>, vous pouvez faire le tri avant la compilation :
+        </p>
+        <ol>
+            <li>Dans la section <strong>"déclaration de module"</strong> (<code>DeclareModule</code> / <code>UseModule</code>), supprimez les déclarations des filtres dont vous n'avez pas besoin.</li>
+            <li>Dans la section des <strong>"includefile"</strong>, localisez les directives <code>XIncludeFile</code> et supprimez les liaisons vers les fichiers des filtres inutilisés.</li>
+        </ol>
+    </div>
+
+    <h2>Exemples d'implémentation générique (PureBasic)</h2>
+    <p><em>Les codes ci-dessous sont donnés à titre d'exemples théoriques (non fonctionnels). Ils décrivent la logique d'appel à utiliser. Il vous suffit de remplacer <code>NomDuFiltre</code> par le nom réel du traitement désiré.</em></p>
+
+    <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
+    <p>Idéal pour appliquer un filtre rapidement en passant les arguments à la suite.</p>
+    <pre><code><span class="keyword">IncludeFile</span> <span class="string">"filtres.pbi"</span>
+<span class="keyword">UseModule</span> filtres
+
+<span class="keyword">If</span> OpenWindow(0, 0, 0, 800, 600, <span class="string">"Exemple d'Appel Standard..."</span>, #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = 1
+  CibleImage  = 2
+  AucunMasque = 0
+  
+  <span class="comment">; Définition des paramètres requis (à adapter selon le filtre choisi)</span>
+  Parametre_A = 5 
+  Parametre_B = 12
+  ModeOption  = 0
+ 
+  file$ = OpenFileRequester(<span class="string">"Image"</span>,<span class="string">""</span>,<span class="string">""</span>,0)
+  <span class="keyword">If</span> load_image_32(SourceImage , file$) = 0
+    <span class="keyword">End</span>
+  <span class="keyword">Else</span>
+    ResizeImage(SourceImage, 800, 600)
+  <span class="keyword">EndIf</span>
+  
+  CopyImage(SourceImage, CibleImage)
+
+  <span class="comment">; Appel de la fonction : Remplacer "NomDuFiltre" par le filtre souhaité</span>
+  NomDuFiltre(SourceImage, CibleImage, AucunMasque, Parametre_A, Parametre_B, ModeOption)
+  
+  <span class="comment">; Note : L'image cible peut être identique à la source pour modifier l'original en mémoire :</span>
+  <span class="comment">; NomDuFiltre(SourceImage, SourceImage, AucunMasque, Parametre_A, Parametre_B, ModeOption)</span>
+  
+  StartDrawing(WindowOutput(0))
+    DrawImage(ImageID(CibleImage), 0, 0)
+  StopDrawing()
+  
+  <span class="keyword">Repeat</span>
+    Event = WaitWindowEvent()
+  <span class="keyword">Until</span> Event = #PB_Event_CloseWindow
+<span class="keyword">EndIf</span></code></pre>
+
+    <h3>Option B : Utilisation Avancée (Via Structure de Contexte / Mode Ex)</h3>
+    <p>Idéal pour manipuler les buffers mémoire, l'organisation de pointeurs, ou l'automatisation en chaîne.</p>
+    <pre><code><span class="keyword">IncludeFile</span> <span class="string">"filtres.pbi"</span>
+<span class="keyword">UseModule</span> filtres
+
+<span class="keyword">If</span> OpenWindow(0, 0, 0, 800, 600, <span class="string">"Exemple d'Appel Avancé Contextuel..."</span>, #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = 1
+  CibleImage  = 2
+   
+  file$ = OpenFileRequester(<span class="string">"Image"</span>,<span class="string">""</span>,<span class="string">""</span>,0)
+  <span class="keyword">If</span> load_image_32(SourceImage , file$) = 0
+    <span class="keyword">End</span>
+  <span class="keyword">Else</span>
+    ResizeImage(SourceImage, 800, 600)
+  <span class="keyword">EndIf</span>
+  
+  CopyImage(SourceImage, CibleImage)
+  
+  <span class="comment">; 1. Nettoyage initial de la structure du contexte</span>
+  Clear_Data_Filter(FilterCtx)
+  
+  <span class="comment">; 2. Attribution des options spécifiques dans le tableau de configuration</span>
+  FilterCtx\option[0] = 5  <span class="comment">; Équivalent au Paramètre A</span>
+  FilterCtx\option[1] = 12 <span class="comment">; Équivalent au Paramètre B</span>
+  FilterCtx\option[2] = 0  <span class="comment">; Équivalent au ModeOption</span>
+  
+  <span class="comment">; 3. Spécification de la source (3 syntaxes possibles selon vos besoins)</span>
+  Set_Source(SourceImage)
+  <span class="comment">; ou Set_SourceEx(adresse_memoire_image , lg , ht)</span>
+  <span class="comment">; ou FilterCtx\image[0] = adresse_memoire_image (et spécifier image_lg[0] et image_ht[0])</span>
+  
+  <span class="comment">; 4. Spécification de la cible</span>
+  Set_cible(CibleImage)
+  <span class="comment">; ou Set_CibleEx(adresse_memoire_image , lg , ht) si gestion directe en mémoire</span>
+  
+  <span class="comment">; Exécution du filtre étendu : Remplacer "NomDuFiltreEx" par le filtre désiré</span>
+  NomDuFiltreEx(FilterCtx)
+  
+  StartDrawing(WindowOutput(0))
+    DrawImage(ImageID(CibleImage), 0, 0)
+  StopDrawing()
+  
+  <span class="keyword">Repeat</span>
+    Event = WaitWindowEvent()
+  <span class="keyword">Until</span> Event = #PB_Event_CloseWindow
+<span class="keyword">EndIf</span></code></pre>
+
+</body>
+</html>

@@ -16,9 +16,22 @@ Enumeration
   #Menu_load_Mix
   #Menu_load_Mask
   
-  #save_bmp
-  #save_jpg
-  #save_clipboard
+  #save_bmp1
+  #save_jpg1
+  #save_png1
+  #save_clipboard1
+  #save_bmp2
+  #save_jpg2
+  #save_png2
+  #save_clipboard2
+  #save_bmp3
+  #save_jpg3
+  #save_png3
+  #save_clipboard3
+  #save_bmp4
+  #save_jpg4
+  #save_png4
+  #save_clipboard4
   #quit
   #mask_e
   #mask_d
@@ -27,6 +40,11 @@ Enumeration
   #copy2
   #copy3
   
+  #menu_image_source
+  #menu_image_mix
+  #menu_image_masque
+  #menu_image_travail
+  
   #boutton_Appliquer_source
   #boutton_Appliquer_mix
   #boutton_Appliquer_mask
@@ -34,12 +52,15 @@ Enumeration
   #resize
   #favoris
   #info_cpu
+  #info_image
   
   #boutton_Apercu
   #boutton_Auto_Rendu
   #boutton_mask
   #boutton_thread
   #boutton_asm
+  #boutton_aide
+  #boutton_fermer_filtre
   
   #frame_filters ; options toujour visible ( static )
   #frame_options ; options des filtres graphiques
@@ -49,6 +70,11 @@ Enumeration
   #canvas_miniature_source
   #canvas_miniature_mix
   #canvas_miniature_mask
+  
+  #menu_favori_trier_name
+  #menu_favori_trier_id
+  #menu_favori_trier_type
+  #menu_favori_supprimer
 EndEnumeration
 
 Enumeration images
@@ -66,10 +92,11 @@ Enumeration images
   
 EndEnumeration
 
-
 #filtre_pos = 1000
 #filtre_windows_pos = #filtre_pos + 1000
+#filtre_pos_sup = 5000
 
+Global img_save
 
 Global image_selected = -1
 
@@ -92,11 +119,11 @@ Structure my_gadget
   canvas_lg.l
   canvas_ht.l
   
-  boutton_px.l[9]
-  boutton_py.l[9]
-  boutton_lg.l[9]
-  boutton_ht.l[9]
-  boutton_text.s[9]
+  boutton_px.l[19]
+  boutton_py.l[19]
+  boutton_lg.l[19]
+  boutton_ht.l[19]
+  boutton_text.s[19]
   
 EndStructure
 Global entity.my_gadget
@@ -104,10 +131,12 @@ Global entity.my_gadget
 Structure filtre
   id.i
   name.s
+  type_filter.i
   remarque.s
   ht.i
   close.i
   thread.i
+  langue.i
   StructureUnion
     convol3.l[9] ; (3 * 3)
     convol5.l[25]; (5 * 5)
@@ -119,7 +148,22 @@ Structure filtre
 EndStructure
 Global NewList list_filtre.filtre()
 Global NewList list_filtre_selected.filtre()
+;Global NewList list_favoris.filtre()
 
+
+Structure favori_data
+  name.s
+  id.i
+  typ.i
+EndStructure
+Global NewList favori.favori_data()
+Global favori_write
+
+Structure filter_resize_stucture
+  id.i
+  name.s
+EndStructure
+Global NewList filter_resize.filter_resize_stucture()
 
 ; global pour la fenetre principale
 Global Window_SizeX.l
@@ -157,8 +201,8 @@ Global valider_mix = 0
 Global valider_mask = 0
 
 Global filtre_special_fire = 0
-;----------
 
+;----------
 
 Global track_drag.b = #False      ; Est-on en train de glisser ?
 Global track_id_drag.i = -1       ; Quel slider est actif ?
@@ -242,7 +286,7 @@ Structure FilterInfo
   typ.l
   subtype.l
 EndStructure
-Global Dim typ(99)
+Global Dim typ(999)
 
 
 ; ===============================
@@ -426,6 +470,8 @@ EndProcedure
 ; ===============================
 Procedure create_menu_filtre()
   
+  For i = 0 To 999 : typ(i)= 0 : Next
+  
   With FilterCtx
     \info_active = 1
     ; Liste temporaire pour tous les filtres
@@ -491,18 +537,237 @@ Procedure create_menu_filtre()
           create_menu_filtre_add_sp2(filterList() , #FilterType_Texture , "Texture" , 11)
         Case #FilterType_Convolution
           create_menu_filtre_add_sp2(filterList() , #FilterType_Convolution , "Convolution" , 12)
+        Case #FilterType_Resize
+          AddElement(filter_resize())
+          filter_resize()\name = filterList()\name
+          filter_resize()\id   = filterList()\id
         Default
-          create_menu_filtre_add_sp2(filterList() , filterList()\typ , "Autres" , 13) 
+          create_menu_filtre_add_sp2(filterList() , filterList()\typ , "Autres" , 14) 
       EndSelect
       
       PopListPosition(filterList())
     Next
     CloseSubMenu()
     \info_active = 0
+    ClearList(filterList()) 
   EndWith
 EndProcedure
 
 ;----------
+
+Procedure affiche_info_aide()
+  Protected t$, win, web
+  
+  t$ = GetCurrentDirectory() + "filtres\aide\aide.html"
+
+  If FileSize(t$) >= 0
+
+    ; #PB_Any génère automatiquement un numéro d'identifiant unique et libre
+    win = OpenWindow(#PB_Any, 0, 0, 800, 600, "aide", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+    
+    If win
+      ; On utilise aussi #PB_Any pour le gadget, lié à sa fenêtre
+      web = WebGadget(#PB_Any, 0, 0, 800, 600, "file://" + t$)
+    EndIf
+    
+  Else
+    Debug "Fichier HTML non trouvé : " + t$
+  EndIf
+EndProcedure
+
+
+Procedure affiche_info()
+  Protected t$, win, web
+  
+  t$ = GetCurrentDirectory() + "filtres\aide\" + List_filtre_selected()\name + ".html"
+
+  If FileSize(t$) >= 0
+
+    ; #PB_Any génère automatiquement un numéro d'identifiant unique et libre
+    win = OpenWindow(#PB_Any, 0, 0, 800, 600, List_filtre_selected()\name, #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+    
+    If win
+      ; On utilise aussi #PB_Any pour le gadget, lié à sa fenêtre
+      web = WebGadget(#PB_Any, 0, 0, 800, 600, "file://" + t$)
+    EndIf
+    
+  Else
+    Debug "Fichier HTML non trouvé : " + t$
+  EndIf
+EndProcedure
+
+
+;----------
+;--creation du menu
+Procedure create_menu_part1()
+  ClearList(filter_resize())
+  CreateMenu(0, WindowID(0))
+  MenuTitle("File")
+  
+  OpenSubMenu("Load")
+  MenuItem( #Menu_load_Source, "Load Image 1 (source)")
+  MenuItem( #Menu_load_Mix, "Load Image 2 (mixage)")
+  MenuItem( #Menu_load_Mask, "Load Mask (masque)")
+  CloseSubMenu()
+  
+  OpenSubMenu("Save")   
+    OpenSubMenu("source 1") 
+      MenuItem( #save_bmp1, "Save BMP")
+      MenuItem( #save_jpg1, "Save JPG")
+      MenuItem( #save_png1, "Save PNG")
+      MenuItem( #save_clipboard1, "Save Clipboard")
+    CloseSubMenu()
+    OpenSubMenu("source 2(mixage)") 
+      MenuItem( #save_bmp2, "Save BMP")
+      MenuItem( #save_jpg2, "Save JPG")
+      MenuItem( #save_png2, "Save PNG")
+      MenuItem( #save_clipboard2, "Save Clipboard")    
+    CloseSubMenu()
+    OpenSubMenu("masque") 
+      MenuItem( #save_bmp3, "Save BMP")
+      MenuItem( #save_jpg3, "Save JPG")
+      MenuItem( #save_png3, "Save PNG")
+      MenuItem( #save_clipboard3, "Save Clipboard")    
+    CloseSubMenu()
+    OpenSubMenu("image de travail") 
+      MenuItem( #save_bmp4, "Save BMP")
+      MenuItem( #save_jpg4, "Save JPG")
+      MenuItem( #save_png4, "Save PNG")
+      MenuItem( #save_clipboard4, "Save Clipboard")    
+    CloseSubMenu()  
+  CloseSubMenu()
+  MenuBar()
+  ;MenuTitle("Quit")
+  MenuItem( #quit, "Quit")
+    
+  ; la position de boutons n'est pas bonne , ils sont tous replacer dans le fonction resize_screen
+  ButtonGadget(#boutton_Appliquer_source, 5, 5, 110, 25, "Appliquer -> Source")
+  ButtonGadget(#boutton_Appliquer_mix,  120, 5, 110, 25, "Appliquer -> Mixage")
+  ButtonGadget(#boutton_Appliquer_mask, 235, 5, 110, 25, "Appliquer -> Masque")
+  ButtonGadget(#boutton_Apercu,         120, 5, 110, 25, "Apercu")
+  
+  ButtonGadget(#boutton_Auto_Rendu,     235, 5, 110, 25, "Auto_Rendu : Off", #PB_Button_Toggle)
+  SetGadgetState(#boutton_Auto_Rendu , 0)
+  
+  ButtonGadget(#boutton_mask,             5, 5, 110, 25, "afficher -> masque : Off" , #PB_Button_Toggle)
+  ButtonGadget(#boutton_thread,         120, 5, 110, 25, "affiche -> thread : Off" , #PB_Button_Toggle)
+  ButtonGadget(#boutton_asm,            235, 5, 110, 25, "affiche -> language : Off" , #PB_Button_Toggle)
+  
+  ButtonGadget(#boutton_aide,             5, 5, 110, 25, "Aide")
+  ButtonGadget(#boutton_fermer_filtre,  120, 5, 110, 25, "Fermer tous les filtres")
+  
+  FrameGadget(#frame_filters, 0, 0, 10, 10, "" ,#PB_Frame_Flat)
+  FrameGadget(#frame_options, 0, 0, 10, 10, "" ,#PB_Frame_Flat)
+  
+  create_menu_filtre()
+  
+  MenuTitle("resize")
+  ForEach filter_resize()
+    MenuItem( filter_resize()\id, filter_resize()\name)
+  Next
+  
+  MenuTitle("Favoris")
+  OpenSubMenu("Favoris")
+EndProcedure
+
+Procedure create_menu_part2()
+  CloseSubMenu()
+  OpenSubMenu("trier") 
+  MenuItem( #menu_favori_trier_name, "trier par nom")
+  MenuItem( #menu_favori_trier_id, "trier par ID")
+  MenuItem( #menu_favori_trier_type, "trier par type")
+  CloseSubMenu()
+  OpenSubMenu("supprimer") 
+  ForEach favori()
+    MenuItem(#filtre_pos_sup + favori()\id , favori()\name)
+  Next
+  CloseSubMenu()
+  MenuTitle("info")
+  MenuItem( #info_cpu, "info_cpu")
+  MenuItem( #info_image, "info_image")
+EndProcedure
+
+;----------
+Procedure load_favori()
+  Protected t$
+  ; #PS$ s'adapte automatiquement : "\" sur Windows, "/" sur Mac/Linux
+  t$ = GetCurrentDirectory() + "filtres" + #PS$ + "favori"
+  
+  If OpenFile(0, t$)
+    ClearList(favori())
+    While Eof(0) = 0
+      l$ = ReadString(0) ; Note : C'est ReadString(0) pour lire une ligne de texte
+                         ; On nettoie les espaces inutiles et on vérifie que la ligne n'est pas vide
+      l$ = Trim(l$)
+      If l$ <> ""
+        AddElement(favori())
+        ; StringField(chaîne, position, "séparateur")
+        favori()\name = StringField(l$, 1, ",")
+        favori()\id   = Val(StringField(l$, 2, ","))
+        favori()\typ  = Val(StringField(l$, 3, ","))
+      EndIf
+    Wend
+    CloseFile(0)
+    ForEach favori()
+      MenuItem(#filtre_pos + favori()\id , favori()\name)
+    Next
+  Else
+    If CreateFile(0, t$) ; Si OpenFile échoue, on tente de le créer
+      Debug "Le fichier n'existait pas, il a été créé."
+      CloseFile(0)
+    Else
+      favori_write = 1 ; impossible de creer un fichier
+      Debug "Impossible de créer le fichier (vérifiez que le dossier 'filtre' existe)."
+    EndIf
+  EndIf
+EndProcedure
+
+Procedure add_favori(nom$ , id ,typ)
+  With favori()
+    ForEach favori()
+      If \name = nom$ : ProcedureReturn : EndIf
+    Next
+    AddElement(favori())
+    \name = nom$
+    \id = id
+    \typ = typ
+    t$ = GetCurrentDirectory() + "filtres" + #PS$ + "favori"
+    If OpenFile(0, t$) And favori_write = 0
+      ForEach favori()
+        l$ = \name + "," + Str(\id) + "," + Str(\typ)
+        WriteStringN(0,l$)
+      Next
+      CloseFile(0)
+      l$ = "Le filtre " + \name + " a bien été ajouté dans vos favoris."
+      MessageRequester("Ajouter un filtre en favori", l$, #PB_MessageRequester_Ok)
+      create_menu_part1()
+      ForEach favori()
+        MenuItem(#filtre_pos + \id , \name)
+      Next
+      create_menu_part2()
+    EndIf 
+  EndWith
+EndProcedure
+
+Procedure update_favori()
+    If favori_write = 1 : ProcedureReturn : EndIf
+    t$ = GetCurrentDirectory() + "filtres" + #PS$ + "favori"
+    If OpenFile(0, t$)
+      ForEach favori()
+        l$ = favori()\name + "," + Str(favori()\id) + "," + Str(favori()\typ)
+        WriteStringN(0,l$)
+      Next
+      CloseFile(0)
+      create_menu_part1()
+      ForEach favori()
+        MenuItem(#filtre_pos + favori()\id , favori()\name)
+      Next
+      create_menu_part2()
+    EndIf 
+EndProcedure
+
+;----------
+
 Procedure draw_bouton(px , py , lg , ht , mx , my , clic ,  t$ = "" , c1 = $ffffff , opt = 0)
   Protected c2, c3, lg_text, var = 0
   
@@ -544,7 +809,8 @@ Procedure bouton_filtre_up_down(px , py , lg , ht , mx, my , clic , t$)
   
   draw_bouton(px , py , lg , ht , 0 , 0 , clic)
   ;Box(px, py, lg, ht, col)
-  DrawText(px + 4, py, t$, col)
+  DrawRotatedText(px  , py + 13 , t$, 90, col)
+  ;DrawText(px + 5, py + 1, t$, col)
   
   If clic And over = 1
     ProcedureReturn 1
@@ -560,10 +826,10 @@ Procedure bouton_quit(px , py , tx , ty , mx , my)
     List_filtre_selected()\close = 1
   EndIf
   draw_bouton(px , py , tx , ty , 0 , 0 , clic)
-  DrawText(px + 2 , py , "X" , col)
+  DrawText(px + 3 , py + 1 , "X" , col)
 EndProcedure
 
-Procedure.f bouton_TrackBar(id_unique, x.f, y.f, w.f, h.f, vmin.f, vmax.f, var.f, mx.f, my.f, clic)
+Procedure.f bouton_TrackBar(id_unique, x.f, y.f, w.f, h.f, vmin.f, vmax.f, var.f, mx.f, my.f, clic , opt = 0)
   Protected knobX.f, over = #False, col
   Protected nv.f
   
@@ -593,6 +859,7 @@ Procedure.f bouton_TrackBar(id_unique, x.f, y.f, w.f, h.f, vmin.f, vmax.f, var.f
     If nv < 0 : nv = 0 : EndIf
     If nv > 1 : nv = 1 : EndIf
     var = vmin + nv * (vmax - vmin)
+    If opt : var = Int(var) : EndIf
   EndIf
   
   ; --- DESSIN --- (Le reste du code de dessin inchangé)
@@ -622,8 +889,10 @@ Procedure add_filtre(pos)
       
       list_filtre_selected()\id = pos
       list_filtre_selected()\name = \name
+      list_filtre_selected()\type_filter = \typ
       list_filtre_selected()\remarque = \remarque
-      If list_filtre_selected()\remarque <> "" : list_filtre_selected()\ht + 1 : EndIf 
+      list_filtre_selected()\ht = 1  
+      list_filtre_selected()\thread = \thread
       For i = 0 To 19
         If \info[i] = "" :Break : EndIf
         list_filtre_selected()\info(i) = \info[i]
@@ -649,7 +918,7 @@ EndProcedure
 
 
 Procedure update_filtre(clic)
-  
+  StartDrawing(CanvasOutput(#canvas_option))
   With entity
     Box(0,0,\canvas_lg , \canvas_ht , $ffffff)
     
@@ -667,15 +936,23 @@ Procedure update_filtre(clic)
     ht = 0
     py = ht
     
+    If clic = 10
+      clic = 0
+      ForEach list_filtre_selected()
+        DeleteElement(list_filtre_selected())
+      Next
+    EndIf
+    
     ForEach list_filtre_selected()
       
       If List_filtre_selected()\close = 1 And clic = 1
         DeleteElement(list_filtre_selected(),1)
+        StopDrawing()
         ProcedureReturn 0
       EndIf
       
       ; determine la taille de la fentre des options
-      ht = ((List_filtre_selected()\ht + 1) + GetGadgetState(#boutton_mask) + GetGadgetState(#boutton_thread) )* size 
+      ht = ((List_filtre_selected()\ht + 1) + GetGadgetState(#boutton_mask) + GetGadgetState(#boutton_thread) + GetGadgetState(#boutton_asm))* size 
       
       ; modifie la taille de la fentre des options pour la convolution
       opt_boutton = 0
@@ -691,7 +968,7 @@ Procedure update_filtre(clic)
           opt_boutton = 7
       EndSelect
       
-      ; affiche les fentres des options
+      ;-- affiche les fentres des options
       If mx >= option_px And mx <= (option_px + option_lg) And my >= (option_py + py) And my <= (option_py + ht + py)
         Box(option_px + 0, option_py + py + 0 , option_lg + 0, ht + 0 , $00ff00)
         Box(option_px + 1, option_py + py + 1 , option_lg - 2, ht - 2 , $333333)
@@ -699,14 +976,16 @@ Procedure update_filtre(clic)
         Box(option_px + 0, option_py + py + 0 , option_lg + 0, ht + 0 , $333333)
       EndIf
       
-      ; affiche le bouton "quitter"
-      bouton_quit(option_px + option_lg - 17 , py + 6 , 16 , 16 , mx , my)
+      bx = option_px + option_lg - 70
+      by = option_py + py
+            
+      ;-- affiche le bouton "quitter"
+      bouton_quit(option_px + option_lg - 19 , by + 1, 18 , 18 , mx , my)
       
       ; === BOUTONS :  Monter / Descendre 
-      bx = option_px + option_lg - 80
-      by = option_py + py + 2
-      
-      If bouton_filtre_up_down(bx , by , 16 , 16 , mx, my , clic , "↑")
+      ;-- affiche le bouton "monter"
+      ;If bouton_filtre_up_down(bx , by + 1, 18 , 18 , mx, my , clic , "↑")
+      If bouton_filtre_up_down(bx , by + 1, 18 , 18 , mx, my , clic , ">")
         If ListSize(list_filtre_selected()) > 0 
           *pos = @list_filtre_selected()
           If PreviousElement(list_filtre_selected()) <> 0
@@ -716,7 +995,8 @@ Procedure update_filtre(clic)
         EndIf
       EndIf
       
-      If bouton_filtre_up_down((bx + 20) , by , 16 , 16 , mx, my , clic , "↓")
+      ;-- affiche le bouton "descendre"
+      If bouton_filtre_up_down((bx + 20) , by + 1 , 18 , 18 , mx, my , clic , "<")
         If ListSize(list_filtre_selected()) > 0
           *pos = @list_filtre_selected()
           If NextElement(list_filtre_selected()) <> 0
@@ -726,11 +1006,19 @@ Procedure update_filtre(clic)
         EndIf
       EndIf
       
+      ;-- affiche le bouton "help"
+      If draw_bouton(option_px + option_lg - 70 , by + size, 30 , 18 , mx , my , clic , "aide") : affiche_info() : EndIf
+
       
+      ;-- affiche le bouton "add"
+      If draw_bouton(option_px + option_lg - 35 , by + size, 30 , 18 , mx , my , clic , "add")
+        add_favori(List_filtre_selected()\name , list_filtre_selected()\id , list_filtre_selected()\type_filter)
+      EndIf
+      
+      ;-- affiche le nom du filtre
       DrawText(option_px + 2 + 200 , py + 3, List_filtre_selected()\name)
       py + size
-      If List_filtre_selected()\remarque <> ""
-        DrawText(option_px + 1 , py + 3, List_filtre_selected()\remarque )
+      If  DrawText(option_px + 1 , py + 3, List_filtre_selected()\remarque )
         py + size
       EndIf
       
@@ -786,7 +1074,7 @@ Procedure update_filtre(clic)
         py + size
       Next
       
-      ; affiche la grille de boutton pour les filtres de convolution
+      ;-- affiche la grille de boutton pour les filtres de convolution
       If opt_boutton > 0
         Protected mat_idx = 0
         Protected txt_mat$
@@ -822,8 +1110,8 @@ Procedure update_filtre(clic)
       EndIf
       
       
- 
-      ; option de l'affichage des parametres du masque
+      
+      ;-- option de l'affichage des parametres du masque
       If GetGadgetState(#boutton_mask) 
         Protected val_int.i = Int(List_filtre_selected()\opt(i, 2))
         DrawText(option_px + 2, py + 3, "Masque")
@@ -847,31 +1135,46 @@ Procedure update_filtre(clic)
         py + size
       EndIf
       
-      ; option de l'affichage des parametres des threads
+      ;-- option de l'affichage des parametres des threads
       If GetGadgetState(#boutton_thread) 
-        var = CountCPUs(#PB_System_CPUs) * 0.5
-        If var < 1 : var = 1 : EndIf
-        If var > 8 : var = 8 : EndIf
-        
+        val_max = CountCPUs(#PB_System_CPUs) - 1
+        If val_max < 1 : val_max = 1 : EndIf
+        val_min = 1
         DrawText(option_px + 2, py + 3, "threads")
-        l = 3 : l1 = 240 / 8 : l2 = l1 - 10 : l3 = (l1 - l2) * 0.5
-        For i = 1 To var
-          pn = option_px + 200 + ((i-1) * l1) + l3
-          opt = 0
-          If i = List_filtre_selected()\thread : opt = 1 : EndIf
-          If draw_bouton(pn, py + 3, l2, 18, mx, my, clic, Str(i), $ffffff, opt)
-            List_filtre_selected()\thread = i
-            valider = 1
-          EndIf
-        Next
-        
+        mem = List_filtre_selected()\thread
+        res = bouton_TrackBar(current_id, option_px + 200, py + 3, 240, 18, val_min, val_max, List_filtre_selected()\thread, mx, my, clic , 1)
+        If res And mem <> res
+          List_filtre_selected()\thread = res
+          mem = res
+          valider = 1
+        EndIf     
         py + size
       Else
         List_filtre_selected()\thread = 4 ; active 4 threads par defaut
       EndIf
+      
+      ;-- option de l'affichage des parametres du language de programmation
+      If GetGadgetState(#boutton_asm) 
+        DrawText(option_px + 2, py + 3, "Language") ; Correction orthographe "Language"
+        l1 = 240 / 4 : l2 = l1 - 8 : l3 = 0
+        If get_language_max() = 4 : l3 = -20 : EndIf
+        For j = 0 To get_language_max()
+          pn = option_px + 200 + (j * l1) + l3
+          txt$ = StringField("PB,SSE2,SSE4,AVX2,AVX512", j + 1, ",")
+          ;opt = Bool(j = get_language())
+          opt = Bool( j = List_filtre_selected()\langue)
+          If draw_bouton(pn, py + 3, l2, 18, mx, my, clic, txt$, $ffffff, opt)
+            List_filtre_selected()\langue = j
+            set_language(j) : valider = 1
+          EndIf
+        Next
+        py + size
+      EndIf
+      
       py + 4
     Next
   EndWith
+  StopDrawing()
   ProcedureReturn valider
 EndProcedure
 
@@ -985,6 +1288,18 @@ Procedure resize_screen()
     \boutton_ht[7] = 24
     ResizeGadget(#boutton_asm , \boutton_px[7], \boutton_py[7], \boutton_lg[7], \boutton_ht[7])
     
+    \boutton_px[8] = \boutton_px[0]
+    \boutton_py[8] = \boutton_py[3] + 50
+    \boutton_lg[8] = lg
+    \boutton_ht[8] = 24
+    ResizeGadget(#boutton_aide , \boutton_px[8], \boutton_py[8], \boutton_lg[8], \boutton_ht[8])
+    
+    \boutton_px[9] = \boutton_px[1] + lg + 10
+    \boutton_py[9] = \boutton_py[3] + 50
+    \boutton_lg[9] = lg
+    \boutton_ht[9] = 24
+    ResizeGadget(#boutton_fermer_filtre , \boutton_px[9], \boutton_py[9], \boutton_lg[9], \boutton_ht[9])
+    
     StartDrawing(CanvasOutput(#canvas_option))
     Box(0,0,\canvas_lg , \canvas_ht , $ffffffff)
     StopDrawing()
@@ -994,14 +1309,13 @@ Procedure resize_screen()
     \canvas_ht = \frame1_ht - \frame2_ht - 15
     ResizeGadget(#canvas_option, \canvas_px , \canvas_py , \canvas_lg , \canvas_ht )
   EndWith
-  
+  update_filtre(0)
 EndProcedure
 
+
+
 ;----------
-
-
 ;-- programme
-
 
 ExamineDesktops()
 Window_SizeX = DesktopWidth(0)
@@ -1015,58 +1329,14 @@ Miniature_decal = 1.5 * Window_SizeY / 100
 
 If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget)
   
-  
-  ;--creation du menu
-  CreateMenu(0, WindowID(0))
-  MenuTitle("File")
-  
-  OpenSubMenu("Load")
-  MenuItem( #Menu_load_Source, "Load Image 1 (source)")
-  MenuItem( #Menu_load_Mix, "Load Image 2 (mixage)")
-  MenuItem( #Menu_load_Mask, "Load Mask (masque)")
-  CloseSubMenu()
-  
-  OpenSubMenu("Save")   
-  MenuItem( #save_bmp, "Save BMP")
-  MenuItem( #save_jpg, "Save JPG")
-  MenuItem( #save_clipboard, "Save Clipboard")
-  CloseSubMenu()
-  MenuBar()
-  ;MenuTitle("Quit")
-  MenuItem( #quit, "Quit")
-  
-  MenuTitle("Valider")
-  MenuItem( #copy1 , "modifier la source 1")
-  MenuItem( #copy2 , "modifier la source 2")
-  MenuItem( #copy3 , "modifier le Mask")
-  
-  
-  ButtonGadget(#boutton_Appliquer_source, 5, 5, 110, 25, "Appliquer -> Source")
-  ButtonGadget(#boutton_Appliquer_mix, 120, 5, 110, 25, "Appliquer -> Mixage")
-  ButtonGadget(#boutton_Appliquer_mask, 235, 5, 110, 25, "Appliquer -> Masque")
-  ButtonGadget(#boutton_Apercu, 120, 5, 110, 25, "Apercu")
-  
-  ButtonGadget(#boutton_Auto_Rendu, 235, 5, 110, 25, "Auto_Rendu : Off", #PB_Button_Toggle)
-  SetGadgetState(#boutton_Auto_Rendu , 0)
-  
-  ButtonGadget(#boutton_mask, 5, 5, 110, 25, "afiicher -> masque" , #PB_Button_Toggle)
-  ButtonGadget(#boutton_thread, 120, 5, 110, 25, "affiche -> thread" , #PB_Button_Toggle)
-  ButtonGadget(#boutton_asm, 235, 5, 110, 25, "affiche -> language" , #PB_Button_Toggle)
-  
-  FrameGadget(#frame_filters, 0, 0, 10, 10, "" ,#PB_Frame_Flat)
-  FrameGadget(#frame_options, 0, 0, 10, 10, "" ,#PB_Frame_Flat)
-  
-  MenuTitle("resize")
-  
-  create_menu_filtre()
-  
-  MenuTitle("Favoris")
-  
-  MenuTitle("info")
-  MenuItem( #info_cpu, "info_cpu")
-  
-  ;CanvasGadget(0, 0, 0, Window_SizeX, Window_SizeY )
-  
+  create_menu_part1()
+  load_favori()
+  create_menu_part2()
+  FirstElement(filter_resize())
+  resize_start = filter_resize()\id
+  LastElement(filter_resize())
+  resize_stop = filter_resize()\id
+    
   CanvasGadget(#canvas_affichage, 0, 0, 1, 1 , 0) ; fentre d'affichage du rendu
   CanvasGadget(#canvas_miniature_source, 0, 0, 1, 1 , 0 )
   CanvasGadget(#canvas_miniature_mix, 0, 0, 1, 1 , 0 )
@@ -1096,8 +1366,13 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
       Select Event
           
         Case #PB_Event_CloseWindow
-          ; liberer la memoire
-          End
+          fenetreActive = EventWindow()
+          Debug fenetreActive
+          If fenetreActive = 0
+            quit = 1
+          Else
+            CloseWindow(fenetreActive)
+          EndIf
           
         Case #PB_Event_SizeWindow
           resize_screen()
@@ -1111,19 +1386,159 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
             Case #Menu_load_Mix    : load_img(#img_mix)
             Case #Menu_load_Mask   : load_img(#img_mask)
               
+            ; ajoute un filtre 
             Case #filtre_pos To (#filtre_pos + 500)
               pos = (var - #filtre_pos)
               SelectElement(list_filtre(), pos)
               add_filtre(pos)
-              StartDrawing(CanvasOutput(#canvas_option)) : validation = update_filtre(0) : StopDrawing()
+              validation = update_filtre(0)
               
-            Case #save_bmp
-              nom$ = SaveFileRequester("Save BMP", "", "", 0)
-              If nom$ <> "" : SaveImage(#img_source, nom$+".bmp" ,#PB_ImagePlugin_BMP ) : EndIf
-            Case #save_jpg
-              If nom$ <> "" : SaveImage(#img_source, nom$+".bmp" ,#PB_ImagePlugin_JPEG ) : EndIf
-            Case #save_clipboard
-              SetClipboardImage(#img_source)
+            Case #save_bmp1 To #save_clipboard4
+              var1 = var - #save_bmp1 
+              var2 = (var1 & %1100)>> 2 ; var2 = l'image a sauvegarder
+              var1 = var1 & % 11        ; var1 = le type de sauvegarde ( jpg , bmp ...)
+              Select var2
+                Case 0 : img_save = #img_source
+                Case 1 : img_save = #img_mix 
+                Case 2 : img_save = #img_mask
+                Case 3 : img_save = #img_tempo_cible
+              EndSelect
+              If IsImage(img_save)
+                
+                Select var1
+                  Case 0
+                    nom$ = SaveFileRequester("Save", "", "", 0)
+                    If nom$ <> "" : SaveImage(img_save, nom$+".bmp" ,#PB_ImagePlugin_BMP )
+                    Else
+                      MessageRequester("erreur" , "nom de fichier incorrecte" , #PB_MessageRequester_Warning)
+                    EndIf
+                  Case 1
+                    nom$ = SaveFileRequester("Save", "", "", 0)
+                    If nom$ <> "" : SaveImage(img_save, nom$+".jpg" ,#PB_ImagePlugin_JPEG )
+                    Else
+                      MessageRequester("erreur" , "nom de fichier incorrecte" , #PB_MessageRequester_Warning)
+                    EndIf
+                  Case 2
+                    nom$ = SaveFileRequester("Save", "", "", 0)
+                    If nom$ <> "" : SaveImage(img_save, nom$+".png" ,#PB_ImagePlugin_PNG )
+                    Else
+                      MessageRequester("erreur" , "nom de fichier incorrecte" , #PB_MessageRequester_Warning)
+                    EndIf
+                  Case 3
+                    SetClipboardImage(img_save)
+                EndSelect
+                
+              Else
+                MessageRequester("erreur" , "pas d'image" , #PB_MessageRequester_Warning)
+              EndIf
+          
+              
+            Case #menu_favori_trier_name , #menu_favori_trier_id , #menu_favori_trier_type
+              If ListSize(favori()) > 1
+                Select var
+                  Case #menu_favori_trier_name : SortStructuredList(favori(), #PB_Sort_Ascending, OffsetOf(favori_data\name), #PB_String) 
+                  Case  #menu_favori_trier_id  : SortStructuredList(favori(), #PB_Sort_Ascending, OffsetOf(favori_data\id), #PB_Long) 
+                  Case #menu_favori_trier_type : SortStructuredList(favori(), #PB_Sort_Ascending, OffsetOf(favori_data\typ), #PB_Long)
+                EndSelect
+                update_favori()
+              EndIf
+              
+            
+            Case #filtre_pos_sup To (#filtre_pos_sup +  999)
+              er = 0
+              ForEach favori()
+                If favori()\id = (var - #filtre_pos_sup)
+                  DeleteElement(favori())
+                  er = 1
+                  Break
+                EndIf
+              Next
+              If er = 1 : update_favori() : EndIf
+              
+            ; filtre resize
+            Case resize_start To resize_stop
+              Select image_selected
+                  Case 0 : If IsImage(#img_tempo_cible) : CopyImage(#img_tempo_cible , #img_tempo_source) : EndIf
+                  Case 1 : If IsImage(#img_source) : CopyImage(#img_source , #img_tempo_source) : EndIf
+                  Case 2 : If IsImage(#img_mix)    : CopyImage(#img_mix    , #img_tempo_source) : EndIf
+                  Case 3 : If IsImage(#img_mask)   : CopyImage(#img_mask   , #img_tempo_source) : EndIf
+              EndSelect
+              
+              If IsImage(#img_tempo_source) = 0 
+                If IsImage(#img_source) : CopyImage(#img_source , #img_tempo_source) : EndIf
+              EndIf
+              
+              If IsImage(#img_tempo_source)
+                
+                Clear_Data_Filter(FilterCtx)
+                FilterCtx\info_active = 1
+                If tabfunc(var) <> 0 : CallFunctionFast(tabfunc(var),FilterCtx) : EndIf
+                FilterCtx\info_active = 0
+                If image_selected = 0 : update_miniature(1 , $ff) : Else : update_miniature(image_selected , $ff) : EndIf
+                
+                Select FilterCtx\name
+                  Case "resize2xSaI" , "ResizeAdvMAME2x" , "ResizeHq2x" , "ResizeScale2x" , "ResizeXBRZ2x"
+                    CreateImage(#img_tempo_cible , ImageWidth(#img_tempo_source) * 2 , ImageHeight(#img_tempo_source) * 2 , 32) 
+                  Case "ResizeHq3x" , "ResizeXBRZ3x"
+                    CreateImage(#img_tempo_cible , ImageWidth(#img_tempo_source) * 3 , ImageHeight(#img_tempo_source) * 3 , 32)
+                  Case "ResizeHq4x" , "ResizeXBRZ4x"
+                    CreateImage(#img_tempo_cible , ImageWidth(#img_tempo_source) * 4 , ImageHeight(#img_tempo_source) * 4 , 32)
+                  Case "ResizeXBRZ5x"
+                    CreateImage(#img_tempo_cible , ImageWidth(#img_tempo_source) * 5 , ImageHeight(#img_tempo_source) * 5 , 32)
+                  Case "ResizeXBRZ6x"
+                    CreateImage(#img_tempo_cible , ImageWidth(#img_tempo_source) * 6 , ImageHeight(#img_tempo_source) * 6 , 32)
+                EndSelect
+                
+                      
+                
+                set_Source(#img_tempo_source)
+                set_cible(#img_tempo_cible)
+           
+                t = ElapsedMilliseconds()
+                ;For i = 0 To 19 : FilterCtx\option[i] = list_filtre_selected()\opt(i,2) : Next
+                If tabfunc(var) <> 0 : CallFunctionFast(tabfunc(var),FilterCtx) : EndIf
+                t = ElapsedMilliseconds() - t
+                
+                SetWindowTitle(0, "test_filtres : "+Str(t) ) 
+                update_miniature(image_selected , $ff00)
+                
+                CopyImage(#img_tempo_cible , #img_aff)
+                ResizeImage(#img_aff , travail_tx , travail_ty , #PB_Image_Raw)
+                StartDrawing(CanvasOutput(#canvas_affichage))
+                DrawImage(ImageID(#img_aff), 0, 0)
+                StopDrawing()
+              EndIf
+              
+            Case #info_image
+              t$ = "source : "
+              If IsImage(#img_source)
+                lg = ImageWidth(#img_source)
+                ht = ImageHeight(#img_source)
+                t$ = t$ + Str(lg) + " x " + Str(ht) + Chr(13)
+              EndIf
+              
+              t$ = t$ + Chr(13) + "mixage : "
+              If IsImage(#img_mix)
+                lg = ImageWidth(#img_mix)
+                ht = ImageHeight(#img_mix)
+                t$ = t$ + Str(lg) + " x " + Str(ht) + Chr(13)
+              EndIf
+              
+              t$ = t$ + Chr(13) + "masque : "
+              If IsImage(#img_mask)
+                lg = ImageWidth(#img_mask)
+                ht = ImageHeight(#img_mask)
+                t$ = t$ + Str(lg) + " x " + Str(ht) + Chr(13)
+              EndIf
+              
+              t$ = t$ + Chr(13) + "travail : "
+              If IsImage(#img_tempo_cible)
+                lg = ImageWidth(#img_tempo_cible)
+                ht = ImageHeight(#img_tempo_cible)
+                t$ = t$ + Str(lg) + " x " + Str(ht) + Chr(13)
+              EndIf
+              
+              MessageRequester("Info Image" , t$  , #PB_MessageRequester_Ok)
               
             Case #info_cpu
               t$ = ""
@@ -1156,6 +1571,7 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
               If IsImage(#img_tempo_cible) : CopyImage(#img_tempo_cible, #img_mask)   : resize_screen() : EndIf
             Case #boutton_Apercu
               update = 1
+            
             Case #boutton_Auto_Rendu
               update_auto = GetGadgetState(#boutton_Auto_Rendu)
               If update_auto
@@ -1165,7 +1581,37 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
               EndIf
               
             Case #boutton_thread
+              update_auto_thread = GetGadgetState(#boutton_thread)
+              If update_auto_thread
+                SetGadgetText(#boutton_thread , "affiche -> thread : On")
+              Else
+                SetGadgetText(#boutton_thread , "affiche -> thread : Off")
+              EndIf
+              update_filtre(0)
+              
+            Case #boutton_mask
+              update_auto_thread = GetGadgetState(#boutton_mask)
+              If update_auto_thread
+                SetGadgetText(#boutton_mask , "afficher -> masque : On")
+              Else
+                SetGadgetText(#boutton_mask , "afficher -> masque : Off")
+              EndIf
+              update_filtre(0)
+              
             Case #boutton_asm
+              update_auto_thread = GetGadgetState(#boutton_asm)
+              If update_auto_thread
+                SetGadgetText(#boutton_asm , "affiche -> language : On")
+              Else
+                SetGadgetText(#boutton_asm , "affiche -> language : Off")
+              EndIf
+              update_filtre(0)    
+              
+            Case #boutton_fermer_filtre
+              update_filtre(10) ; 10 => fermer tous les filtres
+              
+            Case #boutton_aide
+              affiche_info_aide()
               
             Case #canvas_option ; fenetre des filtres graphiques
               clic = 0
@@ -1228,20 +1674,23 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
               EndIf
               
               ; --- 3. MISE À JOUR GRAPHIQUE DES FILTRES ---
-              StartDrawing(CanvasOutput(#canvas_option))
+              
               If validation = 1
                 update_filtre(clic)
               Else
                 validation = update_filtre(clic)
               EndIf
-              StopDrawing()
               
+                
             Case #canvas_miniature_source
               If GetGadgetAttribute(#canvas_miniature_source, #PB_Canvas_Buttons) = #PB_Canvas_LeftButton : image_selected = update_miniature(1) : update_image_aff() : EndIf
             Case #canvas_miniature_mix
               If GetGadgetAttribute(#canvas_miniature_mix   , #PB_Canvas_Buttons) = #PB_Canvas_LeftButton : image_selected = update_miniature(2) : update_image_aff() : EndIf
             Case #canvas_miniature_mask
-              If GetGadgetAttribute(#canvas_miniature_mask  , #PB_Canvas_Buttons) = #PB_Canvas_LeftButton : image_selected = update_miniature(3) : update_image_aff() : EndIf
+              If GetGadgetAttribute(#canvas_miniature_mask  , #PB_Canvas_Buttons) = #PB_Canvas_LeftButton : image_selected = update_miniature(3) : update_image_aff() : EndIf 
+              ; on selectionne le zone de travail
+            Case #canvas_affichage
+              If GetGadgetAttribute(#canvas_affichage, #PB_Canvas_Buttons) = #PB_Canvas_LeftButton  : image_selected = update_miniature(0) : EndIf
               
               ; Gestion des miniatures
             Case #canvas_miniature_source To #canvas_miniature_mask
@@ -1250,73 +1699,71 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
                 image_selected = update_miniature(idx)
                 update_image_aff()
               EndIf
-              
-          EndSelect
+                
+            EndSelect
+            
+        EndSelect
+        
+        
+        If update Or (update_auto And validation) Or valider_loop
+          With FilterCtx
+            Clear_Data_Filter(FilterCtx)
+            
+            Select image_selected
+                Case 1 : If IsImage(#img_source) : CopyImage(#img_source , #img_tempo_source) : EndIf
+                Case 2 : If IsImage(#img_mix)    : CopyImage(#img_mix    , #img_tempo_source) : EndIf
+                Case 3 : If IsImage(#img_mask)   : CopyImage(#img_mask   , #img_tempo_source) : EndIf
+            EndSelect
+            
+            If IsImage(#img_tempo_source)
+              CopyImage(#img_tempo_source , #img_tempo_cible)
+              set_Source(#img_tempo_source)
+              set_cible(#img_tempo_cible)
+              set_mix(#img_mix)
+              set_mask(#img_mask)
+              If list_filtre_selected()\thread < 1 : list_filtre_selected()\thread = 1 : EndIf
+              set_thread(list_filtre_selected()\thread)
+              update_miniature(image_selected , $ff)
+              t = ElapsedMilliseconds()
+              ForEach list_filtre_selected()
+                For i = 0 To 19 : \option[i] = list_filtre_selected()\opt(i,2) : Next
+                For i = 0 To 48 : \convol7[i] = list_filtre_selected()\convol7[i] : Next
+                If tabfunc(list_filtre_selected()\id) <> 0 : CallFunctionFast(tabfunc(list_filtre_selected()\id),FilterCtx) : EndIf
+                \image[0] = \image[1]
+              Next
+              t = ElapsedMilliseconds() - t
+              SetWindowTitle(0, "test_filtres : "+Str(t) ) 
+              update_miniature(image_selected , $ff00)
+            EndIf
+          EndWith
           
-      EndSelect
-      
-      
-      If update Or (update_auto And validation) Or valider_loop
-        With FilterCtx
-          Clear_Data_Filter(FilterCtx)
-          FilterCtx\Asm = 1
           
-          Select image_selected
-              Case 1 : If IsImage(#img_source) : CopyImage(#img_source , #img_tempo_source) : EndIf
-              Case 2 : If IsImage(#img_mix)    : CopyImage(#img_mix    , #img_tempo_source) : EndIf
-              Case 3 : If IsImage(#img_mask)   : CopyImage(#img_mask   , #img_tempo_source) : EndIf
-          EndSelect
-          
-          If IsImage(#img_tempo_source)
-            CopyImage(#img_tempo_source , #img_tempo_cible)
-            set_Source(#img_tempo_source)
-            set_cible(#img_tempo_cible)
-            set_mix(#img_mix)
-            set_mask(#img_mask)
-            If list_filtre_selected()\thread < 1 : list_filtre_selected()\thread = 1 : EndIf
-            \thread = list_filtre_selected()\thread
-            update_miniature(image_selected , $ff)
-            t = ElapsedMilliseconds()
-            ForEach list_filtre_selected()
-              For i = 0 To 19 : \option[i] = list_filtre_selected()\opt(i,2) : Next
-              For i = 0 To 48 : \convol7[i] = list_filtre_selected()\convol7[i] : Next
-              If tabfunc(list_filtre_selected()\id) <> 0 : CallFunctionFast(tabfunc(list_filtre_selected()\id),FilterCtx) : EndIf
-              \image[0] = \image[1]
-            Next
-            t = ElapsedMilliseconds() - t
-            SetWindowTitle(0, "test_filtres : "+Str(t) ) 
-            update_miniature(image_selected , $ff00)
+          If IsImage(#img_tempo_cible)
+            CopyImage(#img_tempo_cible , #img_aff)
+            ResizeImage(#img_aff , travail_tx , travail_ty , #PB_Image_Raw)
+            StartDrawing(CanvasOutput(#canvas_affichage))
+            DrawImage(ImageID(#img_aff), 0, 0)
+            StopDrawing()
+            ;FreeImage(#img_tempo_cible)
           EndIf
-        EndWith
-        
-        
-        If IsImage(#img_tempo_cible)
-          CopyImage(#img_tempo_cible , #img_aff)
-          ResizeImage(#img_aff , travail_tx , travail_ty )
-          StartDrawing(CanvasOutput(#canvas_affichage))
-          DrawImage(ImageID(#img_aff), 0, 0)
-          StopDrawing()
-          ;FreeImage(#img_tempo_cible)
         EndIf
+        
       EndIf
-      
-    EndIf
-    Delay(1)
-  Until Event = #PB_Event_CloseWindow Or quit = 1
-  ;If IsImage(#cible) : FreeImage(#cible) : EndIf
-  ;If IsImage(#Black_image) : FreeImage(#Black_image) : EndIf
-  CloseWindow(0)
-  ;XnViewLoader::Free()
-EndIf
-
-
+      Delay(1)
+    Until quit = 1
+    ;If IsImage(#cible) : FreeImage(#cible) : EndIf
+    ;If IsImage(#Black_image) : FreeImage(#Black_image) : EndIf
+    CloseWindow(0)
+    ;XnViewLoader::Free()
+  EndIf
+  
+  
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 869
-; FirstLine = 830
-; Folding = ---
+; CursorPosition = 1467
+; FirstLine = 1445
+; Folding = -----
 ; EnableThread
 ; EnableXP
 ; CPU = 5
-; DisableDebugger
 ; Compiler = PureBasic 6.40 (Windows - x64)

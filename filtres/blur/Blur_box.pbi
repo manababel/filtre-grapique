@@ -81,23 +81,54 @@ EndProcedure
 ; Applique un flou vertical avec traitement par blocs
 Procedure BoxBlur_Y(*FilterCtx.FilterParams) 
   BoxBlur_declare_variable(opty , 1 , 3)
-  macro_calul_tread(lg) 
-  Protected *copy_src.Pixelarray32
-  Protected *copy_dst.Pixelarray32
+  macro_calul_tread(lg) ; On parallélise sur la largeur (X) ou la hauteur (Y) selon ta macro
   
-  ; Allouer un buffer local pour ce thread (évite les conflits multi-thread)
-  Protected *ligne = AllocateMemory(ht * 4 )
-  If *ligne = 0 : ProcedureReturn : EndIf
+  ; On va stocker l'accumulateur (le noyau) pour CHAQUE colonne de la bande de thread.
+  ; Au lieu d'un seul 'a, r, g, b', on crée des tableaux pour maintenir la somme courante de chaque colonne.
+  Protected.l size_x = (thread_stop - thread_start)
+  Protected Dim arr_a(size_x), Dim arr_r(size_x), Dim arr_g(size_x), Dim arr_b(size_x)
+  Protected Dim current_pz(size_x)
+  
+  ; 1. Initialisation des noyaux verticaux pour toutes les colonnes du thread
   For x = thread_start To thread_stop - 1
-    *copy_src = *FilterCtx\addr[0] + (x << 2) ; la plus grosse perte de temps est ici !!!
-    *copy_dst = *ligne
-    For y = 0 To ht - 1 : *copy_dst\pixel[y] = *copy_src\pixel[y * lg] : Next
-    *src = *ligne
-    BoxBlur_Calcul_noyau(opty)
-    *dst\pixel[x] = ((a * blur) & $FF0000) << 8 | ((r * blur) & $FF0000) | ((g * blur) & $FF0000) >> 8 | ((b * blur) >> 16)
-    For y = 0 To ht - 1 : BoxBlur_Calcul_differentiel(y , opty) : Next
+    Protected.l idx_x = x - thread_start
+    *src = *FilterCtx\addr[0] + (x << 2)
+    
+    ; Calcul du noyau initial (comme ta macro BoxBlur_Calcul_noyau mais en vertical)
+    For i = 0 To opty - 1
+      pixel = *src\pixel[*pz\l[i] * lg] ; Accès vertical pré-calculé
+      arr_a(idx_x) + ((pixel >> 24) & $FF)
+      arr_r(idx_x) + ((pixel >> 16) & $FF)
+      arr_g(idx_x) + ((pixel >> 8)  & $FF)
+      arr_b(idx_x) + ( pixel        & $FF)
+    Next
+    
+    ; On applique la première ligne de sortie
+    *dst\pixel[x] = ((arr_a(idx_x) * blur) & $FF0000) << 8 | ((arr_r(idx_x) * blur) & $FF0000) | ((arr_g(idx_x) * blur) & $FF0000) >> 8 | ((arr_b(idx_x) * blur) >> 16)
   Next
-  FreeMemory(*ligne)
+  
+  ; 2. Algorithme différentiel ligne par ligne (Accès mémoire séquentiel !)
+  For y = 0 To ht - 1
+    Protected.l offset_out = *pointeur\l[y] * lg
+    Protected.l offset_in  = *pointeur\l[y + opty] * lg
+    
+    *src = *FilterCtx\addr[0] ; Pointeur de base
+    
+    For x = thread_start To thread_stop - 1
+      idx_x = x - thread_start
+      
+      pixel_out = *src\pixel[offset_out + x]
+      pixel_in  = *src\pixel[offset_in + x]
+      
+      arr_a(idx_x) + (pixel_in >> 24) - (pixel_out >> 24)
+      arr_r(idx_x) + ((pixel_in >> 16) & $FF) - ((pixel_out >> 16) & $FF)
+      arr_g(idx_x) + ((pixel_in >>  8) & $FF) - ((pixel_out >>  8) & $FF)
+      arr_b(idx_x) + (pixel_in         & $FF) - (pixel_out         & $FF)
+      
+      ; Ecriture dans la destination
+      *dst\pixel[(y * lg) + x] = ((arr_a(idx_x) * blur) & $FF0000) << 8 | ((arr_r(idx_x) * blur) & $FF0000) | ((arr_g(idx_x) * blur) & $FF0000) >> 8 | ((arr_b(idx_x) * blur) >> 16)
+    Next
+  Next
 EndProcedure
 
 ;--
@@ -113,16 +144,19 @@ Macro Blur_box_call(name , var , ad1 , ad2 )
   CompilerElse
     
     CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
-      If FilterCtx\Asm = 0
-        Debug "version _Pb"
-        Create_MultiThread_MT(@BoxBlur_#var()) ; version pb
-      Else
-        Debug "version _Asm"
-        Create_MultiThread_MT(@BoxBlur_avx2_#var()) ; version asm
-      EndIf
+      Select FilterCtx\Asm
+        Case 1 : Create_MultiThread_MT(@BoxBlur_SSE2_#var())
+        Case 2 : Create_MultiThread_MT(@BoxBlur_SSE4_#var())
+          ;Case 3 : Create_MultiThread_MT(@BoxBlur_AVX2_#var())
+          ;Case 4 : Create_MultiThread_MT(@BoxBlur_AVX512_#var())
+        Default :Create_MultiThread_MT(@BoxBlur_#var())
+      EndSelect
+      
     CompilerElse ; #PB_Compiler_Backend = #PB_Backend_C 
       
-      Create_MultiThread_MT(@BoxBlur_#var()) ; version pb
+      Select FilterCtx\Asm
+        Default :Create_MultiThread_MT(@BoxBlur_#var())
+      EndSelect
       
     CompilerEndIf
     
@@ -150,12 +184,12 @@ Procedure BoxBlurEX(*FilterCtx.FilterParams)
       
       blur_box_create_limit(*FilterCtx.FilterParams) ;-- cacul_des_bords
       
-      Blur_box_call(BoxBlur_X, x , \image[0] ,\addr[1])
+      ;Blur_box_call(BoxBlur_X, x , \image[0] ,\addr[1])
       
-      ;For boucle = 0 To \option[2] - 1
-        ;If boucle = 0 : Blur_box_call(BoxBlur_X, x , \image[0] ,\addr[4] ) : Else : Blur_box_call(BoxBlur_X, x , \image[1] ,\addr[4]) : EndIf ; passe x
-        ;Blur_box_call(BoxBlur_Y, y , \addr[4] ,\image[1]) ; passe y
-      ;Next
+      For boucle = 0 To \option[2] - 1
+        If boucle = 0 : Blur_box_call(BoxBlur_X, x , \image[0] ,\addr[4] ) : Else : Blur_box_call(BoxBlur_X, x , \image[1] ,\addr[4]) : EndIf ; passe x
+        Blur_box_call(BoxBlur_Y, y , \addr[4] ,\image[1]) ; passe y
+      Next
       mask_update(*FilterCtx.FilterParams , last_data)
       
     EndIf
@@ -195,8 +229,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 120
-; FirstLine = 98
+; CursorPosition = 117
+; FirstLine = 113
 ; Folding = --
 ; EnableAsm
 ; EnableThread

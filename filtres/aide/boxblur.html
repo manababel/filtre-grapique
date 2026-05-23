@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme Box Blur</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 8px;
+            margin-top: 40px;
+        }
+        h2:first-of-type {
+            margin-top: 20px;
+        }
+        h3 {
+            color: #34495e;
+            margin-top: 25px;
+            background: #eef2f5;
+            padding: 8px 12px;
+            border-left: 4px solid #3498db;
+            border-radius: 0 4px 4px 0;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 12px;
+        }
+        strong {
+            color: #2c3e50;
+        }
+        pre {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: "Consolas", "Courier New", Courier, monospace;
+            font-size: 14px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .comment {
+            color: #6a9955;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Pourquoi utiliser le Box Blur ?</h2>
+    <ul>
+        <li>
+            <strong>1. Ultra-rapide (O(1)) :</strong> Contrairement au flou gaussien (lourd en multiplications décimales), le Box Blur n'utilise que des additions et une division (calcul de moyenne). Combiné avec une image intégrale (Summed-Area Table), le temps de calcul reste identique, que le rayon du flou soit de 3 ou de 300 pixels.
+        </li>
+        <li>
+            <strong>2. Alternative au Flou Gaussien (Astuce des 3 passes) :</strong> Un seul Box Blur peut paraître un peu grossier/"carré". Mais si vous l'appliquez 3 fois de suite, le résultat visuel est quasi-identique à un vrai flou gaussien, tout en étant 3 à 5 fois plus rapide à calculer.
+        </li>
+        <li>
+            <strong>3. Nettoyage du bruit :</strong> Il sert de filtre de pré-traitement. Appliquer un Box Blur léger élimine les pixels parasites (le bruit) avant de lancer des algos plus complexes comme les détecteurs de contours (Sobel/Canny), évitant ainsi les fausses détections.
+        </li>
+    </ul>
+
+    <h2>Exemples d'implémentation (PureBasic)</h2>
+
+    <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
+    <p>Idéal pour les appels simples et rapides avec passage de paramètres en arguments.</p>
+    <pre><code>IncludeFile "filtres.pbi"
+UseModule filtres
+
+If OpenWindow(0, 0, 0, 800, 600, "Exemple...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = 1
+  CibleImage  = 2
+  AucunMasque = 0
+  RayonX      = 5
+  RayonY      = 5
+  Passes      = 1 <span class="comment">; &lt;--- Passez à 3 pour simuler le flou gaussien</span>
+  ModeBord    = 0 <span class="comment">; Traitement standard des bords</span>
+ 
+  file$ = OpenFileRequester("Image","","",0)
+  If load_image_32(SourceImage , file$) = 0
+    End
+  Else
+    ResizeImage(SourceImage, 800, 600)
+  EndIf
+  
+  CopyImage(SourceImage,CibleImage)
+
+  BoxBlur(SourceImage, CibleImage, AucunMasque, RayonX, RayonY, Passes, ModeBord)
+  <span class="comment">; L'image cible peut être la même que l'image source :</span>
+  <span class="comment">; BoxBlur(SourceImage, SourceImage, AucunMasque, RayonX, RayonY, Passes, ModeBord)</span>
+  
+  StartDrawing(WindowOutput(0))
+  DrawImage(ImageID(CibleImage) ,  0 , 0)
+  <span class="comment">; DrawImage(ImageID(SourceImage) ,  0 , 0)</span>
+  StopDrawing()
+  
+  Repeat
+    Event = WaitWindowEvent()
+    Select Event 
+      Case #PB_Event_Gadget
+        Select EventGadget()
+          Case 1 
+            CloseWindow(0)
+            End  
+        EndSelect
+    EndSelect
+
+  Until Event = #PB_Event_CloseWindow
+EndIf</code></pre>
+
+    <h3>Option B : Utilisation Avancée (Via Structure de Contexte / BoxBlurEx)</h3>
+    <p>Idéal pour la gestion de pointeurs mémoires complexes, les buffers personnalisés ou le traitement par lots en conservant un contexte de filtre.</p>
+    <pre><code>IncludeFile "filtres.pbi"
+UseModule filtres
+
+If OpenWindow(0, 0, 0, 800, 600, "Exemple...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = 1
+  CibleImage  = 2
+  AucunMasque = 0
+   
+  file$ = OpenFileRequester("Image","","",0)
+  If load_image_32(SourceImage , file$) = 0
+    End
+  Else
+    ResizeImage(SourceImage, 800, 600)
+  EndIf
+  
+  CopyImage(SourceImage,CibleImage)
+  
+  Clear_Data_Filter(FilterCtx)
+  
+  FilterCtx\option[0] = 5 <span class="comment">; RayonX</span>
+  FilterCtx\option[1] = 5 <span class="comment">; Rayony</span>
+  FilterCtx\option[2] = 3 <span class="comment">; passe</span>
+  FilterCtx\option[3] = 1 <span class="comment">; bord</span>
+  
+  Set_Source(SourceImage)
+  <span class="comment">; ou Set_SourceEx(adresse_memoire_image , lg , ht) si vous connaissez l'adresse mémoire de l'image</span>
+  <span class="comment">; ou </span>
+  <span class="comment">; FilterCtx\image[0] = adresse memoire de l'image</span>
+  <span class="comment">; FilterCtx\image_lg[0] = longueur de l'image</span>
+  <span class="comment">; FilterCtx\image_ht[0] = hauteure de l'image</span>
+  
+  Set_cible(CibleImage)
+  <span class="comment">; ou Set_cible(SourceImage) si la cible est la source</span>
+  <span class="comment">; ou Set_CibleEx(adresse_memoire_image , lg , ht) si vous connaissez l'adresse mémoire de l'image</span>
+  <span class="comment">; ou </span>
+  <span class="comment">; FilterCtx\image[1] = adresse memoire de l'image</span>
+  <span class="comment">; FilterCtx\image_lg[1] = longueur de l'image</span>
+  <span class="comment">; FilterCtx\image_ht[1] = hauteure de l'image</span>
+  
+  BoxBlurEx(FilterCtx)
+  <span class="comment">; L'image cible peut être la même que l'image source :</span>
+  <span class="comment">; BoxBlur(SourceImage, SourceImage, AucunMasque, RayonX, RayonY, Passes, ModeBord)</span>
+  
+  StartDrawing(WindowOutput(0))
+  DrawImage(ImageID(CibleImage) ,  10 , 10)
+  <span class="comment">; DrawImage(ImageID(SourceImage) ,  0 , 0)</span>
+  StopDrawing()
+  
+  Repeat
+    Event = WaitWindowEvent()
+    Select Event 
+      Case #PB_Event_Gadget
+        Select EventGadget()
+          Case 1 
+            CloseWindow(0)
+            End  
+        EndSelect
+    EndSelect
+
+  Until Event = #PB_Event_CloseWindow
+EndIf</code></pre>
+
+</body>
+</html>
