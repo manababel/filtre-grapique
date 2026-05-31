@@ -103,7 +103,7 @@ EndProcedure
 
 DataSection
   DirectionalBoxBlur_data:
-  Data.s "DirectionalBoxBlur"
+  Data.s "DirectionalBlur"
   Data.s ""
   Data.i #FilterType_Blur
   Data.i #Blur_Directional
@@ -117,7 +117,7 @@ DataSection
   Data.s "XXX"  
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 86
+; CursorPosition = 105
 ; FirstLine = 63
 ; Folding = -
 ; EnableXP

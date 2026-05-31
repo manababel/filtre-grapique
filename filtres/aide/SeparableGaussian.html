@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme SeparableGaussian</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        /* Structure de démo compatible (Tableau au lieu de Flexbox) */
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            color: #ffffff;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Précision Mathématique Globale</div>
+        <h1>Documentation - Algorithme <span>SeparableGaussian</span></h1>
+        <p>Flou gaussien complet à découplage d'axes et contrôle fin de l'écart-type (Sigma)</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation Gaussienne ?</h2>
+        <ul>
+            <li>
+                <strong>Contrôle total du Sigma ($\sigma$) :</strong> Contrairement aux implémentations simplifiées où l'écart-type est implicitement lié au rayon, ce filtre permet de découpler mathématiquement la portée du flou (le rayon) et la forme de la cloche d'atténuation via la valeur `sigma_x10`. Si `sigma` est configuré à 0, le programme le calcule automatiquement par la formule standard : $$\sigma = \frac{\text{rayon}}{3}$$
+            </li>
+            <li>
+                <strong>Calcul du Rayon Effectif :</strong> La procédure optimise les cycles d'exécution en réévaluant le rayon utile (`CalcEffectiveRadius`). Si un grand rayon est demandé mais que la valeur de Sigma s'avère étroite, le filtre tronque la taille du noyau pour éliminer les multiplications inutiles par zéro en périphérie de la cloche.
+            </li>
+            <li>
+                <strong>Préservation complète de l'Alpha (ARGB) :</strong> L'algorithme décompone et traite le canal Alpha ($A$) de manière totalement isolée au même titre que les canaux colorimétriques ($R, G, B$), évitant ainsi les artefacts de transparence sur les contours des images détourées.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Surcharge des buffers flottants internes :</strong> Pour assurer une justesse arithmétique totale sans perte lors de l'accumulation, chaque ligne et chaque colonne de l'image est recopiée dans des tableaux de flottants dédiés (`lineR.f()`, `colR.f()`, etc.). Ces multiples va-et-vient entre la mémoire brute et les structures de variables locales ralentissent le pipeline par rapport à un accès direct par pointeur.
+                </li>
+                <li>
+                    <strong>Complexité croissante avec le rayon :</strong> Le coût de traitement reste tributaire de la taille du noyau ($O(N \times R)$). Même si la séparation 1D limite les dégâts, l'augmentation du rayon induit inévitablement une baisse de réactivité de l'application, au contraire des algorithmes à temps constant comme le StackBlur.
+                </li>
+                <li>
+                    <strong>Consommation mémoire doublée :</strong> L'obligation de figer la première passe (axe X) avant d'engager la seconde (axe Y) contraint le système à allouer un buffer temporaire (`*tmp`) équivalent à la taille totale de l'image en octets.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface utilisateur transmet le rayon et le paramètre d'écart-type multiplié par 10 (pour éviter l'utilisation de valeurs flottantes dans les curseurs des interfaces graphiques).</p>
+        <pre><code><span class="keyword">Procedure</span> SeparableGaussian(source, cible, mask, rayon, sigma_x10)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = rayon
+    \option[1] = sigma_x10
+  <span class="keyword">EndWith</span>
+  <span class="comment">; Lance la validation et le calcul de sécurité</span>
+  SeparableGaussianEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Génération Dynamique du Noyau Normalisé</h3>
+        <p>Cette routine calcule la distribution de probabilité 1D et s'assure que la somme des coefficients soit égale à $1.0$ afin de stabiliser l'énergie lumineuse globale.</p>
+        <pre><code><span class="keyword">Procedure</span> CreateGaussianKernel_Sep(<span class="keyword">Array</span> kernel.f(<span class="number">1</span>), radius.l, sigma.f)
+  <span class="keyword">If</span> sigma &lt;= <span class="number">0.0</span> : sigma = radius / <span class="number">3.0</span> : <span class="keyword">EndIf</span>
+  <span class="comment">; (...) Ajustement du rayon optimal</span>
+  <span class="keyword">Protected</span> size = radius * <span class="number">2</span> + <span class="number">1</span>
+  <span class="keyword">Dim</span> kernel(size - <span class="number">1</span>)
+  
+  <span class="keyword">Protected</span> sigma2.f = <span class="number">2.0</span> * sigma * sigma
+  <span class="keyword">Protected</span> sum.f = <span class="number">0.0</span>
+  
+  <span class="keyword">For</span> i = <span class="number">0</span> <span class="keyword">To</span> size - <span class="number">1</span>
+    x = i - radius
+    kernel(i) = Exp(-(x * x) / sigma2) <span class="comment">; Équation simplifiée de Gauss 1D</span>
+    sum + kernel(i)
+  <span class="keyword">Next</span>
+  
+  <span class="keyword">If</span> sum &gt; <span class="number">0.0</span>
+    <span class="keyword">For</span> i = <span class="number">0</span> <span class="keyword">To</span> size - <span class="number">1</span> : kernel(i) / sum : <span class="keyword">Next</span> <span class="comment">; Normalisation</span>
+  <span class="keyword">IfEnd</span>
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Le traitement découple la matrice 2D en deux convolutions directionnelles successives.</p>
+
+        <div class="card">
+            <h3>Le secret de l'extraction de précision</h3>
+            <p>Dans PureBasic, la manipulation directe des pixels en mémoire nécessite un masquage rigoureux bits à bits (`& $FF`) lors de l'extraction des composantes de couleur pour éviter l'interprétation de l'octet de poids fort comme un signe négatif. Une fois converties proprement en variables `Float`, les opérations mathématiques de mélange conservent toute leur précision avant la recomposition par décalage de bits (`<<`).</p>
+        </div>
+
+        <h3>Visualisation mathématique de la séparation spatiale</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Passe X puis Y</strong>
+                        <table class="matrix">
+                            <tr><td></td><td class="active-blur">Y</td><td></td></tr>
+                            <tr><td class="active-blur">X</td><td class="center-pixel">P</td><td class="active-blur">X</td></tr>
+                            <tr><td></td><td class="active-blur">Y</td><td></td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>L'équation de convolution découplée :</strong></p>
+                        <div class="math-box">
+                            $$G(x, y) = G(x) \times G(y) = \frac{1}{\sqrt{2\pi}\sigma} e^{-\frac{x^2}{2\sigma^2}} \times \frac{1}{\sqrt{2\pi}\sigma} e^{-\frac{y^2}{2\sigma^2}}$$
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Le pixel <b>P</b> est d'abord échantillonné sur l'horizontale (<b>X</b>) depuis la source vers le buffer intermédiaire. La seconde passe applique le traitement sur la verticale (<b>Y</b>) depuis le buffer vers la destination finale.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici l'enchaînement logique complet des deux passes du filtre :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Rayon, Paramètre Sigma
+
+<span class="comment">// 1. ÉTAPE DE SÉCURITÉ ET NOYAU</span>
+Sigma = Paramètre_Sigma / 10.0
+Rayon_Effectif = Calculer_Rayon_Utile(Rayon, Sigma)
+Générer_Et_Normaliser_Noyau_Gauss(Kernel_Tableau, Rayon_Effectif, Sigma)
+Allouer_Buffer_Intermédiaire(*tmp, Largeur, Hauteur)
+
+<span class="comment">// 2. PASSE HORIZONTALE (Axe X) : Source ➔ Buffer (*tmp)</span>
+<span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+    <span class="comment">// Étape A : Extraction et conversion en float de la ligne courante</span>
+    <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+        Pixel = Lire_Pixel_Mémoire(Image_Source, X, Y)
+        lineA(X) = Extraction_Alpha(Pixel)
+        lineR(X) = Extraction_Rouge(Pixel)
+        lineG(X) = Extraction_Vert(Pixel)
+        lineB(X) = Extraction_Bleu(Pixel)
+    <span class="keyword">Next</span> X
+    
+    <span class="comment">// Étape B : Convolution de la ligne</span>
+    <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+        SumA = 0 : SumR = 0 : SumG = 0 : SumB = 0
+        <span class="keyword">Pour</span> dx = -Rayon_Effectif <span class="keyword">To</span> Rayon_Effectif
+            CibleX = X + dx
+            Vérifier_Et_Ajuster_Bornes(CibleX, 0, Largeur - 1) <span class="comment">// Clamping</span>
+            
+            Coefficient = Kernel_Tableau[dx + Rayon_Effectif]
+            SumA + lineA(CibleX) * Coefficient
+            SumR + lineR(CibleX) * Coefficient
+            SumG + lineG(CibleX) * Coefficient
+            SumB + lineB(CibleX) * Coefficient
+        <span class="keyword">Next</span> dx
+        
+        Écrire_Pixel_Mémoire(*tmp, X, Y, Réassembler_ARGB(SumA, SumR, SumG, SumB))
+    <span class="keyword">Next</span> X
+<span class="keyword">Fin Pour</span>
+
+<span class="comment">// 3. PASSE VERTICALE (Axe Y) : Buffer (*tmp) ➔ Image Cible</span>
+<span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+    <span class="comment">// Étape A : Extraction et conversion en float de la colonne courante depuis le buffer</span>
+    <span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+        Pixel = Lire_Pixel_Mémoire(*tmp, X, Y)
+        colA(Y) = Extraction_Alpha(Pixel)
+        colR(Y) = Extraction_Rouge(Pixel)
+        colG(Y) = Extraction_Vert(Pixel)
+        colB(Y) = Extraction_Bleu(Pixel)
+    <span class="keyword">Next</span> Y
+    
+    <span class="comment">// Étape B : Convolution de la colonne</span>
+    <span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+        SumA = 0 : SumR = 0 : SumG = 0 : SumB = 0
+        <span class="keyword">Pour</span> dy = -Rayon_Effectif <span class="keyword">To</span> Rayon_Effectif
+            CibleY = Y + dy
+            Vérifier_Et_Ajuster_Bornes(CibleY, 0, Hauteur - 1) <span class="comment">// Clamping</span>
+            
+            Coefficient = Kernel_Tableau[dy + Rayon_Effectif]
+            SumA + colA(CibleY) * Coefficient
+            SumR + colR(CibleY) * Coefficient
+            SumG + colG(CibleY) * Coefficient
+            SumB + colB(CibleY) * Coefficient
+        <span class="keyword">Next</span> dy
+        
+        Écrire_Pixel_Mémoire(Image_Cible, X, Y, Réassembler_ARGB(SumA, SumR, SumG, SumB))
+    <span class="keyword">Next</span> Y
+<span class="keyword">Fin Pour</span>
+
+<span class="comment">// 4. LIBÉRATION</span>
+Libérer_Buffer(*tmp)
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Traitement Numérique du Signal d'Image Découplé.</p>
+    </footer>
+
+</body>
+</html>

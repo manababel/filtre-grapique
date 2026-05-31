@@ -388,8 +388,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 386
-; FirstLine = 337
+; CursorPosition = 358
+; FirstLine = 310
 ; Folding = -
 ; EnableXP
 ; DPIAware

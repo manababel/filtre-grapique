@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme SpinBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #1e3a8a;
+            border: 1px solid #3b82f6;
+            color: #3b82f6;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #38bdf8;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Atténuation et Pondération Clochée</div>
+        <h1>Documentation - Algorithme <span>SpinBlur</span></h1>
+        <p>Flou rotationnel perfectionné avec décroissance périphérique et fenêtrage gaussien</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation de Spin Blur ?</h2>
+        <ul>
+            <li>
+                <strong>Centrage Intelligent Automatique :</strong> Le filtre propose une double ergonomie. Si l'utilisateur transmet la valeur <code>-1</code>, l'algorithme calcule de manière autonome le centre géométrique exact de l'image (<code>lg / 2.0, ht / 2.0</code>). Sinon, il accepte des coordonnées de foyer personnalisées en pixels absolus.
+            </li>
+            <li>
+                <strong>Contrôle de l'Atténuation Énergétique (Falloff) :</strong> Contrairement aux flous de rotation basiques qui forcent le même angle de distorsion partout, l'option <code>falloff</code> calcule la distance (<code>dist</code>) séparant le pixel traité du centre. Elle réduit dynamiquement l'angle effectif à mesure qu'on s'éloigne du cœur, empêchant l'image d'être totalement destructurée sur ses bordures extérieures.
+            </li>
+            <li>
+                <strong>Pondération Spatiale Gaussienne :</strong> L'algorithme intègre un commutateur de profil. En mode Gaussien, au lieu de faire une moyenne uniforme standard, le filtre applique une fonction exponentielle en cloche (<code>Exp(-t * t * 2.0)</code>). Les sous-échantillons situés au centre de l'arc ont plus de poids que ceux situés aux extrémités de la traînée, ce qui génère un flou cinétique beaucoup plus doux, naturel et réaliste.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Surcharge Trigonométrique Extrême :</strong> Cet algorithme calcule un sinus et un cosinus (<code>Cos(angle)</code> et <code>Sin(angle)</code>) pour chaque échantillon de chaque pixel de la texture. Sans table de pré-calcul (LUT), l'accumulation de fonctions transcendantes engendre une charge CPU colossale.
+                </li>
+                <li>
+                    <strong>Arrondi par Troncature Décentré (Bias de position) :</strong> La conversion des coordonnées d'échantillonnage vers les indices entiers de la texture se fait par un décalage suivi d'une conversion brute : <code>Int(nx + 0.5)</code>. Bien que cela simule un arrondi correct, l'absence d'interpolation bilinéaire des 4 pixels voisins induit de légères structures en escalier le long de la courbe de rotation.
+                </li>
+                <li>
+                    <strong>Perte d'Énergie aux Frontières de l'Image :</strong> Lorsqu'un arc de cercle floute un pixel proche d'un angle du cadre, les sous-échantillons qui sortent de l'image sont ignorés. Bien que le code compense la moyenne en utilisant la variable <code>total_weight</code>, les zones situées hors-champ ne participent pas au mélange, brisant l'homogénéité du flou sur le pourtour.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface transmet le nombre de points d'échantillonnage, l'angle maximal de rotation, l'origine spatiale du foyer ainsi que les deux variables de profil (atténuation et pondération).</p>
+        <pre><code><span class="keyword">Procedure</span> SpinBlur(source, cible, mask, samples, angle, cx, cy, attenuation, ponderation)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = samples
+    \option[1] = angle
+    \option[2] = cx
+    \option[3] = cy
+    \option[4] = attenuation
+    \option[5] = ponderation
+  <span class="keyword">EndWith</span>
+  SpinBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Gestion Modulaire du Foyer</h3>
+        <p>Cette phase montre la logique d'interception du code permettant de basculer instantanément entre le repère automatique et les coordonnées utilisateur.</p>
+        <pre><code><span class="comment">; Détermination géométrique de l'axe :</span>
+<span class="keyword">If</span> \option[<span class="number">2</span>] = -<span class="number">1</span>  <span class="comment">; Mode automatique</span>
+  cx = lg / <span class="number">2.0</span>
+  cy = ht / <span class="number">2.0</span>
+<span class="keyword">Else</span>
+  cx = \option[<span class="number">2</span>]  <span class="comment">; Mode manuel</span>
+  cy = \option[<span class="number">3</span>]
+<span class="keyword">EndIf</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>L'algorithme adapte la taille de son arc de balayage pour chaque pixel en calculant sa distance au centre, puis évalue la distribution des poids d'accumulation.</p>
+
+        <div class="card">
+            <h3>Calcul du Coefficient d'Atténuation (Falloff)</h3>
+            <p>Pour chaque pixel de l'image, sa distance absolue au centre est projetée par rapport au rayon maximal théorique de la texture : <br>
+            <code>weight = 1.0 - (dist / (Sqr(lg * lg + ht * ht) / 2.0)) * falloff / 100.0</code>.<br>
+            L'angle de balayage effectif est ensuite calculé via : <code>effective_angle = angle_max * weight</code>.</p>
+        </div>
+
+        <h3>Cinématique du Profil de Pondération</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Courbe Gaussienne</strong>
+                        <table class="matrix">
+                            <tr><td style="color:#64748b;">0.1</td><td>⬅</td><td>Extrémité</td></tr>
+                            <tr><td class="active-blur" style="color:#ffffff;">1.0</td><td>⬅</td><td>Centre (Pixel)</td></tr>
+                            <tr><td style="color:#64748b;">0.1</td><td>⬅</td><td>Extrémité</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Calcul des Poids d'Échantillons (Si Pondération = 1) :</strong></p>
+                        <div class="math-box">
+                            t = (k - Échantillons / 2.0) / (Échantillons / 2.0)<br><br>
+                            Poids_Échantillon = Exp(-t * t * 2.0)
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            La variable <code>t</code> évolue entre -1.0 et 1.0 le long du balayage de l'arc. La fonction exponentielle génère une courbe en cloche. Les couleurs prélevées aux extrémités de la traînée de rotation reçoivent un impact faible, tandis que le point de départ conserve une influence majeure.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici le déroulement séquentiel et mathématique des opérations effectuées par le moteur de flou :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Nombre Échantillons, Angle Maximum, Centre X, Centre Y, Valeur Atténuation, Type Pondération
+
+<span class="comment">// 1. INITIALISATION ET ETALONNAGE DU FOYER</span>
+Si Centre_X == -1 Alors
+    Foyer_X = Largeur_Image / 2.0
+    Foyer_Y = Hauteur_Image / 2.0
+Sinon
+    Foyer_X = Centre_X
+    Foyer_Y = Centre_Y
+Fin Si
+
+Angle_Max_Rad = Angle_Maximum * PI / 180.0
+Rayon_Max_Image = Sqr(Largeur_Image^2 + Hauteur_Image^2) / 2.0
+
+<span class="comment">// 2. BALAYAGE BIDIMENSIONNEL</span>
+<span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+    <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+        
+        Delta_X = X - Foyer_X
+        Delta_Y = Y - Foyer_Y
+        Distance_Axe = Sqr(Delta_X * Delta_X + Delta_Y * Delta_Y)
+        
+        <span class="comment">// Étape A : Atténuation angulaire spatiale (Falloff)</span>
+        <span class="keyword">Si</span> Valeur_Atténuation &gt; 0 Alors
+            Poids_Distance = 1.0 - (Distance_Axe / Rayon_Max_Image) * (Valeur_Atténuation / 100.0)
+            Si Poids_Distance &lt; 0.1 Alors Poids_Distance = 0.1
+        <span class="keyword">Sinon</span>
+            Poids_Distance = 1.0
+        <span class="keyword">Fin Si</span>
+        
+        Angle_Effectif = Angle_Max_Rad * Poids_Distance
+        Pas_Angulaire = Angle_Effectif / (Échantillons - 1)
+        
+        Somme_A = 0 : Somme_R = 0 : Somme_G = 0 : Somme_B = 0
+        Cumul_Poids_Total = 0 : Compteur_Points = 0
+        
+        <span class="comment">// Étape B : Échantillonnage sur l'arc circulaire</span>
+        <span class="keyword">Pour</span> k = 0 <span class="keyword">To</span> Échantillons - 1
+            Angle_Courant = -Angle_Effectif / 2.0 + k * Pas_Angulaire
+            
+            Cos_A = Cos(Angle_Courant)
+            Sin_A = Sin(Angle_Courant)
+            
+            <span class="comment">// Transformation de matrice géométrique</span>
+            Rotated_X = Foyer_X + (Delta_X * Cos_A - Delta_Y * Sin_A)
+            Rotated_Y = Foyer_Y + (Delta_X * Sin_A + Delta_Y * Cos_A)
+            
+            Int_X = Int(Rotated_X + 0.5)
+            Int_Y = Int(Rotated_Y + 0.5)
+            
+            <span class="comment">// Étape C : Contrôle d'intégrité mémoire et profil de poids</span>
+            <span class="keyword">Si</span> Int_X &gt;= 0 Et Int_X &lt; Largeur_Image Et Int_Y &gt;= 0 Et Int_Y &lt; Hauteur_Image
+                
+                Poids_Echantillon = 1.0
+                <span class="keyword">Si</span> Type_Pondération == 1 Alors
+                    Facteur_T = (k - Échantillons / 2.0) / (Échantillons / 2.0)
+                    Poids_Echantillon = Exp(-Facteur_T * Facteur_T * 2.0)
+                <span class="keyword">Fin Si</span>
+                
+                Pixel = Lire_Pixel_Source(Int_X, Int_Y)
+                
+                Somme_A + Extraire_Alpha(Pixel) * Poids_Echantillon
+                Somme_R + Extraire_Rouge(Pixel) * Poids_Echantillon
+                Somme_G + Extraire_Vert(Pixel) * Poids_Echantillon
+                Somme_B + Extraire_Bleu(Pixel) * Poids_Echantillon
+                
+                Cumul_Poids_Total + Poids_Echantillon
+                Compteur_Points + 1
+            <span class="keyword">Fin Si</span>
+        <span class="keyword">Next</span> k
+        
+        <span class="comment">// Étape D : Normalisation pondérée</span>
+        <span class="keyword">Si</span> Compteur_Points &gt; 0 Et Cumul_Poids_Total &gt; 0 Alors
+            A_Final = Somme_A / Cumul_Poids_Total
+            R_Final = Somme_R / Cumul_Poids_Total
+            G_Final = Somme_G / Cumul_Poids_Total
+            B_Final = Somme_B / Cumul_Poids_Total
+        <span class="keyword">Sinon</span>
+            Pixel_Defaut = Lire_Pixel_Source(X, Y)
+            (A_Final, R_Final, G_Final, B_Final) = Extraire_ARGB(Pixel_Defaut)
+        <span class="keyword">Fin Si</span>
+        
+        Écrire_Pixel_Cible(X, Y, Réassembler_ARGB(A_Final, R_Final, G_Final, B_Final))
+        
+    <span class="keyword">Next</span> X
+<span class="keyword">Fin Pour</span>
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Analyse Spatiale et Filtrage Numérique par Accumulation Angulaire Pondérée.</p>
+    </footer>
+
+</body>
+</html>

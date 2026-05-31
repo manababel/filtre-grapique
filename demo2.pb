@@ -41,6 +41,8 @@ If OpenWindow(0, 0, 0, 1000, 600, "Exemple...", #PB_Window_SystemMenu | #PB_Wind
   Until Event = #PB_Event_CloseWindow
 EndIf
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 23
+; CursorPosition = 15
 ; EnableXP
 ; DPIAware
+; DisableDebugger
+; Compiler = PureBasic 6.40 - C Backend (Windows - x86)

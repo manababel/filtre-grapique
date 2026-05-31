@@ -1,106 +1,229 @@
-﻿Procedure FreiChen_MT(*FilterCtx.FilterParams)
+﻿Macro Macro_FreiChen_calcul()
+  ; Note : 1.4142135f6 représente la racine carrée de 2 (f6 pour forcer le type float en calcul)
+  
+  ; --- DIRECTION 1 : Nord ---
+  valR = (v\r[0] + v\r[2]) + (v\r[1] * 1.4142135) - ((v\r[6] + v\r[8]) + (v\r[7] * 1.4142135))
+  valG = (v\g[0] + v\g[2]) + (v\g[1] * 1.4142135) - ((v\g[6] + v\g[8]) + (v\g[7] * 1.4142135))
+  valB = (v\b[0] + v\b[2]) + (v\b[1] * 1.4142135) - ((v\b[6] + v\b[8]) + (v\b[7] * 1.4142135))
+  rMax = Abs(valR) : gMax = Abs(valG) : bMax = Abs(valB)
+
+  ; --- DIRECTION 2 : Nord-Est ---
+  valR = v\r[1] + (v\r[2] * 1.4142135) + (v\r[5] * 1.4142135) - (v\r[3] + v\r[6] + (v\r[7] * 1.4142135))
+  valG = v\g[1] + (v\g[2] * 1.4142135) + (v\g[5] * 1.4142135) - (v\g[3] + v\g[6] + (v\g[7] * 1.4142135))
+  valB = v\b[1] + (v\b[2] * 1.4142135) + (v\b[5] * 1.4142135) - (v\b[3] + v\b[6] + (v\b[7] * 1.4142135))
+  If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+  If Abs(valG) > gMax : gMax = Abs(valG) : EndIf
+  If Abs(valB) > bMax : bMax = Abs(valB) : EndIf
+
+  ; --- DIRECTION 3 : Est ---
+  valR = (v\r[2] + v\r[5] + v\r[8]) - (v\r[0] + v\r[3] + v\r[6])
+  valG = (v\g[2] + v\g[5] + v\g[8]) - (v\g[0] + v\g[3] + v\g[6])
+  valB = (v\b[2] + v\b[5] + v\b[8]) - (v\b[0] + v\b[3] + v\b[6])
+  If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+  If Abs(valG) > gMax : gMax = Abs(valG) : EndIf
+  If Abs(valB) > bMax : bMax = Abs(valB) : EndIf
+
+  ; --- DIRECTION 4 : Sud-Est ---
+  valR = (v\r[5] * 1.4142135) + (v\r[7] * 1.4142135) + v\r[8] - (v\r[0] + (v\r[1] * 1.4142135) + v\r[3])
+  valG = (v\g[5] * 1.4142135) + (v\g[7] * 1.4142135) + v\g[8] - (v\g[0] + (v\g[1] * 1.4142135) + v\g[3])
+  valB = (v\b[5] * 1.4142135) + (v\b[7] * 1.4142135) + v\b[8] - (v\b[0] + (v\b[1] * 1.4142135) + v\b[3])
+  If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+  If Abs(valG) > gMax : gMax = Abs(valG) : EndIf
+  If Abs(valB) > bMax : bMax = Abs(valB) : EndIf
+
+  ; --- DIRECTION 5 : Sud ---
+  valR = (v\r[6] + v\r[8]) + (v\r[7] * 1.4142135) - ((v\r[0] + v\r[2]) + (v\r[1] * 1.4142135))
+  valG = (v\g[6] + v\g[8]) + (v\g[7] * 1.4142135) - ((v\g[0] + v\g[2]) + (v\g[1] * 1.4142135))
+  valB = (v\b[6] + v\b[8]) + (v\b[7] * 1.4142135) - ((v\b[0] + v\b[2]) + (v\b[1] * 1.4142135))
+  If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+  If Abs(valG) > gMax : gMax = Abs(valG) : EndIf
+  If Abs(valB) > bMax : bMax = Abs(valB) : EndIf
+
+  ; --- DIRECTION 6 : Sud-Ouest ---
+  valR = v\r[3] + v\r[6] + (v\r[7] * 1.4142135) - (v\r[1] + (v\r[2] * 1.4142135) + (v\r[5] * 1.4142135))
+  valG = v\g[3] + v\g[6] + (v\g[7] * 1.4142135) - (v\g[1] + (v\g[2] * 1.4142135) + (v\g[5] * 1.4142135))
+  valB = v\b[3] + v\b[6] + (v\b[7] * 1.4142135) - (v\b[1] + (v\b[2] * 1.4142135) + (v\b[5] * 1.4142135))
+  If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+  If Abs(valG) > gMax : gMax = Abs(valG) : EndIf
+  If Abs(valB) > bMax : bMax = Abs(valB) : EndIf
+
+  ; --- DIRECTION 7 : Ouest ---
+  valR = (v\r[0] + v\r[3] + v\r[6]) - (v\r[2] + v\r[5] + v\r[8])
+  valG = (v\g[0] + v\g[3] + v\g[6]) - (v\g[2] + v\g[5] + v\g[8])
+  valB = (v\b[0] + v\b[3] + v\b[6]) - (v\b[2] + v\b[5] + v\b[8])
+  If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+  If Abs(valG) > gMax : gMax = Abs(valG) : EndIf
+  If Abs(valB) > bMax : bMax = Abs(valB) : EndIf
+
+  ; --- DIRECTION 8 : Nord-Ouest ---
+  valR = v\r[0] + (v\r[1] * 1.4142135) + v\r[3] - ((v\r[5] * 1.4142135) + (v\r[7] * 1.4142135) + v\r[8])
+  valG = v\g[0] + (v\g[1] * 1.4142135) + v\g[3] - ((v\g[5] * 1.4142135) + (v\g[7] * 1.4142135) + v\g[8])
+  valB = v\b[0] + (v\b[1] * 1.4142135) + v\b[3] - ((v\b[5] * 1.4142135) + (v\b[7] * 1.4142135) + v\b[8])
+  If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+  If Abs(valG) > gMax : gMax = Abs(valG) : EndIf
+  If Abs(valB) > bMax : bMax = Abs(valB) : EndIf
+EndMacro
+
+Macro Macro_FreiChen_lecture_pixel3x3()
+  pos = ((y - 1) * lg) + (x - 1)
+  getrgb(*src\pixel[pos + 0], v\r[0], v\g[0], v\b[0])
+  getrgb(*src\pixel[pos + 1], v\r[1], v\g[1], v\b[1])
+  getrgb(*src\pixel[pos + 2], v\r[2], v\g[2], v\b[2])
+  pos + lg
+  getrgb( *src\pixel[pos + 0],    v\r[3], v\g[3], v\b[3])
+  getargb(*src\pixel[pos + 1], a, v\r[4], v\g[4], v\b[4])
+  getrgb( *src\pixel[pos + 2],    v\r[5], v\g[5], v\b[5])
+  pos + lg  
+  getrgb(*src\pixel[pos + 0], v\r[6], v\g[6], v\b[6])
+  getrgb(*src\pixel[pos + 1], v\r[7], v\g[7], v\b[7]) 
+  getrgb(*src\pixel[pos + 2], v\r[8], v\g[8], v\b[8])
+EndMacro
+
+Procedure FreiChen_MT(*FilterCtx.FilterParams)
   With *FilterCtx
     Protected lg = \image_lg[0]
     Protected ht = \image_ht[0]
-    Protected mul.f = \option[0] * 0.05
-    Protected toGray = \option[1]   ; Boolean
-    Protected inverse = \option[2]  ; Boolean
-    
-    Protected Dim r3.f(8), Dim g3.f(8), Dim b3.f(8), Dim gray.f(8)
-    Protected Dim mask.f(7, 8)
-    Protected.f rMax, gMax, bMax, maxVal, valGray, valR, valG, valB
-    Protected *srcPixel.Pixel32, *dstPixel.Pixel32
-    Protected a, r, g, b, x, y, i, dir, k, pitch = lg << 2
-    Protected dx , dy , gr
-    
-    ; Chargement des masques Frei-Chen (8 directions, valeurs flottantes)
-    Restore FreiChen_kernel
-    For dir = 0 To 7 : For i = 0 To 8 : Read.f mask(dir, i) : Next : Next
-    
-    macro_calul_tread(ht)
-    
-    ; Protection des bords pour le noyau 3x3
-    If thread_start < 1 : thread_start = 1 : EndIf
-    If thread_stop > ht - 1 : thread_stop = ht - 1 : EndIf
-    
-    For y = thread_start To thread_stop - 1
-      For x = 1 To lg - 2
-        
-        ; Lecture du voisinage 3x3
-        k = 0
-        For dy = -1 To 1
-          Protected *srcLine = \addr[0] + ((y + dy) * pitch)
-          For dx = -1 To 1
-            *srcPixel = *srcLine + ((x + dx) << 2)
-            ; Extraction des canaux
-            Protected cr, cg, cb
-            If k = 4 : getargb(*srcPixel\l, a, cr, cg, cb) : Else : getrgb(*srcPixel\l, cr, cg, cb) : EndIf
-            r3(k) = cr : g3(k) = cg : b3(k) = cb
-            If toGray : gr = (cr * 77 + cg * 150 + cb * 29) >> 8 : gray(k) = gr :EndIf
-            k + 1
-          Next
-        Next
-        
-        If toGray
-          maxVal = 0.0
-          For dir = 0 To 7
-            valGray = 0.0
-            For i = 0 To 8 : valGray + gray(i) * mask(dir, i) : Next
-            valGray = Abs(valGray)
-            If valGray > maxVal : maxVal = valGray : EndIf
-          Next
-          r = maxVal * mul : g = r : b = r
-        Else
-          rMax = 0.0 : gMax = 0.0 : bMax = 0.0
-          For dir = 0 To 7
-            valR = 0.0 : valG = 0.0 : valB = 0.0
-            For i = 0 To 8
-              valR + r3(i) * mask(dir, i)
-              valG + g3(i) * mask(dir, i)
-              valB + b3(i) * mask(dir, i)
-            Next
-            valR = Abs(valR) : valG = Abs(valG) : valB = Abs(valB)
-            If valR > rMax : rMax = valR : EndIf
-            If valG > gMax : gMax = valG : EndIf
-            If valB > bMax : bMax = valB : EndIf
-          Next
-          r = rMax * mul : g = gMax * mul : b = bMax * mul
-        EndIf
-        
-        ; Finalisation des couleurs (Clamping et Inversion)
-        If r > 255 : r = 255 : ElseIf r < 0 : r = 0 : EndIf
-        If g > 255 : g = 255 : ElseIf g < 0 : g = 0 : EndIf
-        If b > 255 : b = 255 : ElseIf b < 0 : b = 0 : EndIf
-        
-        If inverse : r = 255 - r : g = 255 - g : b = 255 - b : EndIf
+    Protected mul = \option[0] * 1024
+    Protected toGray = \option[1]
+    Protected inverse = \option[2]
+    Protected seuil_bas  = \option[3]
+    Protected seuil_haut = \option[4]
+    Protected v.edge_detection
+    Protected a, r, g, b, x, y , pos
+    Protected valR, valG, valB, rMax, gMax, bMax
+    Protected *src.pixelarray32
+    Protected *dst.Pixelarray32    
+    *src = \addr[2]
+    *dst = \addr[1]
 
-        *dstPixel = \addr[1] + ((y * lg + x) << 2)
-        *dstPixel\l = (a << 24) | (Int(r) << 16) | (Int(g) << 8) | Int(b)
+    macro_calul_tread(ht)
+    If thread_start < 1 : thread_start = 1 : EndIf
+    If thread_stop > ht - 2 : thread_stop = ht - 2 : EndIf
+    
+    For y = thread_start To thread_stop
+      For x = 1 To lg - 2
+        Macro_FreiChen_lecture_pixel3x3()
+        
+        If toGray 
+          v\r[0] = (v\r[0] * 77 + v\g[0] * 150 + v\b[0] * 29) >> 8
+          v\r[1] = (v\r[1] * 77 + v\g[1] * 150 + v\b[1] * 29) >> 8
+          v\r[2] = (v\r[2] * 77 + v\g[2] * 150 + v\b[2] * 29) >> 8
+          v\r[3] = (v\r[3] * 77 + v\g[3] * 150 + v\b[3] * 29) >> 8
+          v\r[5] = (v\r[5] * 77 + v\g[5] * 150 + v\b[5] * 29) >> 8
+          v\r[6] = (v\r[6] * 77 + v\g[6] * 150 + v\b[6] * 29) >> 8
+          v\r[7] = (v\r[7] * 77 + v\g[7] * 150 + v\b[7] * 29) >> 8
+          v\r[8] = (v\r[8] * 77 + v\g[8] * 150 + v\b[8] * 29) >> 8
+          
+; 2. Calcul Frei-Chen basé UNIQUEMENT sur le canal gris (v\r)
+          ; --- DIRECTION 1 ---
+          valR = (v\r[0] + v\r[2]) + (v\r[1] * 1.4142135) - ((v\r[6] + v\r[8]) + (v\r[7] * 1.4142135))
+          rMax = Abs(valR)
+          ; --- DIRECTION 2 ---
+          valR = v\r[1] + (v\r[2] * 1.4142135) + (v\r[5] * 1.4142135) - (v\r[3] + v\r[6] + (v\r[7] * 1.4142135))
+          If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+          ; --- DIRECTION 3 ---
+          valR = (v\r[2] + v\r[5] + v\r[8]) - (v\r[0] + v\r[3] + v\r[6])
+          If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+          ; --- DIRECTION 4 ---
+          valR = (v\r[5] * 1.4142135) + (v\r[7] * 1.4142135) + v\r[8] - (v\r[0] + (v\r[1] * 1.4142135) + v\r[3])
+          If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+          ; --- DIRECTION 5 ---
+          valR = (v\r[6] + v\r[8]) + (v\r[7] * 1.4142135) - ((v\r[0] + v\r[2]) + (v\r[1] * 1.4142135))
+          If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+          ; --- DIRECTION 6 ---
+          valR = v\r[3] + v\r[6] + (v\r[7] * 1.4142135) - (v\r[1] + (v\r[2] * 1.4142135) + (v\r[5] * 1.4142135))
+          If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+          ; --- DIRECTION 7 ---
+          valR = (v\r[0] + v\r[3] + v\r[6]) - (v\r[2] + v\r[5] + v\r[8])
+          If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+          ; --- DIRECTION 8 ---
+          valR = v\r[0] + (v\r[1] * 1.4142135) + v\r[3] - ((v\r[5] * 1.4142135) + (v\r[7] * 1.4142135) + v\r[8])
+          If Abs(valR) > rMax : rMax = Abs(valR) : EndIf
+          
+          ; On propage la valeur identique sur R, G et B pour obtenir du vrai gris
+          r = (Int(rMax) * mul) >> 16
+          If inverse : r = 255 - r : EndIf
+          g = r : b = r
+          
+        Else
+          Macro_FreiChen_calcul()
+          r = (Int(rMax) * mul) >> 16
+          g = (Int(gMax) * mul) >> 16
+          b = (Int(bMax) * mul) >> 16
+          clamp_rgb(r , g , b)
+          If inverse : r = 255 - r : g = 255 - g : b = 255 - b : EndIf
+        EndIf
+
+        If seuil_bas  >   0 : seuil_min_rgb(seuil_bas  , r , g , b) : EndIf
+        If seuil_haut < 255 : seuil_max_rgb(seuil_haut , r , g , b) : EndIf
+        
+        *dst\Pixel[(y * lg) + x] = (a << 24) | (r << 16) | (g << 8) | b
       Next
     Next
+  EndWith
+EndProcedure
+
+Procedure FreiChen_bords(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected x, y
+    Protected *dst.Pixelarray32 = \addr[1]
     
-    FreeArray(r3()) : FreeArray(g3()) : FreeArray(b3()) : FreeArray(gray()) : FreeArray(mask())
+    For y = 1 To ht - 2
+      *dst\pixel[y * lg] = *dst\pixel[y * lg + 1]
+      *dst\pixel[(y * lg) + lg - 1] = *dst\pixel[(y * lg) + lg - 2]
+    Next
+    
+    Protected top_line_offset = 0
+    Protected sec_line_offset = lg
+    For x = 0 To lg - 1
+      *dst\pixel[top_line_offset + x] = *dst\pixel[sec_line_offset + x]
+    Next
+    
+    Protected last_line_offset = (ht - 1) * lg
+    Protected prev_line_offset = (ht - 2) * lg
+    For x = 0 To lg - 1
+      *dst\pixel[last_line_offset + x] = *dst\pixel[prev_line_offset + x]
+    Next
   EndWith
 EndProcedure
 
 Procedure FreiChenEx(*FilterCtx.FilterParams)
   Restore FreiChen_data
+  Protected i , var
+  Protected *dst.pixelarray32
   Protected last_data = Filter_InitAndValidate()
   If last_data < 0 : ProcedureReturn 0 : EndIf
-
-  Create_MultiThread_MT(@FreiChen_MT())
-  
-  mask_update(*FilterCtx, last_data)
+  With *FilterCtx
+    Protected size = \image_lg[0] * \image_ht[0] * 4
+    If \addr[1] = \addr[0]
+      \addr[2] = AllocateMemory(size)
+      If \addr[2]
+        CopyMemory(\addr[0] , \addr[2] , size)
+        Create_MultiThread_MT(@FreiChen_MT())
+        FreiChen_bords(*FilterCtx)
+        FreeMemory(\addr[2]) 
+      EndIf
+    Else
+      \addr[2] = \addr[0]
+      Create_MultiThread_MT(@FreiChen_MT())
+      FreiChen_bords(*FilterCtx)
+    EndIf  
+    mask_update(*FilterCtx, last_data) 
+  EndWith
 EndProcedure
 
-Procedure FreiChen(source, cible, mask, multiply=10, gray=0, inverse=0)
+Procedure FreiChen(source, cible, mask, multiplicateur=10, noir_blanc=0, inversion=0, seuil_bas = 0, seuil_haut = 255)
   Set_Source(source)
   Set_Cible(cible)
   Set_Mask(mask)
   With FilterCtx
-    \option[0] = multiply
-    \option[1] = gray
-    \option[2] = inverse
+    \option[0] = multiplicateur
+    \option[1] = noir_blanc
+    \option[2] = inversion
+    \option[3] = seuil_bas
+    \option[4] = seuil_haut
   EndWith
   FreiChenEx(FilterCtx.FilterParams)
 EndProcedure
@@ -108,38 +231,25 @@ EndProcedure
 DataSection
   FreiChen_data:
   Data.s "Frei-Chen"
-  Data.s "Détection de contours par masques normalisés (Précision Flottante)"
+  Data.s "Détection de contours par masques normalisés 3x3 (Flottant)"
   Data.i #FilterType_EdgeDetection
   Data.i #EdgeDetect_Gradient
-  
+   
   Data.s "Multiplicateur"
-  Data.i 1, 100, 10
+  Data.i 1, 100, 25
   Data.s "Noir et Blanc"
   Data.i 0, 1, 0
   Data.s "Inverser"
   Data.i 0, 1, 0
-  Data.s "XXX"
-
-  FreiChen_kernel:
-  ; M1 (Nord)
-  Data.f  1,  1.4142,  1,       0,   0,   0,      -1, -1.4142, -1
-  ; M2 (Nord-Est)
-  Data.f  0,  1,       1.4142, -1,   0,   1.4142, -1, -1,      0
-  ; M3 (Est)
-  Data.f -1,  0,       1,      -1,   0,   1,      -1,  0,      1
-  ; M4 (Sud-Est)
-  Data.f -1, -1.4142,  0,      -1,   0,   1.4142,  0,  1.4142, 1
-  ; M5 (Sud)
-  Data.f -1, -1.4142, -1,       0,   0,   0,       1,  1.4142, 1
-  ; M6 (Sud-Ouest)
-  Data.f  0, -1,      -1.4142,  1,   0,  -1.4142,  1,  1,      0
-  ; M7 (Ouest)
-  Data.f  1,  0,      -1,       1,   0,  -1,       1,  0,     -1
-  ; M8 (Nord-Ouest)
-  Data.f  1,  1.4142,  0,       1,   0,  -1.4142,  0, -1.4142,-1
+  Data.s "seuil bas"
+  Data.i 0, 255, 0
+  Data.s "seuil haut"
+  Data.i 0, 255, 255
+  Data.s "XXX"  
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 38
-; Folding = -
+; CursorPosition = 155
+; FirstLine = 114
+; Folding = --
 ; EnableXP
 ; DPIAware

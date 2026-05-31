@@ -6,13 +6,14 @@ Procedure Roberts_RGBFromHSV(*r.Integer, *g.Integer, *b.Integer, h.f, s.f, v.f)
   Protected r1.f, g1.f, b1.f
   Protected sector = h / 60.0
   
-  Select Int(sector)
-    Case 0 : r1 = c : g1 = x : b1 = 0.0
-    Case 1 : r1 = x : g1 = c : b1 = 0.0
-    Case 2 : r1 = 0.0 : g1 = c : b1 = x
-    Case 3 : r1 = 0.0 : g1 = x : b1 = c
-    Case 4 : r1 = x : g1 = 0.0 : b1 = c
-    Default: r1 = c : g1 = 0.0 : b1 = x
+  ; Sécurité pour s'assurer que le secteur reste entre 0 et 5
+  Select Int(sector) % 6
+    Case 0 : r1 = c   : g1 = x   : b1 = 0.0
+    Case 1 : r1 = x   : g1 = c   : b1 = 0.0
+    Case 2 : r1 = 0.0 : g1 = c   : b1 = x
+    Case 3 : r1 = 0.0 : g1 = x   : b1 = c
+    Case 4 : r1 = x   : g1 = 0.0 : b1 = c
+    Default: r1 = c   : g1 = 0.0 : b1 = x ; Secteur 5
   EndSelect
   
   *r\i = Int((r1 + m) * 255.0)
@@ -32,63 +33,52 @@ Procedure Roberts_MT(*FilterCtx.FilterParams)
     Protected orientation = \option[5]; Boolean
     Protected angle_add.f = \option[6]
     
-    Protected x, y, pitch = lg << 2
+    Protected x, y, pos
     Protected a, r, g, b
     Protected r1, g1, b1, r2, g2, b2, r3, g3, b3, r4, g4, b4
     Protected gxR, gxG, gxB, gyR, gyG, gyB
     Protected valR.f, valG.f, valB.f, gx, gy, mag.f, angle.f
-    Protected *srcPixel.Pixel32
-    Protected *dstPixel.Pixel32
+    Protected *src.Pixelarray32 = \addr[0]
+    Protected *dst.Pixelarray32 = \addr[1]
     
     macro_calul_tread(ht)
     
-    ; On s'arrête à ht-1 et lg-1 car Roberts utilise un voisinage 2x2 (x+1, y+1)
-    For y = thread_start To thread_stop - 1
-      If y >= ht - 1 : Break : EndIf
-      
-      Protected *srcLine = \addr[0] + (y * pitch)
-      Protected *srcLineNext = *srcLine + pitch
-      Protected *dstLine = \addr[1] + (y * pitch)
-      
+    If thread_stop >= (ht - 1) : thread_stop = ht - 2 : EndIf
+    
+    For y = thread_start To thread_stop   
       For x = 0 To lg - 2
-        Protected offset = x << 2
+        pos = (y * lg) + x
         
-        ; Pixel (x, y)
-        *srcPixel = *srcLine + offset
-        getargb(*srcPixel\l, a, r1, g1, b1)
-        ; Pixel (x+1, y)
-        *srcPixel = *srcLine + offset + 4
-        getrgb(*srcPixel\l, r2, g2, b2)
-        ; Pixel (x, y+1)
-        *srcPixel = *srcLineNext + offset
-        getrgb(*srcPixel\l, r3, g3, b3)
-        ; Pixel (x+1, y+1)
-        *srcPixel = *srcLineNext + offset + 4
-        getrgb(*srcPixel\l, r4, g4, b4)
+        getargb(*src\Pixel[pos], a, r1, g1, b1)          ; P(x, y)
+        getrgb(*src\Pixel[pos + 1], r2, g2, b2)          ; P(x+1, y)
+        getrgb(*src\Pixel[pos + lg], r3, g3, b3)         ; P(x, y+1)
+        getrgb(*src\Pixel[pos + lg + 1], r4, g4, b4)     ; P(x+1, y+1)
 
-        ; Gx = P(x,y) - P(x+1, y+1)
         gxR = r1 - r4 : gxG = g1 - g4 : gxB = b1 - b4
-        ; Gy = P(x+1, y) - P(x, y+1)
         gyR = r2 - r3 : gyG = g2 - g3 : gyB = b2 - b3
         
         If orientation
+          ; On moyenne ou on cumule les canaux pour l'orientation globale
           gx = gxR + gxG + gxB
           gy = gyR + gyG + gyB
           mag = Sqr(gx * gx + gy * gy) * mul
-          angle = ATan2(gx, gy) * 180.0 / #PI + angle_add
           
-          ; Wrap angle
-          While angle < 0.0 : angle + 360.0 : Wend
-          While angle >= 360.0 : angle - 360.0 : Wend
+          If mag > 0.0
+            angle = ATan2(gx, gy) * 180.0 / #PI + angle_add
+            If angle < 0.0 : angle + 360.0 : EndIf
+            If angle >= 360.0 : angle - 360.0 : EndIf
+          Else
+            angle = 0.0
+          EndIf
           
           If mag > 255.0 : mag = 255.0 : EndIf
           Roberts_RGBFromHSV(@r, @g, @b, angle, 1.0, mag / 255.0)
         Else
-          If math ; Mode ABS
+          If math
             valR = Abs(gxR) + Abs(gyR)
             valG = Abs(gxG) + Abs(gyG)
             valB = Abs(gxB) + Abs(gyB)
-          Else   ; Mode SQR
+          Else
             valR = Sqr(gxR * gxR + gyR * gyR) 
             valG = Sqr(gxG * gxG + gyG * gyG) 
             valB = Sqr(gxB * gxB + gyB * gyB) 
@@ -99,29 +89,36 @@ Procedure Roberts_MT(*FilterCtx.FilterParams)
           b = Int(valB * mul)
         EndIf
         
-        ; Clamping et Seuillage
-        If r < 0 : r = 0 : ElseIf r > 255 : r = 255 : EndIf
-        If g < 0 : g = 0 : ElseIf g > 255 : g = 255 : EndIf
-        If b < 0 : b = 0 : ElseIf b > 255 : b = 255 : EndIf
+        clamp_rgb(r , g , b)
         
-        If seuillage > 0
-          If r > seuillage : r = 255 : Else : r = 0 : EndIf
-          If g > seuillage : g = 255 : Else : g = 0 : EndIf
-          If b > seuillage : b = 255 : Else : b = 0 : EndIf
-        EndIf
-        
-        If toGray
-          r = (r * 77 + g * 150 + b * 29) >> 8
-          g = r : b = r
-        EndIf
+        If seuillage > 0 : seuil_rgb(seuillage , r , g , b) : EndIf
+        If toGray : r = (r * 77 + g * 150 + b * 29) >> 8 : g = r : b = r : EndIf
+        If inverse : r = 255 - r : g = 255 - g : b = 255 - b : EndIf
 
-        If inverse
-          r = 255 - r : g = 255 - g : b = 255 - b
-        EndIf
-
-        *dstPixel = *dstLine + offset
-        *dstPixel\l = (a << 24) | (r << 16) | (g << 8) | b
+        *dst\pixel[pos] = (a << 24) | (r << 16) | (g << 8) | b
       Next
+    Next
+  EndWith
+EndProcedure
+
+; Correction de la typo sur le nom de la procédure (Robets -> Roberts)
+Procedure Roberts_bords(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected x, y
+    Protected *dst.Pixelarray32 = \addr[1]
+    
+    ; Étape A : On complète le bord droit (dernière colonne)
+    For y = 0 To ht - 2
+      *dst\pixel[(y * lg) + lg - 1] = *dst\pixel[(y * lg) + lg - 2]
+    Next
+    
+    ; Étape B : On complète toute la dernière ligne
+    Protected last_line_offset = (ht - 1) * lg
+    Protected prev_line_offset = (ht - 2) * lg
+    For x = 0 To lg - 1
+      *dst\pixel[last_line_offset + x] = *dst\pixel[prev_line_offset + x]
     Next
   EndWith
 EndProcedure
@@ -130,10 +127,24 @@ Procedure RobertsEx(*FilterCtx.FilterParams)
   Restore Roberts_data
   Protected last_data = Filter_InitAndValidate()
   If last_data < 0 : ProcedureReturn 0 : EndIf
-
-  Create_MultiThread_MT(@Roberts_MT())
-  
-  mask_update(*FilterCtx, last_data)
+  With *FilterCtx
+    Protected size = \image_lg[0] * \image_ht[0] * 4
+    If \addr[1] = \addr[0] 
+      \addr[2] = AllocateMemory(size) 
+      If \addr[2]
+        CopyMemory(\addr[0] , \addr[2] , size) 
+        \addr[0] = \addr[2]
+        
+        Create_MultiThread_MT(@Roberts_MT())
+        Roberts_bords(*FilterCtx) ; Correction typo
+        FreeMemory(\addr[2]) 
+      EndIf
+    Else
+      Create_MultiThread_MT(@Roberts_MT())
+      Roberts_bords(*FilterCtx) ; Correction typo
+    EndIf 
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
 
 Procedure Roberts(source, cible, mask, multiply=10, math=0, gray=0, inverse=0, seuil=0, orient=0, angle=0)
@@ -176,8 +187,6 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 138
-; FirstLine = 125
 ; Folding = -
 ; EnableXP
 ; DPIAware

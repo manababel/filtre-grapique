@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme SpiralBlur Accumulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #3b82f6;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #1e3a8a;
+            border: 1px solid #3b82f6;
+            color: #93c5fd;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #3b82f6;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #e2e8f0;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #1e3a8a;
+            color: #3b82f6;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Inversion Graphique et Splatting</div>
+        <h1>Documentation - Algorithme <span>SpiralBlur_Accumulation</span></h1>
+        <p>Optimisation par distribution inverse de la couleur, pas adaptatifs et normalisation sur buffers d'accumulation</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation par Accumulation ?</h2>
+        <ul>
+            <li>
+                <strong>Inversion Algorithmique Révolutionnaire (Splatting) :</strong> Contrairement aux filtres traditionnels qui cherchent à déterminer quelles couleurs externes composent le pixel final (méthode de collecte), cet algorithme prend le pixel source actuel et projette sa couleur sur une zone circulaire environnante le long d'une trajectoire hélicoïdale (méthode de diffusion).
+            </li>
+            <li>
+                <strong>Sous-Échantillonnage Adaptatif (Downsampling) :</strong> Pour préserver les performances de la machine lors de grands floutages, l'algorithme ajuste dynamiquement son pas spatial (<code>sampleStep</code>) selon la taille du rayon. Le pas passe automatiquement de 1 à 2 pixels pour un rayon supérieur à 50, et grimpe à 4 pixels au-delà d'un rayon de 100, maintenant un framerate exceptionnel.
+            </li>
+            <li>
+                <strong>Élagage de l'Espace Angulaire :</strong> Le filtre écrête drastiquement le nombre de lignes de calcul géométriques à traiter : <code>Max(angleStep, 1, angleCount / 32)</code>. L'exploration se restreint à seulement 32 secteurs angulaires de base au lieu des centaines théoriquement exigés par l'indice de qualité de l'image.
+            </li>
+            <li>
+                <strong>Normalisation Linéaire unifiée :</strong> Grâce à des tableaux mémoire intermédiaires dédiés (<code>accumR, accumG, accumB, accumA, accumCount</code>), l'algorithme enregistre et fusionne en continu les contributions de couleur. Une passe finale divise le total par le nombre d'occurrences réelles (<code>count</code>) pour garantir l'homogénéité du flou sans saturation.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Consommation Mémoire Massive :</strong> Le filtre nécessite l'allocation dynamique de 5 tableaux distincts de taille intégrale (Largeur * Hauteur). Pour une image haute résolution, l'occupation en mémoire RAM s'élève à plusieurs dizaines de mégaoctets, ralentissant la phase d'initialisation du filtre.
+                </li>
+                <li>
+                    <strong>Anomalie de la Boucle de Distance (Boucle Infinie) :</strong> La variable de contrôle de la distance utilise l'instruction <code>While dist &lt;= tt</code> mais incrémente l'accumulateur de géométrie globale <code>tt</code> au lieu de la variable <code>dist</code> (ligne : <code>tt + sampleStep</code>). En l'état, cette ligne crée une boucle sans fin si elle est exécutée sans modification.
+                </li>
+                <li>
+                    <strong>Erreur d'Aiguillage Public :</strong> À l'instar de la méthode stochastique, la procédure finale de liaison <code>spiral_Accumulation()</code> redirige l'exécution vers l'algorithme à réponse impulsionnelle infinie (<code>SpiralBlur_IIREx</code>) au lieu d'appeler sa propre passerelle (<code>spiral_AccumulationEx</code>).
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique et Correctifs</h3>
+        <p>L'interface prépare les buffers d'accumulation et calcule les angles requis. <i>Note : Le moteur doit être redirigé vers sa propre extension et la boucle de distance corrigée.</i></p>
+        <pre><code><span class="keyword">Procedure</span> spiral_Accumulation(source , cible , mask , rayon , posx , posy , force , qualite , ra , sens)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = rayon
+    \option[1] = posx
+    \option[2] = posy
+    \option[3] = force
+    \option[4] = qualite
+    \option[5] = ra
+    \option[6] = sens
+  <span class="keyword">EndWith</span>
+  <span class="comment">; CORRECTIF : Pointer vers spiral_AccumulationEx(FilterCtx.FilterParams)</span>
+  spiral_AccumulationEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Régulation Dynamique du Pas (Downsampling)</h3>
+        <p>Cette structure montre l'accélération matérielle logique par réduction d'échantillonnage spatiale :</p>
+        <pre><code><span class="comment">; Ajustement automatique de la granularité selon le rayon :</span>
+<span class="keyword">Protected</span> sampleStep = <span class="number">1</span>
+<span class="keyword">If</span> Radius &gt; <span class="number">50</span>  : sampleStep = <span class="number">2</span> : <span class="keyword">EndIf</span>
+<span class="keyword">If</span> Radius &gt; <span class="number">100</span> : sampleStep = <span class="number">4</span> : <span class="keyword">EndIf</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>L'algorithme dessine des hélices de projection. Chaque pixel croisé distribue ses informations chromatiques aux pixels adjacents s'ils entrent dans le disque défini par le rayon.</p>
+
+        <div class="card">
+            <h3>Le Principe de Dispersion en Disque</h3>
+            <p>Quand la trajectoire en spirale valide la présence d'un pixel à la position <code>(x, y)</code>, une double sous-boucle inspecte la périphérie de ce point entre <code>-Radius</code> et <code>+Radius</code>.<br>
+            Si un pixel voisin <code>(tx, ty)</code> se trouve dans le disque d'action (<code>rx*rx + ry*ry &lt;= Radius*Radius</code>), il reçoit une fraction de la couleur du pixel d'origine.</p>
+        </div>
+
+        <h3>Cinématique de la Grille d'Accumulation</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Zone Splatting</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">tx,ty</td><td class="active-blur">tx,ty</td><td></td></tr>
+                            <tr><td class="active-blur">tx,ty</td><td class="center-pixel">x,y</td><td></td></tr>
+                            <tr><td></td><td></td><td></td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Formule d'Incrémentation des Buffers :</strong></p>
+                        <div class="math-box">
+                            Index_Buffer = ty * Largeur_Image + tx<br><br>
+                            accumR(Index_Buffer) + Rouge_Pixel_Source<br>
+                            accumCount(Index_Buffer) + 1
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Plutôt que d'écrire immédiatement sur l'image de sortie, chaque point impacté charge ses registres d'accumulation. À la fin de toutes les passes angulaires, une opération globale unifie l'image en calculant la moyenne exacte de chaque couleur.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone et Corrigé)</h3>
+        <p>Voici l'ordonnancement mathématique exact de la technique de floutage par projection inversée :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Rayon, Foyer X, Foyer Y, Force, Qualité
+
+<span class="comment">// 1. INITIALISATION DES MATRICES DE STOCKAGE TEMP</span>
+Taille_Totale = Largeur_Image * Hauteur_Image
+Allouer_Tableau(accumR, Taille_Totale)
+Allouer_Tableau(accumG, Taille_Totale)
+Allouer_Tableau(accumB, Taille_Totale)
+Allouer_Tableau(accumA, Taille_Totale)
+Allouer_Tableau(accumCount, Taille_Totale)
+
+Axe_X = (Foyer_X * Largeur_Image) / 100.0
+Axe_Y = (Foyer_Y * Hauteur_Image) / 100.0
+
+<span class="comment">// Configuration du sous-échantillonnage</span>
+Pas_Echantillon = 1
+Si Rayon &gt; 50  Alors Pas_Echantillon = 2
+Si Rayon &gt; 100 Alors Pas_Echantillon = 4
+
+Max_Angles = 360 * Qualité
+Pas_Angulaire = Calculer_Pas_Secteur(Max_Angles / 32)
+
+<span class="comment">// 2. BALAYAGE EXPLORATOIRE DES AXES ANGULAIRES</span>
+<span class="keyword">Pour chaque</span> Index_Angle de 0 à (Max_Angles / Pas_Angulaire)
+    
+    Angle_Radians = (Index_Angle * Pas_Angulaire) / Qualité
+    Distance_Max = Sqr(Largeur_Image^2 + Hauteur_Image^2)
+    
+    Distance_Courante = 0.0
+    
+    <span class="comment">// Exploration radiale hélicoïdale</span>
+    <span class="keyword">Tant Que</span> Distance_Courante &lt;= Distance_Max
+        
+        Torsion_Spirale = (Force * Distance_Courante) / 100.0
+        Angle_Resultat = Angle_Radians + Convertir_En_Radians(Torsion_Spirale)
+        
+        Proj_X = Axe_X + Distance_Courante * Cos(Angle_Resultat)
+        Proj_Y = Axe_Y + Distance_Courante * Sin(Angle_Resultat)
+        
+        Idx_X = Convertir_En_Entier(Proj_X)
+        Idx_Y = Convertir_En_Entier(Proj_Y)
+        
+        <span class="comment">// Si le centre de projection est dans l'image</span>
+        <span class="keyword">Si</span> Idx_X &gt;= 0 Et Idx_X &lt; Largeur_Image Et Idx_Y &gt;= 0 Et Idx_Y &lt; Hauteur_Image
+            
+            Pixel_Infos = Lire_Pixel_Source(Idx_X, Idx_Y)
+            
+            <span class="comment">// 3. DISPERSION DE LA COULEUR (SPLATTING EN DISQUE)</span>
+            D_Y = -Rayon
+            <span class="keyword">Tant Que</span> D_Y &lt;= Rayon
+                D_X = -Rayon
+                <span class="keyword">Tant Que</span> D_X &lt;= Rayon
+                    
+                    Cible_X = Idx_X + D_X
+                    Cible_Y = Idx_Y + D_Y
+                    
+                    <span class="comment">// Vérification d'inclusion circulaire et de limites de l'écran</span>
+                    <span class="keyword">Si</span> (D_X*D_X + D_Y*D_Y &lt;= Rayon*Rayon) Et (Cible_X &gt;= 0 Et Cible_X &lt; Largeur_Image Et Cible_Y &gt;= 0 Et Cible_Y &lt; Hauteur_Image)
+                        
+                        Offset_Buffer = Cible_Y * Largeur_Image + Cible_X
+                        
+                        <span class="comment">// Accumulation des valeurs</span>
+                        accumR[Offset_Buffer] + Extraire_Rouge(Pixel_Infos)
+                        accumG[Offset_Buffer] + Extraire_Vert(Pixel_Infos)
+                        accumB[Offset_Buffer] + Extraire_Bleu(Pixel_Infos)
+                        accumA[Offset_Buffer] + Extraire_Alpha(Pixel_Infos)
+                        accumCount[Offset_Buffer] + 1
+                        
+                    <span class="keyword">Fin Si</span>
+                    
+                    D_X = D_X + Pas_Echantillon
+                <span class="keyword">Fin Tant Que</span>
+                D_Y = D_Y + Pas_Echantillon
+            <span class="keyword">Fin Tant Que</span>
+        <span class="keyword">Fin Si</span>
+        
+        <span class="comment">// CORRECTIF LOGIQUE : Incrémenter la distance et non le maximum</span>
+        Distance_Courante = Distance_Courante + Pas_Echantillon
+    <span class="keyword">Fin Tant Que</span>
+<span class="keyword">Fin Pour</span>
+
+<span class="comment">// 4. PASSE FINALE DE NORMALISATION ET COMPRESSION</span>
+<span class="keyword">Pour</span> i = 0 <span class="keyword">À</span> Taille_Totale - 1
+    Total_Contributions = accumCount[i]
+    <span class="keyword">Si</span> Total_Contributions &gt; 0 Alors
+        R_Moy = accumR[i] / Total_Contributions
+        G_Moy = accumG[i] / Total_Contributions
+        B_Moy = accumB[i] / Total_Contributions
+        A_Moy = accumA[i] / Total_Contributions
+        
+        Écrire_Pixel_Cible_Direct(i, Réassembler_ARGB(A_Moy, R_Moy, G_Moy, B_Moy))
+    <span class="keyword">Fin Si</span>
+<span class="keyword">Fin Pour</span>
+
+Libérer_Tous_Les_Tableaux()
+Fin
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Algorithme Inversé de Filtrage par Distribution de Splatting Symétrique.</p>
+    </footer>
+
+</body>
+</html>

@@ -40,8 +40,8 @@ EndIf
 
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 20
+; CursorPosition = 16
 ; EnableThread
 ; EnableXP
 ; DPIAware
-; DisableDebugger
+; Compiler = PureBasic 6.40 - C Backend (Windows - x64)

@@ -72,12 +72,6 @@ Procedure Scharr_4d_MT(*FilterCtx.FilterParams)
     For y = startPos To endPos
       For x = 1 To lg - 2
         
-        ; Lecture des 9 pixels du noyau 3x3
-        ; Disposition des pixels:
-        ; 0 1 2
-        ; 3 4 5
-        ; 6 7 8
-        
         ; Ligne supérieure (y-1)
         *srcPixel = *source + ((y - 1) * lg + (x - 1)) * 4
         getrgb(PeekL(*srcPixel), r3(0), g3(0), b3(0))
@@ -231,8 +225,8 @@ EndDataSection
 
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 190
-; FirstLine = 180
+; CursorPosition = 73
+; FirstLine = 54
 ; Folding = --
 ; EnableXP
 ; DPIAware

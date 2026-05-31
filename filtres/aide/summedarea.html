@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme Summed-Area Table (SAT)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .card-warning {
+            background-color: #1c1917;
+            border: 1px solid #78350f;
+            border-left: 4px solid #f59e0b;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        /* Structure de démo compatible (Tableau au lieu de Flexbox) */
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            color: #ffffff;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        .badge-alt {
+            background-color: #1e1b4b;
+            color: #818cf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Traitement d'Image Avancé</div>
+        <h1>Documentation - Algorithme <span>Summed-Area Table</span></h1>
+        <p>Génération et application d'une Image Intégrale pour filtres en temps réel</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser une Summed-Area Table (SAT) ?</h2>
+        <ul>
+            <li>
+                <strong>Complexité Algorithmique Temporelle en O(1) :</strong> C'est la force absolue de cet algorithme. Contrairement à une boîte de flou classique dont le temps de calcul explose lorsque le rayon augmente, la méthode SAT traite un pixel en un temps strictement constant. Que le rayon soit de 2 pixels ou de 500 pixels, la vitesse d'exécution reste identique.
+            </li>
+            <li>
+                <strong>Fondation pour les filtres complexes :</strong> Au-delà du flou de boîte ultra-rapide, l'image intégrale permet de calculer instantanément des variances locales, des moyennes glissantes, ou d'alimenter des algorithmes de vision par ordinateur comme la détection de visages (méthode de Viola et Jones).
+            </li>
+        </ul>
+
+        <h2>2. Limites de la méthode SAT &amp; Alternatives</h2>
+        
+        <div class="card-warning">
+            <strong>Inconvénients majeurs de l'algorithme SAT :</strong>
+            <ul style="margin-top: 5px; margin-bottom: 0;">
+                <li>
+                    <strong>Consommation mémoire massive (RAM) :</strong> La SAT nécessite d'allouer quatre buffers de travail temporaires de la taille exacte de l'image (un par canal de couleur). Pour une image de 4K ($3840 \times 2160$), cela représente une surconsommation de plus de <b>132 Mo de RAM</b> uniquement pour stocker les données de calcul intermédiaires.
+                </li>
+                <li>
+                    <strong>Risque de dépassement de capacité (Integer Overflow) :</strong> Sur de très grandes images, l'addition cumulée continue des valeurs de pixels (0-255) peut dépasser la limite maximale d'un entier 32 bits standard. L'utilisation de types flottants ou d'entiers 64 bits sécurise le calcul mais alourdit la bande passante mémoire.
+                </li>
+                <li>
+                    <strong>Esthétique "angulaire" de faible qualité :</strong> Le filtre SAT produit exclusivement un <i>Flou Box</i> (flou de boîte carré). Graphiquement, les contours floutés laissent apparaître des formes cubiques inesthétiques par rapport à la douceur d'un flou Gaussien.
+                </li>
+            </ul>
+        </div>
+
+        <div class="badge-alt">Comparatif des alternatives technologiques</div>
+        <p>Si la méthode SAT offre un temps d'exécution stable, d'autres approches permettent d'obtenir un meilleur rendu visuel ou une exécution plus fluide selon vos besoins graphiques :</p>
+
+        <h3>Pour une qualité graphique supérieure : Le Flou Gaussien Séparé</h3>
+        <p>Le flou Gaussien applique une pondération en cloche : les pixels proches du centre ont plus d'importance que les pixels éloignés. Le rendu visuel est beaucoup plus naturel et soyeux, sans l'effet "bloc" du flou Box.</p>
+        <ul>
+            <li>
+                <strong>L'astuce mathématique :</strong> Bien qu'un flou Gaussien 2D soit très lourd, il est <i>séparable</i>. On peut appliquer un premier flou de noyau 1D horizontal, puis réappliquer ce même noyau 1D verticalement sur le résultat. La complexité brute chute de $O(N^2)$ à $O(2N)$.
+            </li>
+            <li>
+                <strong>Quand l'utiliser :</strong> Pour le floutage d'arrière-plans d'interfaces utilisateur (UI), les rendus de profondeur de champ cinématiques ou les lissages photographiques de haute précision.
+            </li>
+        </ul>
+
+        <h3>Pour une vitesse maximale sur petits rayons : Le Box Blur Glissant (Sliding Window)</h3>
+        <p>Si vous souhaitez conserver le rendu d'un Flou Box mais que le rayon utilisé dépasse rarement 15 à 20 pixels, le <strong>Sliding Window Box Blur</strong> est une alternative redoutable à la SAT.</p>
+        <ul>
+            <li>
+                <strong>Le principe :</strong> Au lieu d'allouer des buffers géants pour toute l'image, on déplace une fenêtre d'analyse le long de la ligne. À chaque déplacement d'un pixel vers la droite, on soustrait la valeur du pixel qui sort de la fenêtre à gauche et on ajoute celle du pixel qui entre à droite. 
+            </li>
+            <li>
+                <strong>Les avantages clés :</strong>
+                <ul>
+                    <li><b>Zéro surcoût mémoire :</b> Pas d'allocations massives de buffers SAT, la consommation RAM reste minimale.</li>
+                    <li><b>Vitesse brute :</b> Parfaitement adapté aux instructions vectorielles (comme le <b>SSE2 / AVX2</b>), il s'exécute souvent plus rapidement que la SAT sur de petites fenêtres car il ne nécessite pas les deux passes d'initialisation (horizontale et verticale) requises pour fabriquer l'image intégrale.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h2>3. Exemples d'implémentation (PureBasic)</h2>
+
+        <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
+        <p>Idéal pour appliquer le flou de zone directement sur une image à l'aide d'un rayon prédéfini.</p>
+        <pre><code>IncludeFile "filtres.pbi"
+UseModule filtres
+
+If OpenWindow(0, 0, 0, 800, 600, "Exemple SAT...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = 1
+  CibleImage  = 2
+  AucunMasque = 0
+  Rayon       = 12 <span class="comment">; Le rayon du flou de boîte</span>
+ 
+  file$ = OpenFileRequester("Choisir une Image","","",0)
+  If load_image_32(SourceImage , file$) = 0
+    End
+  Else
+    ResizeImage(SourceImage, 800, 600)
+  EndIf
+  
+  CopyImage(SourceImage, CibleImage)
+
+  <span class="comment">; Appel de la procédure standard simplifiée</span>
+  SummedArea(SourceImage, CibleImage, AucunMasque, Rayon)
+  
+  StartDrawing(WindowOutput(0))
+    DrawImage(ImageID(CibleImage) ,  0 , 0)
+  StopDrawing()
+  
+  Repeat
+    Event = WaitWindowEvent()
+  Until Event = #PB_Event_CloseWindow
+EndIf</code></pre>
+
+        <h3>Option B : Utilisation Avancée (Via Contexte de Filtre / SummedAreaEx)</h3>
+        <p>Recommandé si vous devez intégrer ce filtre dans une chaîne de traitement ou automatiser la gestion des canaux de couleur via la structure globale.</p>
+        <pre><code>IncludeFile "filtres.pbi"
+UseModule filtres
+
+<span class="comment">; Préparation du contexte du filtre</span>
+Clear_Data_Filter(FilterCtx)
+FilterCtx\option[0] = 25 <span class="comment">; Définition du rayon d'action dans le contexte</span>
+
+Set_Source(SourceImage)
+Set_Cible(CibleImage)
+Set_Mask(AucunMasque)
+
+<span class="comment">; Execution de l'algorithme complet (Allocation, SAT_Create, SAT_Apply, Free)</span>
+SummedAreaEx(FilterCtx.FilterParams)
+</code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>L'algorithme de <strong>Summed-Area Table</strong> fonctionne en deux passes mathématiques distinctes : d'abord la <strong>génération de tables cumulatives</strong> (Image Intégrale), puis la <strong>reconstruction géométrique</strong> de la zone pour calculer la moyenne.</p>
+
+        <div class="card">
+            <h3>1. La Phase de Création (Sommes Cumulées)</h3>
+            <p>On crée quatre tables de données distinctes (une pour chaque canal de couleur : Alpha, Rouge, Vert, Bleu). Chaque case <code>(X, Y)</code> de ces tables ne contient pas la couleur du pixel d'origine, mais la <strong>somme totale</strong> de tous les pixels situés au-dessus et à gauche de cette case.</p>
+        </div>
+
+        <h3>2. L'astuce géométrique d'extraction (O(1))</h3>
+        <p>Pour trouver la somme des pixels d'un rectangle virtuel — défini par le rayon du flou — l'ordinateur n'a plus besoin de lire tous les pixels à l'intérieur. Il lui suffit de lire seulement <strong>4 valeurs clés</strong> dans la table SAT grâce à la macro <code>GetRectSum</code>.</p>
+
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Les 4 points clés SAT</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">A</td><td></td><td class="active-blur">B</td></tr>
+                            <tr><td></td><td></td><td></td></tr>
+                            <tr><td class="active-blur">C</td><td></td><td class="center-pixel">D</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Formule mathématique de résolution :</strong></p>
+                        <div class="math-box">
+                            Somme_Zone = D - B - C + A
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            En prenant la valeur cumulée au coin inférieur droit (<b>D</b>), on retire les rectangles excédentaires du haut (<b>B</b>) et de gauche (<b>C</b>). Le rectangle supérieur gauche (<b>A</b>) ayant été soustrait deux fois, on le ré-additionne pour équilibrer le calcul.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique interne de l'algorithme (Pseudo-code)</h3>
+        <p>Voici le comportement exact transcrit depuis votre filtre PureBasic :</p>
+
+<pre>
+<span class="comment">// --- PASSE 1 : CRÉATION DE LA IMAGE INTÉGRALE (SAT) ---</span>
+<span class="keyword">Pour chaque</span> ligne Y de l'image d'origine
+    <span class="keyword">Pour chaque</span> colonne X (de 1 à Largeur - 1)
+        <span class="comment">// Cumul horizontal par ligne</span>
+        SAT_Canal[X, Y] = Pixel_Source_Canal + SAT_Canal[X - 1, Y]
+    <span class="keyword">Next</span>
+<span class="keyword">Fin Pour</span>
+
+<span class="keyword">Pour chaque</span> ligne Y (de 1 à Hauteur - 1)
+    <span class="keyword">Pour chaque</span> colonne X (de 0 à Largeur - 1)
+        <span class="comment">// Cumul vertical cumulatif</span>
+        SAT_Canal[X, Y] = SAT_Canal[X, Y] + SAT_Canal[X, Y - 1]
+    <span class="keyword">Next</span>
+<span class="keyword">Fin Pour</span>
+
+
+<span class="comment">// --- PASSE 2 : APPLICATION ET LECTURE ---</span>
+<span class="keyword">Pour chaque</span> pixel (X, Y) de l'image finale
+    <span class="comment">// Délimiter les limites de la boîte de voisinage</span>
+    x1 = X - Rayon - 1 : x2 = X + Rayon
+    y1 = Y - Rayon - 1 : y2 = Y + Rayon
+    
+    <span class="comment">// Bornage de sécurité aux limites de la texture</span>
+    Ajuster_Limites_Bords(x1, y1, x2, y2)
+    
+    <span class="comment">// Nombre total de pixels englobés dans le rectangle courant</span>
+    Nombre_Pixels = (x2 - x1) * (y2 - y1)
+    
+    <span class="comment">// Extraction instantanée de la somme par canal via la macro (D - B - C + A)</span>
+    SommeA = Obtenir_Somme_SAT(SAT_Alpha, x1, y1, x2, y2)
+    SommeR = Obtenir_Somme_SAT(SAT_Rouge, x1, y1, x2, y2)
+    SommeG = Obtenir_Somme_SAT(SAT_Vert,  x1, y1, x2, y2)
+    SommeB = Obtenir_Somme_SAT(SAT_Bleu,  x1, y1, x2, y2)
+    
+    <span class="comment">// Ecriture du pixel reconstruit avec sa moyenne locale</span>
+    Pixel_Destination = ARGB(SommeA / Nombre_Pixels, SommeR / Nombre_Pixels, ...)
+<span class="keyword">Fin Pour</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Traitement d'images haute performance par Image Intégrale.</p>
+    </footer>
+
+</body>
+</html>

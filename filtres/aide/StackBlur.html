@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme StackBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        /* Structure de démo compatible (Tableau au lieu de Flexbox) */
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            color: #ffffff;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Algorithme Hybride Optimisé</div>
+        <h1>Documentation - Algorithme <span>StackBlur</span></h1>
+        <p>Le flou haute qualité ultra-rapide par pile glissante pondérée</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser le StackBlur ?</h2>
+        <ul>
+            <li>
+                <strong>Le meilleur des deux mondes (Vitesse et Qualité) :</strong> Le Box Blur standard est rapide mais crée des artefacts carrés disgracieux. Le Flou Gaussien est somptueux mais extrêmement lourd sur les grands rayons. Le StackBlur résout ce dilemme : il génère un rendu organique, doux et quasi-indissociable du flou gaussien, tout en s'exécutant en un temps constant $O(1)$.
+            </li>
+            <li>
+                <strong>Une pile glissante ultra-intelligente :</strong> Au lieu de faire des multiplications de matrices complexes à chaque pixel, le StackBlur maintient un registre (une pile) de pixels. Lorsqu'il se déplace d'un pixel vers la droite, il supprime un pixel du bout de la pile, ajoute le nouveau pixel entrant et met à jour la moyenne par de simples additions/soustractions.
+            </li>
+            <li>
+                <strong>Pondération linéaire naturelle :</strong> La magie de l'algorithme réside dans le fait que les pixels les plus proches du centre de la boîte ont un poids plus important dans la moyenne que les pixels situés sur les bords extérieurs, imitant ainsi naturellement la cloche du flou gaussien.
+            </li>
+        </ul>
+
+        <h2>2. Exemples d'implémentation (PureBasic)</h2>
+
+        <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
+        <p>Idéal pour une intégration immédiate avec un contrôle indépendant du flou sur les axes X et Y.</p>
+        <pre><code>IncludeFile "filtres.pbi"
+UseModule filtres
+
+If OpenWindow(0, 0, 0, 800, 600, "Exemple StackBlur...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = 1
+  CibleImage  = 2
+  AucunMasque = 0
+  RayonX      = 20  <span class="comment">; Rayon du flou horizontal</span>
+  RayonY      = 20  <span class="comment">; Rayon du flou vertical</span>
+  Passes      = 1   <span class="comment">; 'ndp' : Nombre d'itérations (généralement fixé à 1)</span>
+ 
+  file$ = OpenFileRequester("Sélectionner une Image","","",0)
+  If load_image_32(SourceImage , file$) = 0
+    End
+  Else
+    ResizeImage(SourceImage, 800, 600)
+  EndIf
+  
+  CopyImage(SourceImage, CibleImage)
+
+  <span class="comment">; Exécution du filtre StackBlur standard</span>
+  StackBlur(SourceImage, CibleImage, AucunMasque, RayonX, RayonY, Passes)
+  
+  StartDrawing(WindowOutput(0))
+    DrawImage(ImageID(CibleImage) ,  0 , 0)
+  StopDrawing()
+  
+  Repeat
+    Event = WaitWindowEvent()
+  Until Event = #PB_Event_CloseWindow
+EndIf</code></pre>
+
+        <h3>Option B : Passage des arguments via Contexte</h3>
+        <p>En coulisses, la procédure configure l'environnement de la manière suivante avant d'appeler l'exécuteur optimisé :</p>
+        <pre><code><span class="keyword">With</span> FilterCtx
+  \option[0] = rx  <span class="comment">// Affectation du rayon X</span>
+  \option[1] = ry  <span class="comment">// Affectation du rayon Y</span>
+  \option[2] = ndp <span class="comment">// Nombre de passes (ndp)</span>
+<span class="keyword">EndWith</span>
+StackBlurEx(FilterCtx.FilterParams)</code></pre>
+
+        <h2>3. Le Filtre : Comment ça marche ?</h2>
+        <p>L'algorithme du <strong>StackBlur</strong> crée une pile de pixels sous forme de file d'attente. La taille de cette pile est égale à <code>(Rayon * 2) + 1</code>.</p>
+
+        <div class="card">
+            <h3>Le secret : La double accumulation</h3>
+            <p>Pour éviter toute multiplication lors du calcul de la pondération, l'algorithme utilise trois variables de stockage glissantes : la <strong>Somme des Pixels</strong> de la pile, la <strong>Somme de la moitié supérieure</strong> de la pile (les pixels entrants) et la <strong>Somme de la moitié inférieure</strong> (les pixels sortants). Le déplacement d'un pixel met à jour ces trois variables en cascade par de simples opérations arithmétiques basiques.</p>
+        </div>
+
+        <h3>Visualisation du mécanisme de la Pile Glissante</h3>
+        <p>Pendant que la boîte se déplace sur une ligne, la pile fait glisser son contenu comme un tapis roulant :</p>
+
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">La Pile (Rayon = 1)</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">Sort</td><td class="center-pixel">Milieu</td><td class="active-blur">Entre</td></tr>
+                            <tr><td>X-1</td><td>X</td><td>X+1</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Pondération triangulaire appliquée :</strong></p>
+                        <div class="math-box">
+                            Intensité = (Pixel_Milieu * 2) + Pixel_Sort + Pixel_Entre
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Le pixel central (indigo) est compté deux fois (poids maximal). Les pixels périphériques décroissent en importance. En divisant le total par la somme des poids (ici 4), on obtient un lissage parfait, sans aucun effet d'escalier sur les dégradés.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique interne de l'algorithme (Pseudo-code)</h3>
+        <p>Voici la structure logique simplifiée exécutée de manière séquentielle dans le moteur <code>StackBlurEx</code> :</p>
+
+<pre>
+<span class="keyword">Pour</span> passe = <span class="number">1</span> <span class="keyword">To</span> ndp
+
+    <span class="comment">// --- PASSE 1 : BALAYAGE HORIZONTAL (LIGNE PAR LIGNE) ---</span>
+    <span class="keyword">Pour chaque</span> ligne Y de l'image
+        Initialiser_Pile_Avec_Pixel_De_Gauche()
+        Calculer_Sommes_Initiales_De_La_Pile()
+        
+        <span class="keyword">Pour</span> X = <span class="number">0</span> <span class="keyword">To</span> Largeur - <span class="number">1</span>
+            <span class="comment">// Affectation de la couleur lissée actuelle</span>
+            Pixel_Intermediaire[X, Y] = Somme_Totale_Pile / Diviseur_Poids
+            
+            <span class="comment">// Glissement de la pile : on retire le pixel le plus à gauche</span>
+            Somme_Totale_Pile - Somme_Moitie_Sortante
+            
+            <span class="comment">// On fait évoluer les blocs de la pile</span>
+            Somme_Moitie_Sortante - Valeur_Pixel_Sorti_De_La_Pile
+            
+            <span class="comment">// On intègre le nouveau pixel entrant à droite</span>
+            Somme_Moitie_Entrante + Valeur_Pixel_Nouveau
+            Somme_Totale_Pile + Somme_Moitie_Entrante
+            
+            Mettre_A_Jour_Pointeurs_Pile()
+        <span class="keyword">Next</span>
+    <span class="keyword">Fin Pour</span>
+
+    <span class="comment">// --- PASSE 2 : BALAYAGE VERTICAL (COLONNE PAR COLONNE) ---</span>
+    <span class="keyword">Pour chaque</span> colonne X de l'image
+        Initialiser_Pile_Avec_Pixel_Du_Haut()
+        Calculer_Sommes_Initiales_De_La_Pile()
+        
+        <span class="keyword">Pour</span> Y = <span class="number">0</span> <span class="keyword">To</span> Hauteur - <span class="number">1</span>
+            <span class="comment">// Réassemblage final des canaux ARGB sur l'image cible</span>
+            Pixel_Cible[X, Y] = Somme_Totale_Pile_Verticale / Diviseur_Poids
+            
+            <span class="comment">// Glissement vertical de la pile vers le bas</span>
+            Somme_Totale_Pile_Verticale - Somme_Moitie_Sortante_Verticale
+            ...
+            Mettre_A_Jour_Pointeurs_Pile_Verticale()
+        <span class="keyword">Next</span>
+    <span class="keyword">Fin Pour</span>
+
+<span class="keyword">Next</span> passe
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Algorithmes Graphiques Avancés par Pile Filtrante Temporelle.</p>
+    </footer>
+
+</body>
+</html>

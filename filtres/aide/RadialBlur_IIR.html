@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme RadialBlur IIR</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #581c87;
+            border: 1px solid #a855f7;
+            color: #a855f7;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #38bdf8;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Filtrage Récurrent Exponentiel</div>
+        <h1>Documentation - Algorithme <span>RadialBlur_IIR</span></h1>
+        <p>Flou radial infini par cartographie polaire et lissage récursif à mémoire de signal</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser ce filtre Radial IIR ?</h2>
+        <ul>
+            <li>
+                <strong>Flou d'une portée infinie à coût constant :</strong> L'utilisation d'un filtre IIR (Réponse Impulsionnelle Infinie) permet de propager le flou de manière continue le long du rayon. Chaque pixel traité devient la "mémoire" du filtre pour le pixel suivant. L'atténuation exponentielle simule un flou immense sans nécessiter de boucles imbriquées lourdes dépendant du rayon.
+            </li>
+            <li>
+                <strong>LookUp Tables (LUT) pour la trigonométrie :</strong> Calculer des fonctions <code>Cos()</code> et <code>Sin()</code> au cœur d'un balayage angulaire est extrêmement pénalisant. Votre code génère dynamiquement les tableaux de coordonnées circulaires <code>rc.f()</code> et <code>rs.f()</code> au démarrage. La boucle principale se contente de lire les pointeurs pré-calculés via l'adresse mémoire (décalage de bits <code>i &lt;&lt; 2</code>).
+            </li>
+            <li>
+                <strong>Résolution angulaire modulable (Qualité) :</strong> L'algorithme ne se limite pas à un balayage pas à pas sur 360 degrés. Le coefficient de qualité multiplie la densité des rayons projetés (360 * qualité), ce qui offre un contrôle fin sur la netteté et la granularité périphérique de l'effet "zoom".
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Effet de moirage et "Rayons de bicyclette" :</strong> Comme le balayage s'effectue de manière polaire (du centre vers l'extérieur), l'écartement spatial entre deux rayons de flou augmente à mesure qu'on s'éloigne du centre (cx, cy). En périphérie, des lignes d'aliasing distinctes apparaissent, créant un motif en forme d'étoile ou de roues à rayons si le paramètre de qualité est trop bas.
+                </li>
+                <li>
+                    <strong>Artefacts d'échantillonnage par plus proche voisin (Nearest Neighbor) :</strong> La conversion des coordonnées flottantes de la ligne en positions mémoires entières (<code>px, py</code>) se fait par troncature brute. L'absence d'interpolation bilinéaire engendre de petites saccades visuelles le long de la course du flou.
+                </li>
+                <li>
+                    <strong>Écritures concurrentes et écrasement sur le foyer :</strong> Tous les rayons partent obligatoirement du même point central (cx, cy) pour s'étendre vers l'extérieur. Le pixel du centre (et ses voisins immédiats) est donc relu, recalculé et réécrit des milliers de fois consécutives au cours du même traitement, ce qui s'avère lourd et algorithmiquement redondant.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface utilisateur configure le rayon d'atténuation (Alpha), le positionnement focal du point d'impact en pourcentage, ainsi que le multiplicateur de précision angulaire.</p>
+        <pre><code><span class="keyword">Procedure</span> RadialBlur_IIR(source, cible, mask, Rayon, posx, posy, qualite)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = Rayon
+    \option[1] = posx
+    \option[2] = posy
+    \option[3] = qualite
+  <span class="keyword">EndWith</span>
+  RadialBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Génération de la LookUp Table (LUT)</h3>
+        <p>Cette routine pré-calcule les projections vectorielles sur un cercle complet subdivisé selon le niveau de qualité demandé.</p>
+        <pre><code><span class="comment">; Extrait de la phase de préparation des tableaux d'angles :</span>
+<span class="keyword">Protected</span> quality = \option[<span class="number">3</span>]
+<span class="keyword">Protected</span> inv_quality.f = <span class="number">1.0</span> / quality
+<span class="keyword">Protected</span> Dim rc.f(<span class="number">360</span> * quality)
+<span class="keyword">Protected</span> Dim rs.f(<span class="number">360</span> * quality)
+
+<span class="keyword">For</span> i = <span class="number">0</span> <span class="keyword">To</span> (<span class="number">360</span> * quality) - <span class="number">1</span>
+  angle = Radian(i * inv_quality) 
+  rc(i) = Cos(angle) <span class="comment">; Stockage du pas horizontal</span>
+  rs(i) = Sin(angle) <span class="comment">; Stockage du pas vertical</span>
+<span class="keyword">Next</span>
+\addr[<span class="number">2</span>] = @rc()
+\addr[<span class="number">3</span>] = @rs()</code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Le traitement abandonne le balayage classique par lignes/colonnes. Il projette des lignes de pixels rayonnant depuis le centre vers les bords extérieurs de l'image.</p>
+
+        <div class="card">
+            <h3>Le coefficient de rétroaction exponentielle (Alpha)</h3>
+            <p>La force du flou est régie par l'équation d'atténuation temporelle : <code>Alpha = Exp(-2.3 / (Rayon + 1))</code>.<br>
+            À chaque pas <b>j</b> le long du rayon, la nouvelle couleur est une fusion pondérée de l'état précédent de la ligne (<code>Alpha * r</code>) et de la couleur brute du pixel actuel (<code>(1 - Alpha) * r1</code>).</p>
+        </div>
+
+        <h3>Projection d'un Rayon Polaire</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Émission polaire</strong>
+                        <table class="matrix">
+                            <tr><td></td><td></td><td class="active-blur">j=2</td></tr>
+                            <tr><td></td><td class="active-blur">j=1</td><td></td></tr>
+                            <tr><td class="center-pixel">Centre</td><td></td><td></td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>L'équation de récursivité IIR :</strong></p>
+                        <div class="math-box">
+                            Facteur_Inverse = 1.0 - Alpha<br><br>
+                            Accumulateur = Alpha * Accumulateur + Facteur_Inverse * Pixel_Courant
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Le premier pixel rencontré (<b>j = 0</b>) initialise l'accumulateur (<code>firstPixel = True</code>). Au pas suivant, l'accumulateur absorbe une fraction du nouveau pixel. Plus on s'éloigne du centre, plus les couleurs traversées précédemment s'estompent et se mélangent de façon exponentielle.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Sécurité anti-débordement de la ligne de visée</h3>
+        <p>Puisque les rayons s'étendent jusqu'à la diagonale maximale de l'image (<code>maxRadius</code>), ils finissent invariablement par sortir du cadre. Le filtre intègre une condition d'arrêt et de protection :</p>
+        <div class="math-box" style="font-family: monospace; font-size: 0.95em; border-left-color: #ef4444; color: #e2e8f0;">
+            If px &lt; 0 Or py &lt; 0 Or px &gt;= lg Or py &gt;= ht : Continue : EndIf
+        </div>
+        <p style="font-size: 0.9em; color: #94a3b8;">
+            L'instruction <code>Continue</code> permet d'ignorer instantanément les calculs en sautant au point d'échantillonnage suivant de la boucle sans interrompre la rotation globale du filtre.
+        </p>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici l'enchaînement logique complet du traitement par balayage de rayons :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Paramètre Rayon, Centre X (%), Centre Y (%), Qualité
+
+<span class="comment">// 1. PHASE DES TABLES ET COEFFICIENTS</span>
+Foyer_X = (Centre_X * Largeur_Image) / 100
+Foyer_Y = (Centre_Y * Hauteur_Image) / 100
+Diagonale_Maximale = Sqr(Largeur_Image * Largeur_Image + Hauteur_Image * Hauteur_Image)
+
+Alpha = Exp(-2.3 / (Rayon + 1))
+Inverse_Alpha = 1.0 - Alpha
+Total_Rayons = 360 * Qualité
+
+Générer_Tables_Trigonométriques_LUT(Table_Cos, Table_Sin, Total_Rayons)
+
+<span class="comment">// 2. BALAYAGE ANGULAIRE (Repère Polaire)</span>
+<span class="keyword">Pour</span> chaque_rayon i de 0 à Total_Rayons - 1
+    Pas_Cos = Table_Cos[i]
+    Pas_Sin = Table_Sin[i]
+    
+    Accumulateur_R = 0 : Accumulateur_G = 0 : Accumulateur_B = 0
+    Drapeau_Premier_Pixel = True
+    
+    <span class="comment">// Progression le long de la ligne droite du rayon</span>
+    <span class="keyword">Pour</span> j de 0 à Diagonale_Maximale
+        Pixel_X = Foyer_X + (j * Pas_Cos)
+        Pixel_Y = Foyer_Y + (j * Pas_Sin)
+        
+        <span class="comment">// Validation stricte du confinement dans l'image</span>
+        <span class="keyword">Si</span> Pixel_X &lt; 0 Ou Pixel_Y &lt; 0 Ou Pixel_X &gt;= Largeur_Image Ou Pixel_Y &gt;= Hauteur_Image
+            <span class="keyword">Continuer</span> la boucle j (prochain pas)
+        <span class="keyword">Fin Si</span>
+        
+        Pos_Memoire = (Int(Pixel_Y) * Largeur_Image + Int(Pixel_X)) * 4
+        Pixel_Couleur = Lire_Pixel_Source(Pos_Memoire)
+        (A, R, G, B) = Extraire_ARGB(Pixel_Couleur)
+        
+        <span class="keyword">Si</span> Drapeau_Premier_Pixel == True
+            Accumulateur_R = R
+            Accumulateur_G = G
+            Accumulateur_B = B
+            Drapeau_Premier_Pixel = False
+        <span class="keyword">Sinon</span>
+            <span class="comment">// Équation de récursivité IIR</span>
+            Accumulateur_R = Alpha * Accumulateur_R + Inverse_Alpha * R
+            Accumulateur_G = Alpha * Accumulateur_G + Inverse_Alpha * G
+            Accumulateur_B = Alpha * Accumulateur_B + Inverse_Alpha * B
+        <span class="keyword">Fin Si</span>
+        
+        R_Final = Clamping(Accumulateur_R)
+        G_Final = Clamping(Accumulateur_G)
+        B_Final = Clamping(Accumulateur_B)
+        
+        Écrire_Pixel_Cible(Pos_Memoire, Réassembler_ARGB(A, R_Final, G_Final, B_Final))
+    <span class="keyword">Next</span> j
+<span class="keyword">Fin Pour</span>
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Traitement Numérique Spatial par Intégration Récursive sur Axe Polaire.</p>
+    </footer>
+
+</body>
+</html>

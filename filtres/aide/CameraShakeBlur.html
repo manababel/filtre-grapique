@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme CameraShakeBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #22c55e;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #22c55e;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #14532d;
+            border: 1px solid #22c55e;
+            color: #bbf7d0;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #22c55e;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #e2e8f0;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #14532d;
+            color: #4ade80;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Convolution par Vecteurs Empiriques</div>
+        <h1>Documentation - Algorithme <span>CameraShakeBlur</span></h1>
+        <p>Simulation cinématique d'obturateur par échantillonnage de chemins stochastiques et harmoniques</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation de Flou de Bougé ?</h2>
+        <ul>
+            <li>
+                <strong>Modélisation Cinématique Réaliste :</strong> Contrairement aux flous de mouvement classiques qui opèrent selon une ligne droite immuable, cet algorithme simule les micro-déplacements physiques des mains d'un photographe en contraignant le noyau de flou le long d'une structure de chemin personnalisée (<code>ShakePath</code>).
+            </li>
+            <li>
+                <strong>Trois Générateurs de Profils intégrés :</strong>
+                <ul>
+                    <li><strong>Aléatoire (Mouvement brownien) :</strong> Simule le tremblement organique à l'aide d'un vecteur cumulatif bridé par l'intensité maximale via une correction de rayon (<code>px * intensity / radius</code>).</li>
+                    <li><strong>Sinusoïdal (Oscillation) :</strong> Recrée les vibrations mécaniques cycliques en combinant des fréquences asynchrones (Cosinus à fréquence triple sur X, Sinus à fréquence double sur Y).</li>
+                    <li><strong>Circulaire avec Variation :</strong> Calcule une orbite cycloïdale complexe dont le rayon change continuellement en fonction du temps à l'aide d'une harmonique secondaire (<code>0.5 * Sin(t * 5)</code>).</li>
+                </ul>
+            </li>
+            <li>
+                <strong>Décorrélation Temporelle Déterministe :</strong> L'intégration d'un contrôle de graine aléatoire (<code>RandomSeed</code>) permet de figer le comportement du mode stochastique. L'utilisateur peut ainsi reproduire à l'identique le même flou de bougé d'un rendu à l'autre ou laisser le hasard gérer l'effet en injectant l'horloge système (<code>ElapsedMilliseconds()</code>).
+            </li>
+            <li>
+                <strong>Noyau Disjoint Non-Régulier :</strong> Le traitement lit directement les coordonnées décalées stockées dans le tableau de déplacement. Le filtre peut ainsi lisser l'image selon des motifs non contigus, reproduisant fidèlement les sauts de position d'un capteur optique en mouvement.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Défaut Critique d'Atténuation (Image Noire) :</strong> Dans la procédure de liaison <code>CameraShakeBlurEx</code>, la copie du chemin de déplacement vers la zone mémoire partagée est soumise à la condition <code>If \option[3] &lt;&gt; 0</code> (l'option d'atténuation). Si l'utilisateur laisse le paramètre "Atténuation" à sa valeur par défaut de 0, la mémoire tampon reste vierge. Le filtre additionne alors des décalages nuls, et si la condition <code>count &gt; 0</code> échoue, le rendu final est altéré.
+                </li>
+                <li>
+                    <strong>Saut de Ligne Inférieur :</strong> À l'instar de l'algorithme de torsion, la borne supérieure de la boucle principale d'analyse s'arrête à <code>thread_stop - 1</code>, ce qui risque d'exclure du calcul la dernière rangée de pixels de la surface de l'image.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Structure Vectorielle de Déplacement</h3>
+        <p>Les écarts géométriques (X et Y) appliqués à chaque échantillon de l'obturateur sont stockés dans une structure simple à mémoire contiguë :</p>
+        <pre><code><span class="keyword">Structure</span> ShakePath
+  x.l
+  y.l
+<span class="keyword">EndStructure</span></code></pre>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface distribue les paramètres utilisateurs pour définir la trajectoire :</p>
+        <pre><code><span class="keyword">Procedure</span> CameraShakeBlur(source, cible, mask, samples, intensite, pattern, attenuation, seed)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = samples
+    \option[1] = intensite
+    \option[2] = pattern
+    \option[3] = attenuation
+    \option[4] = seed
+  <span class="keyword">EndWith</span>
+  CameraShakeBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Avant d'analyser l'image, l'algorithme génère une liste fermée d'offsets de coordonnées. Pour chaque pixel de l'image, il applique simultanément l'ensemble de ces décalages pour accumuler les couleurs associées et en faire la moyenne.</p>
+
+        <div class="card">
+            <h3>Principe de Captation Stochastique</h3>
+            <p>Pendant la phase de convolution, le pixel courant <code>(i, j)</code> n'interroge pas ses voisins immédiats sous forme de matrice carrée. Il va chercher le pixel déplacé à la coordonnée exacte <code>(i + path(k)\x, j + path(k)\y)</code>. <br>
+            Le motif global du flou dépend exclusivement du cas choisi lors de la phase de calcul initialisée par le générateur de chemin.</p>
+        </div>
+
+        <h3>Cinématique du Flou de Bougé</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Tracé du Path</strong>
+                        <table class="matrix">
+                            <tr><td></td><td class="active-blur">k=0</td><td></td></tr>
+                            <tr><td></td><td class="center-pixel">i,j</td><td class="active-blur">k=1</td></tr>
+                            <tr><td class="active-blur">k=2</td><td></td><td></td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Formule d'Échantillonnage Disjoint :</strong></p>
+                        <div class="math-box">
+                            Position_X_Echantillon = i + path(k)\x<br>
+                            Position_Y_Echantillon = j + path(k)\y
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Si la coordonnée projetée se situe dans le cadre de l'image, le bit ARGB est extrait par décalage de bits. Si le compteur de points valides reste nul à la fin de la boucle <b>k</b>, le pixel d'origine est automatiquement préservé.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici la logique d'exécution complète pour générer le flou d'obturateur :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Nb_Echantillons, Intensité, Mode_Pattern, Atténuation, Graine_Seed
+
+<span class="comment">// 1. INITIALISATION DU GENERATEUR ALEATOIRE ET DES TABLEAUX</span>
+Si Graine_Seed &gt; 0 Alors
+    Fixer_Graine_Alea(Graine_Seed)
+Sinon
+    Fixer_Graine_Alea(Temps_Systeme_Millisecondes)
+Fin Si
+
+Allouer_Tableau_Structure(Chemin_Shake, Type: ShakePath, Taille: Nb_Echantillons)
+
+<span class="comment">// 2. GENERATION DU MOTIF DE DEPLACEMENT (DEBUT DU GENERATEUR)</span>
+<span class="keyword">Sélectionner</span> Mode_Pattern
+    
+    <span class="keyword">Cas 0: // TRAJECTOIRE ALEATOIRE (BROWN_MOTION)</span>
+        Pos_X_Alea = 0.0 : Pos_Y_Alea = 0.0
+        <span class="keyword">Pour</span> i = 0 À Nb_Echantillons - 1
+            Pos_X_Alea = Pos_X_Alea + (Generer_Alea(-100, 100) / 100.0) * Intensité * 0.3
+            Pos_Y_Alea = Pos_Y_Alea + (Generer_Alea(-100, 100) / 100.0) * Intensité * 0.3
+            Rayon_Courant = Sqr(Pos_X_Alea^2 + Pos_Y_Alea^2)
+            
+            <span class="comment">// Confinement dans la sphère d'intensité</span>
+            Si Rayon_Courant &gt; Intensité Alors
+                Pos_X_Alea = Pos_X_Alea * Intensité / Rayon_Courant
+                Pos_Y_Alea = Pos_Y_Alea * Intensité / Rayon_Courant
+            Fin Si
+            Chemin_Shake[i]\x = Entier(Pos_X_Alea)
+            Chemin_Shake[i]\y = Entier(Pos_Y_Alea)
+        <span class="keyword">Next</span>
+        
+    <span class="keyword">Cas 1: // TRAJECTOIRE SINUSOIDALE (OSCILLATION HARMONIQUE)</span>
+        <span class="keyword">Pour</span> i = 0 À Nb_Echantillons - 1
+            Temps_Normalisé = (i / (Nb_Echantillons - 1.0)) * 2 * 3.14159265
+            Chemin_Shake[i]\x = Entier(Cos(Temps_Normalisé * 3) * Intensité)
+            Chemin_Shake[i]\y = Entier(Sin(Temps_Normalisé * 2) * Intensité * 0.7)
+        <span class="keyword">Next</span>
+        
+    <span class="keyword">Cas 2: // TRAJECTOIRE CIRCULAIRE MODULEE</span>
+        <span class="keyword">Pour</span> i = 0 À Nb_Echantillons - 1
+            Temps_Normalisé = (i / (Nb_Echantillons - 1.0)) * 2 * 3.14159265
+            Rayon_Modulaire = Intensité * (0.5 + 0.5 * Sin(Temps_Normalisé * 5))
+            Chemin_Shake[i]\x = Entier(Cos(Temps_Normalisé) * Rayon_Modulaire)
+            Chemin_Shake[i]\y = Entier(Sin(Temps_Normalisé) * Rayon_Modulaire)
+        <span class="keyword">Next</span>
+        
+<span class="keyword">Fin Sélection</span>
+
+<span class="comment">// 3. CONVOLUTION ET APPLICATION DU FILTRE SUR L'IMAGE</span>
+<span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur_Image - 1
+    <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur_Image - 1
+        
+        Somme_A = 0 : Somme_R = 0 : Somme_G = 0 : Somme_B = 0
+        Compteur_Points = 0
+        
+        <span class="keyword">Pour</span> k = 0 À Nb_Echantillons - 1
+            
+            Echantillon_X = X + Chemin_Shake[k]\x
+            Echantillon_Y = Y + Chemin_Shake[k]\y
+            
+            <span class="comment">// Vérification des limites physiques de la texture</span>
+            <span class="keyword">Si</span> Echantillon_X &gt;= 0 Et Echantillon_X &lt; Largeur_Image Et Echantillon_Y &gt;= 0 Et Echantillon_Y &lt; Hauteur_Image Alors
+                
+                Pixel_Couleur = Lire_Pixel_Source_Direct(Echantillon_X, Echantillon_Y)
+                
+                Somme_A = Somme_A + Extraire_Alpha(Pixel_Couleur)
+                Somme_R = Somme_R + Extraire_Rouge(Pixel_Couleur)
+                Somme_G = Somme_G + Extraire_Vert(Pixel_Couleur)
+                Somme_B = Somme_B + Extraire_Bleu(Pixel_Couleur)
+                Compteur_Points = Compteur_Points + 1
+                
+            <span class="keyword">Fin Si</span>
+        <span class="keyword">Next</span> k
+        
+        <span class="comment">// Calcul de la moyenne ou récupération du pixel d'origine (Fallback)</span>
+        <span class="keyword">Si</span> Compteur_Points &gt; 0 Alors
+            A_Final = Somme_A / Compteur_Points
+            R_Final = Somme_R / Compteur_Points
+            G_Final = Somme_G / Compteur_Points
+            B_Final = Somme_B / Compteur_Points
+        <span class="keyword">Sinon</span>
+            Pixel_Origine = Lire_Pixel_Source_Direct(X, Y)
+            A_Final = Extraire_Alpha(Pixel_Origine)
+            R_Final = Extraire_Rouge(Pixel_Origine)
+            G_Final = Extraire_Vert(Pixel_Origine)
+            B_Final = Extraire_Bleu(Pixel_Origine)
+        <span class="keyword">Fin Si</span>
+        
+        Écrire_Pixel_Cible(X, Y, Réassembler_ARGB(A_Final, R_Final, G_Final, B_Final))
+        
+    <span class="keyword">Next</span> X
+<span class="keyword">Fin Pour</span>
+
+Libérer_Tableau(Chemin_Shake)
+Fin
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Algorithme Disjoint de Floutage Spatila-Temporel par Déplacement de Vecteurs d'Obturateur.</p>
+    </footer>
+
+</body>
+</html>

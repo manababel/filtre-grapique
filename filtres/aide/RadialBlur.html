@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme RadialBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #5b21b6;
+            border: 1px solid #8b5cf6;
+            color: #8b5cf6;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #38bdf8;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Échantillonnage Centripète</div>
+        <h1>Documentation - Algorithme <span>RadialBlur</span></h1>
+        <p>Effet tunnel dynamique par intégration linéaire directionnelle vers un point d'impact</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation de Flou Radial ?</h2>
+        <ul>
+            <li>
+                <strong>Coordonnées Relatives en Pourcentage :</strong> L'algorithme convertit automatiquement les valeurs curseurs (0 à 100) en coordonnées réelles de pixels (<code>cx, cy</code>) par rapport à la taille de la texture. Cela garantit le maintien du point focal (le centre du flou) même si l'image source change d'échelle.
+            </li>
+            <li>
+                <strong>Passe de Garde Circulaire (Early Out) :</strong> Pour maximiser la vitesse d'exécution, le filtre évalue en amont la distance au carré de chaque pixel par rapport au point d'impact. Si le pixel se trouve en dehors du rayon d'action maximal (<code>dist > rmax2</code>), la boucle de flou est instantanément court-circuitée (<code>Continue</code>) au profit d'une copie directe de la mémoire brute.
+            </li>
+            <li>
+                <strong>Atténuation Linéaire Intégrée (Force) :</strong> Le mélange entre le pixel d'origine et le pixel flouté est piloté par un facteur d'atténuation. Plus le pixel est proche du centre (<code>cx, cy</code>), plus le flou est maximal. Plus il s'en éloigne, plus il se fond doucement avec la netteté d'origine avant de s'annuler au-delà de <code>rmax</code>.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Effet de pixellisation (Aliasing) crénelé en périphérie :</strong> Comme le vecteur de déplacement d'échantillonnage (<code>dxStep, dyStep</code>) est calculé en fonction de la distance séparant le pixel courant du centre, l'écart entre chaque échantillon s'accroît considérablement à mesure qu'on s'éloigne du foyer. Avec un nombre d'échantillons faible, le filtre affiche des motifs géométriques hachés et espacés au lieu d'un flou lisse.
+                </li>
+                <li>
+                    <strong>Coût machine lié à la qualité (Rayon = Échantillons) :</strong> Le paramètre de rayon (<code>Radius</code>) ne définit pas une distance spatiale mais le nombre d'itérations de la boucle interne de sous-échantillonnage. Pousser la qualité à 50 signifie que pour chaque pixel de l'image (non éliminé par la garde), le filtre doit lire et accumuler 50 pointeurs mémoire.
+                </li>
+                <li>
+                    <strong>Perte d'énergie aux limites par rejet de bords :</strong> Lorsque le vecteur de balayage se rapproche des bords de l'image, certains sous-échantillons se retrouvent hors des limites de la matrice. Le filtre rejette ces lectures en toute sécurité (<code>If sx >= 0...</code>) mais sans ajuster le dénominateur de la moyenne finale (qui reste fixé sur la constante <code>samp</code>), ce qui peut provoquer une baisse anormale de luminosité (un assombrissement) sur les pourtours.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface récupère le nombre d'échantillons, les coordonnées du centre du flou (en %), ainsi que la taille de la zone d'influence.</p>
+        <pre><code><span class="keyword">Procedure</span> RadialBlur(source, cible, mask, echantillonnage, posx, posy, rmax)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = echantillonnage
+    \option[1] = posx
+    \option[2] = posy
+    \option[3] = rmax
+  <span class="keyword">EndWith</span>
+  RadialBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Initialisation géométrique et facteurs d'échelle</h3>
+        <p>Cette phase pré-calcule le repère focal de l'image et détermine la barrière de rejet circulaire à l'aide de l'hypoténuse de l'image.</p>
+        <pre><code><span class="comment">; Calcul du centre de gravité et du rayon d'action au carré :</span>
+<span class="keyword">Protected</span> cx = (\option[<span class="number">1</span>] * lg) / <span class="number">100</span>
+<span class="keyword">Protected</span> cy = (\option[<span class="number">2</span>] * ht) / <span class="number">100</span>
+<span class="keyword">Protected</span> rmax = (\option[<span class="number">3</span>] * Sqr(lg*lg + ht*ht)) / <span class="number">100</span>
+<span class="keyword">Protected</span> rmax2.f = rmax * rmax
+
+<span class="comment">; Facteur multiplicateur inverse d'accumulation (évite la division finale)</span>
+<span class="keyword">Protected</span> samp.f = <span class="number">1.0</span> / (Radius + <span class="number">1</span>)</code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Pour chaque pixel de l'image, l'algorithme calcule un vecteur pointant directement vers le centre personnalisé, puis marche le long de ce chemin.</p>
+
+        <div class="card">
+            <h3>Le pas de déplacement dynamique (dxStep, dyStep)</h3>
+            <p>La trajectoire d'échantillonnage est propre à chaque coordonnée. Le pas est défini par la distance résiduelle divisée par le nombre d'échantillons attendus : <br>
+            <code>dxStep = (cx - x) * samp</code> et <code>dyStep = (cy - y) * samp</code>. <br>
+            Le curseur de lecture démarre à la position d'origine du pixel (<code>fx = x</code>) et migre progressivement vers le centre à chaque itération de la sous-boucle.</p>
+        </div>
+
+        <h3>Cinématique de l'aspiration radiale</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Ligne d'aspiration</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">Pix</td><td></td><td></td></tr>
+                            <tr><td></td><td class="active-blur">➔</td><td></td></tr>
+                            <tr><td></td><td></td><td class="center-pixel">Centre</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>L'équation du mélange pondéré (Mix) :</strong></p>
+                        <div class="math-box">
+                            Force = (RayonMax² - Distance²) / RayonMax²<br><br>
+                            Couleur_Finale = Flou * Force + Original * (1.0 - Force)
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Si un point se situe très près du <b>Centre</b>, sa distance tend vers 0. La variable <code>force</code> s'approche de 1.0, appliquant le flou de traînée au maximum. À la frontière du cercle d'influence, <code>force</code> s'annule, restaurant l'image nette originale.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici la chronologie séquentielle du moteur d'intégration centripète :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Échantillonnage (Radius), Centre X (%), Centre Y (%), Rayon Max (%)
+
+<span class="comment">// 1. PRE-CALCULS GEOMETRIQUES</span>
+Foyer_X = (Centre_X * Largeur_Image) / 100
+Foyer_Y = (Centre_Y * Hauteur_Image) / 100
+Diagonale = Sqr(Largeur_Image^2 + Hauteur_Image^2)
+Limite_Rayon = (Rayon_Max * Diagonale) / 100
+Limite_Rayon_Carre = Limite_Rayon * Limite_Rayon
+
+Inverse_Nombre_Echantillons = 1.0 / (Radius + 1)
+
+<span class="comment">// 2. TRAITEMENT DE LA SURFACE</span>
+<span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+    Delta_Y = Y - Foyer_Y
+    
+    <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+        Delta_X = X - Foyer_X
+        Distance_Carre = (Delta_X * Delta_X) + (Delta_Y * Delta_Y)
+        
+        <span class="comment">// Étape A : Test de garde précoce</span>
+        <span class="keyword">Si</span> Distance_Carre &gt; Limite_Rayon_Carre
+            Pixel_Net = Lire_Pixel(Image_Source, X, Y)
+            Écrire_Pixel(Image_Cible, X, Y, Pixel_Net)
+            <span class="keyword">Continuer</span> au pixel suivant
+        <span class="keyword">Fin Si</span>
+        
+        <span class="comment">// Étape B : Calcul du vecteur de déplacement vers le foyer</span>
+        Pas_X = (Foyer_X - X) * Inverse_Nombre_Echantillons
+        Pas_Y = (Foyer_Y - Y) * Inverse_Nombre_Echantillons
+        
+        Curseur_X = X
+        Curseur_Y = Y
+        Somme_R = 0 : Somme_G = 0 : Somme_B = 0
+        
+        <span class="comment">// Étape C : Échantillonnage le long du rayon</span>
+        <span class="keyword">Pour</span> i = 0 <span class="keyword">To</span> Radius
+            Int_X = Int(Curseur_X)
+            Int_Y = Int(Curseur_Y)
+            
+            <span class="keyword">Si</span> Int_X &gt;= 0 Et Int_X &lt; Largeur Et Int_Y &gt;= 0 Et Int_Y &lt; Hauteur
+                Pixel_Echantillon = Lire_Pixel(Image_Source, Int_X, Int_Y)
+                Somme_R + Extraction_Rouge(Pixel_Echantillon)
+                Somme_G + Extraction_Vert(Pixel_Echantillon)
+                Somme_B + Extraction_Bleu(Pixel_Echantillon)
+            <span class="keyword">Fin Si</span>
+            
+            Curseur_X + Pas_X
+            Curseur_Y + Pas_Y
+        <span class="keyword">Next</span> i
+        
+        <span class="comment">// Étape D : Normalisation et interpolation de force</span>
+        Flou_R = Somme_R * Inverse_Nombre_Echantillons
+        Flou_G = Somme_G * Inverse_Nombre_Echantillons
+        Flou_B = Somme_B * Inverse_Nombre_Echantillons
+        
+        Facteur_Force = (Limite_Rayon_Carre - Distance_Carre) / Limite_Rayon_Carre
+        Si Facteur_Force &lt; 0 : Facteur_Force = 0 : Fin Si
+        
+        (Alpha, Orig_R, Orig_G, Orig_B) = Extraire_ARGB(Lire_Pixel(Image_Source, X, Y))
+        
+        R_Final = Flou_R * Facteur_Force + Orig_R * (1.0 - Facteur_Force)
+        G_Final = Flou_G * Facteur_Force + Orig_G * (1.0 - Facteur_Force)
+        B_Final = Flou_B * Facteur_Force + Orig_B * (1.0 - Facteur_Force)
+        
+        Écrire_Pixel(Image_Cible, X, Y, Réassembler_ARGB(Alpha, Clamping(R_Final), Clamping(G_Final), Clamping(B_Final)))
+        
+    <span class="keyword">Next</span> X
+<span class="keyword">Fin Pour</span>
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Traitement Numérique de l'Espace Image par Accumulation Centripète Variable.</p>
+    </footer>
+
+</body>
+</html>

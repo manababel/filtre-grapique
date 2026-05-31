@@ -3,6 +3,7 @@
 IncludeFile "filtres.pbi"
 UseModule filtres
 
+Global window_title.s = "filtre V2026.25.31"
 ;IncludeFile "xnview\xnview.pbi"
 ;If  XnViewLoader::Init()
 ;Debug "lib xnview ok"
@@ -33,6 +34,7 @@ Enumeration
   #save_png4
   #save_clipboard4
   #quit
+  
   #mask_e
   #mask_d
   #mask_n
@@ -45,6 +47,13 @@ Enumeration
   #menu_image_masque
   #menu_image_travail
   
+  #menu_cam_on
+  #menu_cam_off
+  #menu_cam_size_1
+  #menu_cam_size_2
+  #menu_cam_size_3
+  #menu_cam_size_4
+  
   #boutton_Appliquer_source
   #boutton_Appliquer_mix
   #boutton_Appliquer_mask
@@ -53,6 +62,7 @@ Enumeration
   #favoris
   #info_cpu
   #info_image
+  #info_guide
   
   #boutton_Apercu
   #boutton_Auto_Rendu
@@ -89,7 +99,7 @@ Enumeration images
   #img_miniature_source ; copie de la copie pour eviter la degradation de la miniature apres un scale screen
   #img_miniature_mix
   #img_miniature_mask
-  
+  #img_miniature_cam ; => #canvas_miniature_source modifier
 EndEnumeration
 
 #filtre_pos = 1000
@@ -99,6 +109,11 @@ EndEnumeration
 Global img_save
 
 Global image_selected = -1
+
+; variable pour la camera
+Global camera_active = 0     ; camera_active = 0 => camera eteinte , camera_active = 1 => camera allumee
+Global camera_device = 0 ; numero d'id de la camera
+Global camera_Error = 0  ; camera_Error = 0 , ok , camera_Error = 1 , probleme de camera , camera initulisable
 
 Structure my_gadget
   Window_lg.l
@@ -208,6 +223,9 @@ Global track_drag.b = #False      ; Est-on en train de glisser ?
 Global track_id_drag.i = -1       ; Quel slider est actif ?
 Global mouseUp.b = #False         ; Le bouton vient-il d'être relâché ?
 Global mat_focus_id.i = -1        ; -1 = aucune cellule, 0 à 8 = cellule matrice
+
+
+
 
 Procedure update_miniature_sp(var1, var2 , col)
   If IsImage(var2)
@@ -555,6 +573,7 @@ EndProcedure
 
 ;----------
 
+
 Procedure affiche_info_aide()
   Protected t$, win, web
   
@@ -608,6 +627,14 @@ Procedure create_menu_part1()
   MenuItem( #Menu_load_Source, "Load Image 1 (source)")
   MenuItem( #Menu_load_Mix, "Load Image 2 (mixage)")
   MenuItem( #Menu_load_Mask, "Load Mask (masque)")
+  CloseSubMenu()
+  
+  OpenSubMenu("Camera") 
+  MenuItem( #menu_cam_off, "Off")
+  MenuItem( #menu_cam_size_1, "640 x 400")
+  MenuItem( #menu_cam_size_2, "800 x 600")
+  MenuItem( #menu_cam_size_3, "1024 x 768")
+  MenuItem( #menu_cam_size_4, "1920 x 1080")
   CloseSubMenu()
   
   OpenSubMenu("Save")   
@@ -685,6 +712,7 @@ Procedure create_menu_part2()
   MenuTitle("info")
   MenuItem( #info_cpu, "info_cpu")
   MenuItem( #info_image, "info_image")
+  MenuItem( #info_guide, "guide")
 EndProcedure
 
 ;----------
@@ -1025,7 +1053,7 @@ Procedure update_filtre(clic)
       For i = 0 To 19
         ; 1. Sortie anticipée
         If List_filtre_selected()\info(i) = "" : Break : EndIf
-        Protected current_id = @list_filtre_selected() + i
+        current_id = @list_filtre_selected() + i
         ; 2. Préparation des variables (pour éviter de retaper des lignes à rallonge)
         nom_option$ = Trim(LCase(List_filtre_selected()\info(i)))
         val_min = List_filtre_selected()\opt(i, 0)
@@ -1074,7 +1102,7 @@ Procedure update_filtre(clic)
         py + size
       Next
       
-      ;-- affiche la grille de boutton pour les filtres de convolution
+      ;-- convolution : affiche la grille de boutton pour les filtres de convolution
       If opt_boutton > 0
         Protected mat_idx = 0
         Protected txt_mat$
@@ -1111,7 +1139,7 @@ Procedure update_filtre(clic)
       
       
       
-      ;-- option de l'affichage des parametres du masque
+      ;-- opt de l'aff des parametres du masque
       If GetGadgetState(#boutton_mask) 
         Protected val_int.i = Int(List_filtre_selected()\opt(i, 2))
         DrawText(option_px + 2, py + 3, "Masque")
@@ -1135,14 +1163,14 @@ Procedure update_filtre(clic)
         py + size
       EndIf
       
-      ;-- option de l'affichage des parametres des threads
+      ;-- opt de l'aff des parametres des threads
       If GetGadgetState(#boutton_thread) 
         val_max = CountCPUs(#PB_System_CPUs) - 1
         If val_max < 1 : val_max = 1 : EndIf
         val_min = 1
         DrawText(option_px + 2, py + 3, "threads")
         mem = List_filtre_selected()\thread
-        res = bouton_TrackBar(current_id, option_px + 200, py + 3, 240, 18, val_min, val_max, List_filtre_selected()\thread, mx, my, clic , 1)
+        res = bouton_TrackBar(current_id + 2, option_px + 200, py + 3, 240, 18, val_min, val_max, List_filtre_selected()\thread, mx, my, clic , 1)
         If res And mem <> res
           List_filtre_selected()\thread = res
           mem = res
@@ -1153,12 +1181,12 @@ Procedure update_filtre(clic)
         List_filtre_selected()\thread = 4 ; active 4 threads par defaut
       EndIf
       
-      ;-- option de l'affichage des parametres du language de programmation
+      ;-- opt de l'aff des parametres du language de programmation
       If GetGadgetState(#boutton_asm) 
         DrawText(option_px + 2, py + 3, "Language") ; Correction orthographe "Language"
         l1 = 240 / 4 : l2 = l1 - 8 : l3 = 0
         If get_language_max() = 4 : l3 = -20 : EndIf
-        For j = 0 To get_language_max()
+        For j = 0 To FilterCtx\asm_dispo
           pn = option_px + 200 + (j * l1) + l3
           txt$ = StringField("PB,SSE2,SSE4,AVX2,AVX512", j + 1, ",")
           ;opt = Bool(j = get_language())
@@ -1175,6 +1203,7 @@ Procedure update_filtre(clic)
     Next
   EndWith
   StopDrawing()
+
   ProcedureReturn valider
 EndProcedure
 
@@ -1202,7 +1231,7 @@ Procedure resize_screen()
   Miniature_taille = (Window_SizeY * 20) / 100 ; 20% 
   Miniature_px = 1 * Window_Sizex / 100
   Miniature_py = 1 * Window_SizeY / 100
-  If IsImage(#img_source) : CopyImage(#img_source , #img_miniature_source) : ResizeImage(#img_miniature_source , Miniature_taille - 8, Miniature_taille - 8) : EndIf 
+  If IsImage(#img_source) : CopyImage(#img_source , #img_miniature_source) : ResizeImage(#img_miniature_source , Miniature_taille - 8, Miniature_taille - 8) : CopyImage(#img_miniature_source , #img_miniature_cam) : EndIf 
   If IsImage(#img_mix) : CopyImage(#img_mix , #img_miniature_mix) : ResizeImage(#img_miniature_mix , Miniature_taille - 8, Miniature_taille - 8) : EndIf
   If IsImage(#img_mask) : CopyImage(#img_mask , #img_miniature_mask) : ResizeImage(#img_miniature_mask , Miniature_taille - 8, Miniature_taille - 8) : EndIf
   ResizeGadget(#canvas_miniature_source, Miniature_px, Miniature_py + Miniature_taille * 0 + 00, Miniature_taille , Miniature_taille)
@@ -1317,6 +1346,7 @@ EndProcedure
 ;----------
 ;-- programme
 
+
 ExamineDesktops()
 Window_SizeX = DesktopWidth(0)
 Window_SizeY = DesktopHeight(0)
@@ -1327,7 +1357,9 @@ Miniature_px = 1 * Window_SizeY / 100
 Miniature_py = 3 * Window_SizeY / 100
 Miniature_decal = 1.5 * Window_SizeY / 100
 
-If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget)
+TargetFrameTime = 1000 / 10 ; limite les fps a 10 images par seconde ( limite les ressource cpu pour utilise la camera )
+
+If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget)
   
   create_menu_part1()
   load_favori()
@@ -1349,6 +1381,7 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
   ;Repeat
   update_auto = 0
   Repeat
+    FrameStartTime = ElapsedMilliseconds()
     validation = 0
     update = 0
     clic = 0
@@ -1360,14 +1393,12 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
       EndIf
     EndIf
     
-    If event <> 0  Or valider_loop
-      ;If (WindowWidth(0) <> Window_SizeX) Or (WindowHeight(0) <> Window_SizeY) : resize_screen() : EndIf
-      
+    If event <> 0  Or valider_loop Or camera_active
+
       Select Event
           
         Case #PB_Event_CloseWindow
           fenetreActive = EventWindow()
-          Debug fenetreActive
           If fenetreActive = 0
             quit = 1
           Else
@@ -1382,10 +1413,40 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
           var = EventMenu()
           Select var
               
+            ; chargement de image epuis le disque dur
             Case #Menu_load_Source : load_img(#img_source)      
             Case #Menu_load_Mix    : load_img(#img_mix)
             Case #Menu_load_Mask   : load_img(#img_mask)
               
+            ;-- active la camera
+            Case #menu_cam_size_1 To #menu_cam_size_4
+              If camera_active = 1 : camera_active = 0 : deinitCapture(camera_device) : EndIf ; desactive la camera si elle est active
+              If Camera_init() = #Null  : camera_Error = 1 : EndIf ; initialise la camera : camera_Error = 1 = probleme de camera , camera initulisable
+              If camera_Error = 0 ; si il n'y a pas de probleme avec la camera
+                If IsImage(#img_source) <> 0 : FreeImage(#img_source) : EndIf
+                Select var
+                  Case #menu_cam_size_1
+                    camera_lg = 600
+                    camera_ht = 480 
+                  Case #menu_cam_size_2
+                    camera_lg = 800
+                    camera_ht = 600
+                  Case #menu_cam_size_3
+                    camera_lg = 1280
+                    camera_ht = 768
+                  Case #menu_cam_size_4
+                    camera_lg = 1920
+                    camera_ht = 1080
+                EndSelect
+                Camera_on(camera_device , camera_lg, camera_ht)
+                CreateImage(#img_source , camera_lg , camera_ht , 32 ) ; la source devient la camera
+                load_image_sp(#img_source , #img_miniature_source , #canvas_miniature_source) ; actualise la miiature
+                camera_active = 1
+              EndIf
+              
+            Case #menu_cam_off
+              If camera_active = 1 : camera_active = 0 : deinitCapture(camera_device) : EndIf
+            
             ; ajoute un filtre 
             Case #filtre_pos To (#filtre_pos + 500)
               pos = (var - #filtre_pos)
@@ -1393,6 +1454,7 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
               add_filtre(pos)
               validation = update_filtre(0)
               
+            ;sauvegarde des images sur le disque dur
             Case #save_bmp1 To #save_clipboard4
               var1 = var - #save_bmp1 
               var2 = (var1 & %1100)>> 2 ; var2 = l'image a sauvegarder
@@ -1432,18 +1494,18 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
                 MessageRequester("erreur" , "pas d'image" , #PB_MessageRequester_Warning)
               EndIf
           
-              
+            ; tie des favoris
             Case #menu_favori_trier_name , #menu_favori_trier_id , #menu_favori_trier_type
               If ListSize(favori()) > 1
                 Select var
                   Case #menu_favori_trier_name : SortStructuredList(favori(), #PB_Sort_Ascending, OffsetOf(favori_data\name), #PB_String) 
-                  Case  #menu_favori_trier_id  : SortStructuredList(favori(), #PB_Sort_Ascending, OffsetOf(favori_data\id), #PB_Long) 
+                  Case #menu_favori_trier_id   : SortStructuredList(favori(), #PB_Sort_Ascending, OffsetOf(favori_data\id), #PB_Long) 
                   Case #menu_favori_trier_type : SortStructuredList(favori(), #PB_Sort_Ascending, OffsetOf(favori_data\typ), #PB_Long)
                 EndSelect
                 update_favori()
               EndIf
               
-            
+            ; suppression des favoris
             Case #filtre_pos_sup To (#filtre_pos_sup +  999)
               er = 0
               ForEach favori()
@@ -1556,6 +1618,15 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
               EndSelect
               MessageRequester("Info CPU" , t$  , #PB_MessageRequester_Ok)
               
+            Case #info_guide
+              t$ = "- Vous devez activer l'option 'Thread-Safe' dans les options du compilateur par sécurité." + Chr(10) + Chr(10)
+              t$ + "- Il est préférable de désactiver le mode Debugger pour tester les performances." + Chr(10)
+              t$ + "  En mode 'Debugger', l'exécution de certains filtres peut durer plusieurs minutes !" + Chr(10) + Chr(10)
+              t$ + "- Activer l'optimiseur de code (générateur de code) est fortement recommandé." + Chr(10) + Chr(10)
+              t$ + "- Désactiver le mode DPI (DPI Aware) est recommandé pour la demo." + Chr(10) + Chr(10)
+              t$ + "- La version 'ASM' n'est disponible que si vous utilisez le compilateur #PB_Backend_Asm en x64." + Chr(10)
+              MessageRequester("Guide et Performances", t$, #PB_MessageRequester_Ok)
+
             Case #quit
               quit = 1
           EndSelect
@@ -1579,6 +1650,7 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
               Else
                 SetGadgetText(#boutton_Auto_Rendu , "Auto_Rendu : Off")
               EndIf
+              update = 1
               
             Case #boutton_thread
               update_auto_thread = GetGadgetState(#boutton_thread)
@@ -1680,8 +1752,7 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
               Else
                 validation = update_filtre(clic)
               EndIf
-              
-                
+                 
             Case #canvas_miniature_source
               If GetGadgetAttribute(#canvas_miniature_source, #PB_Canvas_Buttons) = #PB_Canvas_LeftButton : image_selected = update_miniature(1) : update_image_aff() : EndIf
             Case #canvas_miniature_mix
@@ -1703,19 +1774,32 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
             EndSelect
             
         EndSelect
-        
-        
-        If update Or (update_auto And validation) Or valider_loop
+                
+        If update Or (update_auto And validation) Or valider_loop Or camera_active
           With FilterCtx
             Clear_Data_Filter(FilterCtx)
             
             Select image_selected
-                Case 1 : If IsImage(#img_source) : CopyImage(#img_source , #img_tempo_source) : EndIf
+                
+              Case 1
+                If camera_active = 1 
+                  If Not IsImage(#img_tempo_source)
+                    CreateImage(#img_tempo_source , camera_lg , camera_ht , 32 )
+                  Else
+                    If camera_lg <> ImageWidth(#img_tempo_source) Or camera_ht <> ImageHeight(#img_tempo_source)
+                      ResizeImage(#img_tempo_source , camera_lg , camera_ht)
+                    EndIf
+                  EndIf
+                  CameraToImage(camera_device , #img_tempo_source)
+                Else
+                  CopyImage(#img_source , #img_tempo_source)
+                EndIf
+
                 Case 2 : If IsImage(#img_mix)    : CopyImage(#img_mix    , #img_tempo_source) : EndIf
                 Case 3 : If IsImage(#img_mask)   : CopyImage(#img_mask   , #img_tempo_source) : EndIf
             EndSelect
             
-            If IsImage(#img_tempo_source)
+            If IsImage(#img_tempo_source) And ListSize(list_filtre_selected())
               CopyImage(#img_tempo_source , #img_tempo_cible)
               set_Source(#img_tempo_source)
               set_cible(#img_tempo_cible)
@@ -1732,11 +1816,12 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
                 \image[0] = \image[1]
               Next
               t = ElapsedMilliseconds() - t
-              SetWindowTitle(0, "test_filtres : "+Str(t) ) 
+              SetWindowTitle(0, window_title + " : " + Str(t) ) 
               update_miniature(image_selected , $ff00)
+            Else
+              If camera_active And IsImage(#img_tempo_source) : CopyImage(#img_tempo_source , #img_tempo_cible) : EndIf
             EndIf
           EndWith
-          
           
           If IsImage(#img_tempo_cible)
             CopyImage(#img_tempo_cible , #img_aff)
@@ -1746,24 +1831,35 @@ If OpenWindow(0, 0, 0, 1920, 1080, "test_filtres", #PB_Window_SystemMenu | #PB_W
             StopDrawing()
             ;FreeImage(#img_tempo_cible)
           EndIf
+          
         EndIf
-        
+
       EndIf
-      Delay(1)
+      
+      FrameElapsedTime = ElapsedMilliseconds() - FrameStartTime
+      If FrameElapsedTime < TargetFrameTime
+        TimeToWait = TargetFrameTime - FrameElapsedTime
+        Delay(TimeToWait)
+      Else
+        Delay(1) 
+      EndIf
+      
     Until quit = 1
     ;If IsImage(#cible) : FreeImage(#cible) : EndIf
     ;If IsImage(#Black_image) : FreeImage(#Black_image) : EndIf
     CloseWindow(0)
     ;XnViewLoader::Free()
+    deinitCapture(camera_device)
   EndIf
   
   
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 1467
-; FirstLine = 1445
+; CursorPosition = 1818
+; FirstLine = 1801
 ; Folding = -----
 ; EnableThread
 ; EnableXP
 ; CPU = 5
+; DisableDebugger
 ; Compiler = PureBasic 6.40 (Windows - x64)

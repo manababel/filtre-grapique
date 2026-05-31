@@ -1,72 +1,122 @@
-﻿Procedure Scharr_MT(*FilterCtx.FilterParams)
+﻿Macro Macro_Scharr_calcul()
+  ; Coefficients Scharr : Gx utilise 3 et 10 en horizontal, Gy en vertical
+  Protected rx = (v\r[2]*3 + v\r[5]*10 + v\r[8]*3) - (v\r[0]*3 + v\r[3]*10 + v\r[6]*3)
+  Protected gx = (v\g[2]*3 + v\g[5]*10 + v\g[8]*3) - (v\g[0]*3 + v\g[3]*10 + v\g[6]*3)
+  Protected bx = (v\b[2]*3 + v\b[5]*10 + v\b[8]*3) - (v\b[0]*3 + v\b[3]*10 + v\b[6]*3)
+  Protected ry = (v\r[6]*3 + v\r[7]*10 + v\r[8]*3) - (v\r[0]*3 + v\r[1]*10 + v\r[2]*3)
+  Protected gy = (v\g[6]*3 + v\g[7]*10 + v\g[8]*3) - (v\g[0]*3 + v\g[1]*10 + v\g[2]*3)
+  Protected by = (v\b[6]*3 + v\b[7]*10 + v\b[8]*3) - (v\b[0]*3 + v\b[1]*10 + v\b[2]*3)
+  
+  If mat ; Mode Manhattan (ABS)
+    valR = Abs(rx) + Abs(ry)
+    valG = Abs(gx) + Abs(gy)
+    valB = Abs(bx) + Abs(by)
+  Else   ; Mode Euclidien (SQR)
+    valR = Sqr(rx * rx + ry * ry)
+    valG = Sqr(gx * gx + gy * gy)
+    valB = Sqr(bx * bx + by * by)
+  EndIf
+EndMacro
+
+Macro Macro_Scharr_lecture_pixel3x3()
+  pos = ((y - 1) * lg) + (x - 1)
+  getrgb(*src\pixel[pos + 0], v\r[0], v\g[0], v\b[0])
+  getrgb(*src\pixel[pos + 1], v\r[1], v\g[1], v\b[1])
+  getrgb(*src\pixel[pos + 2], v\r[2], v\g[2], v\b[2])
+  pos + lg
+  getrgb( *src\pixel[pos + 0],    v\r[3], v\g[3], v\b[3])
+  getargb(*src\pixel[pos + 1], a, v\r[4], v\g[4], v\b[4]) ; Pixel central (Alpha)
+  getrgb( *src\pixel[pos + 2],    v\r[5], v\g[5], v\b[5])
+  pos + lg  
+  getrgb(*src\pixel[pos + 0], v\r[6], v\g[6], v\b[6])
+  getrgb(*src\pixel[pos + 1], v\r[7], v\g[7], v\b[7]) 
+  getrgb(*src\pixel[pos + 2], v\r[8], v\g[8], v\b[8])
+EndMacro
+
+Procedure Scharr_MT(*FilterCtx.FilterParams)
   With *FilterCtx
     Protected lg = \image_lg[0]
     Protected ht = \image_ht[0]
-    Protected mul.f = \option[0] * 0.05
-    Protected mat = \option[1]      ; 0: SQR, 1: ABS
-    Protected toGray = \option[2]   ; Boolean
-    Protected inverse = \option[3]  ; Boolean
+    Protected mul = \option[0]
+    Protected mat = \option[1]         ; 0: SQR, 1: ABS
+    Protected toGray = \option[2]
+    Protected inverse = \option[3]
+    Protected seuil_bas  = \option[4]  
+    Protected seuil_haut = \option[5]  
+    Protected v.edge_detection
+    Protected a, r, g, b, x, y , pos
+    Protected valR, valG, valB
+    Protected *src.pixelarray32
+    Protected *dst.Pixelarray32    
+    *src = \addr[2]
+    *dst = \addr[1]
     
-    Protected Dim r3(8), Dim g3(8), Dim b3(8)
-    Protected rx.f, gx.f, bx.f, ry.f, gy.f, by.f
-    Protected *srcPixel.Pixel32, *dstPixel.Pixel32
-    Protected a, r, g, b, x, y, k, pitch = lg << 2
-    Protected dx , dy
+    ; Adaptation de l'échelle du multiplicateur pour flot / entier
+    mul = (mul * 1024)
+    
     macro_calul_tread(ht)
-    
-    ; Protection des bords
     If thread_start < 1 : thread_start = 1 : EndIf
-    If thread_stop > ht - 1 : thread_stop = ht - 1 : EndIf
+    If thread_stop > ht - 2 : thread_stop = ht - 2 : EndIf
     
-    For y = thread_start To thread_stop - 1
+    For y = thread_start To thread_stop
       For x = 1 To lg - 2
+        Macro_Scharr_lecture_pixel3x3()
         
-        ; Lecture du voisinage 3x3
-        k = 0
-        For dy = -1 To 1
-          Protected *srcLine = \addr[0] + ((y + dy) * pitch)
-          For dx = -1 To 1
-            *srcPixel = *srcLine + ((x + dx) << 2)
-            ; On récupère l'Alpha seulement sur le pixel central (k=4)
-            If k = 4 : getargb(*srcPixel\l, a, r3(k), g3(k), b3(k)) : Else : getrgb(*srcPixel\l, r3(k), g3(k), b3(k)) : EndIf
-            k + 1
-          Next
-        Next
-        
-        ; Gradient Horizontal (Gx)
-        rx = (r3(2)*3 + r3(5)*10 + r3(8)*3) - (r3(0)*3 + r3(3)*10 + r3(6)*3)
-        gx = (g3(2)*3 + g3(5)*10 + g3(8)*3) - (g3(0)*3 + g3(3)*10 + g3(6)*3)
-        bx = (b3(2)*3 + b3(5)*10 + b3(8)*3) - (b3(0)*3 + b3(3)*10 + b3(6)*3)
-        
-        ; Gradient Vertical (Gy)
-        ry = (r3(6)*3 + r3(7)*10 + r3(8)*3) - (r3(0)*3 + r3(1)*10 + r3(2)*3)
-        gy = (g3(6)*3 + g3(7)*10 + g3(8)*3) - (g3(0)*3 + g3(1)*10 + g3(2)*3)
-        by = (b3(6)*3 + b3(7)*10 + b3(8)*3) - (b3(0)*3 + b3(1)*10 + b3(2)*3)
-        
-        ; Magnitude
-        If mat ; Mode Manhattan (ABS)
-          r = (Abs(rx) + Abs(ry)) * mul
-          g = (Abs(gx) + Abs(gy)) * mul
-          b = (Abs(bx) + Abs(by)) * mul
-        Else   ; Mode Euclidien (SQR)
-          r = Sqr(rx*rx + ry*ry) * mul
-          g = Sqr(gx*gx + gy*gy) * mul
-          b = Sqr(bx*bx + by*by) * mul
+        If toGray 
+          ; Conversion du voisinage 3x3 en niveaux de gris avant calcul (Luminance propre)
+          v\r[0] = (v\r[0] * 77 + v\g[0] * 150 + v\b[0] * 29) >> 8
+          v\r[1] = (v\r[1] * 77 + v\g[1] * 150 + v\b[1] * 29) >> 8
+          v\r[2] = (v\r[2] * 77 + v\g[2] * 150 + v\b[2] * 29) >> 8
+          v\r[3] = (v\r[3] * 77 + v\g[3] * 150 + v\b[3] * 29) >> 8
+          v\r[5] = (v\r[5] * 77 + v\g[5] * 150 + v\b[5] * 29) >> 8
+          v\r[6] = (v\r[6] * 77 + v\g[6] * 150 + v\b[6] * 29) >> 8
+          v\r[7] = (v\r[7] * 77 + v\g[7] * 150 + v\b[7] * 29) >> 8
+          v\r[8] = (v\r[8] * 77 + v\g[8] * 150 + v\b[8] * 29) >> 8
+          
+          ; On force les autres canaux pour la macro de calcul commune
+          v\g = v\r : v\b = v\r
         EndIf
         
-        ; Traitement final (Limites, Gris, Inversion)
-        If r > 255 : r = 255 : EndIf
-        If g > 255 : g = 255 : EndIf
-        If b > 255 : b = 255 : EndIf
+        Macro_Scharr_calcul()
         
-        If toGray : r = (r * 77 + g * 150 + b * 29) >> 8 : g = r : b = r : EndIf
+        r = (valR * mul) >> 16
+        g = (valG * mul) >> 16
+        b = (valB * mul) >> 16
+        clamp_rgb(r , g , b)
+        
         If inverse : r = 255 - r : g = 255 - g : b = 255 - b : EndIf
-
-        *dstPixel = \addr[1] + ((y * lg + x) << 2)
-        *dstPixel\l = (a << 24) | (Int(r) << 16) | (Int(g) << 8) | Int(b)
+        If seuil_bas  >   0 : seuil_min_rgb(seuil_bas  , r , g , b) : EndIf
+        If seuil_haut < 255 : seuil_max_rgb(seuil_haut , r , g , b) : EndIf
+        
+        *dst\Pixel[(y * lg) + x] = (a << 24) | (r << 16) | (g << 8) | b
       Next
     Next
-    FreeArray(r3()) : FreeArray(g3()) : FreeArray(b3())
+  EndWith
+EndProcedure
+
+Procedure Scharr_bords(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected x, y
+    Protected *dst.Pixelarray32 = \addr[1]
+    
+    For y = 1 To ht - 2
+      *dst\pixel[y * lg] = *dst\pixel[y * lg + 1]
+      *dst\pixel[(y * lg) + lg - 1] = *dst\pixel[(y * lg) + lg - 2]
+    Next
+    
+    Protected top_line_offset = 0
+    Protected sec_line_offset = lg
+    For x = 0 To lg - 1
+      *dst\pixel[top_line_offset + x] = *dst\pixel[sec_line_offset + x]
+    Next
+    
+    Protected last_line_offset = (ht - 1) * lg
+    Protected prev_line_offset = (ht - 2) * lg
+    For x = 0 To lg - 1
+      *dst\pixel[last_line_offset + x] = *dst\pixel[prev_line_offset + x]
+    Next
   EndWith
 EndProcedure
 
@@ -74,21 +124,36 @@ Procedure ScharrEx(*FilterCtx.FilterParams)
   Restore Scharr_data
   Protected last_data = Filter_InitAndValidate()
   If last_data < 0 : ProcedureReturn 0 : EndIf
-
-  Create_MultiThread_MT(@Scharr_MT())
-  
-  mask_update(*FilterCtx, last_data)
+  With *FilterCtx
+    Protected size = \image_lg[0] * \image_ht[0] * 4
+    If \addr[1] = \addr[0]
+      \addr[2] = AllocateMemory(size)
+      If \addr[2]
+        CopyMemory(\addr[0] , \addr[2] , size)
+        Create_MultiThread_MT(@Scharr_MT())
+        Scharr_bords(*FilterCtx)
+        FreeMemory(\addr[2]) 
+      EndIf
+    Else
+      \addr[2] = \addr[0]
+      Create_MultiThread_MT(@Scharr_MT())
+      Scharr_bords(*FilterCtx)
+    EndIf  
+    mask_update(*FilterCtx, last_data) 
+  EndWith
 EndProcedure
 
-Procedure Scharr(source, cible, mask, multiply=10, math=0, gray=0, inverse=0)
+Procedure Scharr(source, cible, mask, multiplicateur=10, math=0, noir_blanc=0, inversion=0, seuil_bas = 0, seuil_haut = 255)
   Set_Source(source)
   Set_Cible(cible)
   Set_Mask(mask)
   With FilterCtx
-    \option[0] = multiply
+    \option[0] = multiplicateur
     \option[1] = math
-    \option[2] = gray
-    \option[3] = inverse
+    \option[2] = noir_blanc
+    \option[3] = inversion
+    \option[4] = seuil_bas
+    \option[5] = seuil_haut
   EndWith
   ScharrEx(FilterCtx.FilterParams)
 EndProcedure
@@ -96,22 +161,27 @@ EndProcedure
 DataSection
   Scharr_data:
   Data.s "Scharr"
-  Data.s "Détection de contours optimisée (Sobel amélioré)"
+  Data.s "Détection de contours optimisée (Sobel amélioré 3x3)"
   Data.i #FilterType_EdgeDetection
   Data.i #EdgeDetect_Gradient
-  
+   
   Data.s "Multiplicateur"
-  Data.i 0, 100, 10
+  Data.i 0, 100, 25
   Data.s "Math (0:SQR, 1:ABS)"
   Data.i 0, 1, 0
   Data.s "Noir et Blanc"
   Data.i 0, 1, 0
   Data.s "Inverser"
   Data.i 0, 1, 0
-  Data.s "XXX"
+  Data.s "seuil bas"
+  Data.i 0, 255, 0
+  Data.s "seuil haut"
+  Data.i 0, 255, 255
+  Data.s "XXX"  
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 13
-; Folding = -
+; CursorPosition = 123
+; FirstLine = 120
+; Folding = --
 ; EnableXP
 ; DPIAware

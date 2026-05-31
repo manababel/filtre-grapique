@@ -4,17 +4,20 @@
     Protected *dst  = \addr[1]
     Protected lg = \image_lg[0]
     Protected ht = \image_ht[0]
-    Protected i , var , r , g , b
+    Protected i, var, r, g, b
     
     Protected totalPixels = lg * ht
     Protected start = (\thread_pos * totalPixels) / \thread_max
     Protected stop = ((\thread_pos + 1) * totalPixels) / \thread_max
     
-    ;Conversion de l’image couleur en niveaux de gris (dans *dst)
-    For i = start To stop -1
-      var = PeekL(*src + i * 4)   ; Lecture pixel source (32 bits)
-      GetRGB(var, r, g, b) 
-      PokeA(*dst + i , ((r * 77 + g * 150 + b * 29) >> 8) ) ; Stockage gris dans *dst (32 bits)
+    ; Conversion parfaite sans décalage de boucle
+    For i = start To stop - 1
+      var = PeekL(*src + i * 4)   ; Lecture BGRA 32 bits
+      ; Extraction propre des canaux (Adapté selon ton moteur standard)
+      r = Red(var)
+      g = Green(var)
+      b = Blue(var)
+      PokeA(*dst + i, (r * 77 + g * 150 + b * 29) >> 8) 
     Next
   EndWith
 EndProcedure
@@ -25,34 +28,25 @@ Procedure FiltrageGaussien_MT(*FilterCtx.FilterParams)
     Protected *dst  = \addr[1]
     Protected lg = \image_lg[0]
     Protected ht = \image_ht[0]
-    Protected x, y, i, j, r, g, b, v, gray , idx , var
-    ; Coefficients du noyau gaussien 3x3 (poids)
-    Dim weights(8)
-    weights(0) = 1 : weights(1) = 2 : weights(2) = 1
-    weights(3) = 2 : weights(4) = 4 : weights(5) = 2
-    weights(6) = 1 : weights(7) = 2 : weights(8) = 1
+    Protected x, y, v
     
-    Protected start = (\thread_pos * ht ) / \thread_max
-    Protected stop = ((\thread_pos + 1) * ht ) / \thread_max
+    Protected start = (\thread_pos * ht) / \thread_max
+    Protected stop = ((\thread_pos + 1) * ht) / \thread_max
+    
+    ; Protection stricte des bandes de traitement 3x3 (Bords exclus)
     If start < 1 : start = 1 : EndIf
-    If stop > (ht - 2) : stop = (ht - 2) : EndIf
-    ; Application du filtre gaussien sur l’image en niveaux de gris
+    If stop > (ht - 2) : stop = ht - 2 : EndIf
+    
+    ; Plus de tableau Dim local ! Calcul direct via offsets (Plus rapide)
     For y = start To stop
       For x = 1 To lg - 2
-        v = 0 : idx = 0
-        ; Convolution avec le noyau 3x3
-        For j = -1 To 1
-          For i = -1 To 1
-            var = PeekA(*src + ((y+j)*lg + (x+i)) ) ; récupération valeur grise
-            v + var * weights(idx)                  ; Somme pondérée
-            idx + 1
-          Next
-        Next
-        v = v >> 4 ; Normalisation (division par 16, somme des poids)
-                   ; Limitation de la valeur entre 0 et 255
-        If v > 255 : v = 255 : ElseIf v < 0 : v = 0 : EndIf
-        ; Écriture de la valeur floutée dans *dst (en niveaux de gris)
-        PokeA(*dst + (y*lg + x), v )
+        v = PeekA(*src + (y-1)*lg + (x-1)) * 1 + PeekA(*src + (y-1)*lg + x) * 2 + PeekA(*src + (y-1)*lg + (x+1)) * 1 +
+            PeekA(*src +  y   *lg + (x-1)) * 2 + PeekA(*src +  y   *lg + x) * 4 + PeekA(*src +  y   *lg + (x+1)) * 2 +
+            PeekA(*src + (y+1)*lg + (x-1)) * 1 + PeekA(*src + (y+1)*lg + x) * 2 + PeekA(*src + (y+1)*lg + (x+1)) * 1
+        
+        v = v >> 4 ; Division par 16
+        
+        PokeA(*dst + (y * lg + x), v)
       Next
     Next
   EndWith
@@ -67,52 +61,46 @@ Procedure GradientSobel_MT(*FilterCtx.FilterParams)
     Protected ht = \image_ht[0]
     
     Protected x, y, gx, gy, magnitude, angle
-    Protected line0, line1, line2
-    Protected idx0, idx1, idx2
-    ; Buffers temporaires pour 3 lignes consécutives (1 octet par pixel)
-    Dim line0(lg - 1)
-    Dim line1(lg - 1)
-    Dim line2(lg - 1)
-    ; Parcours de l’image (sans bord)
-    Protected start = (\thread_pos * ht ) / \thread_max
-    Protected stop = ((\thread_pos + 1) * ht ) / \thread_max
+    Protected offset0, offset1, offset2
+    
+    Protected start = (\thread_pos * ht) / \thread_max
+    Protected stop = ((\thread_pos + 1) * ht) / \thread_max
+    
     If start < 1 : start = 1 : EndIf
-    If stop > (ht - 2) : stop = (ht - 2) : EndIf
+    If stop > (ht - 2) : stop = ht - 2 : EndIf
+    
     For y = start To stop
-      ; Chargement des 3 lignes dans les buffers (pour accès rapide)
-      For x = 0 To lg - 1
-        line0(x) = PeekA(*src + ((y - 1) * lg + x) )
-        line1(x) = PeekA(*src + (y * lg + x) )
-        line2(x) = PeekA(*src + ((y + 1) * lg + x) )
-      Next
-      ; Calcul du gradient pour chaque pixel (sans bord)
+      ; Calcul des pointeurs de lignes pour éviter les multiplications dans la boucle X
+      offset0 = (y - 1) * lg
+      offset1 = y * lg
+      offset2 = (y + 1) * lg
+      
       For x = 1 To lg - 2
-        ; Application des masques Sobel pour Gx et Gy
-        gx = -line0(x-1) + line0(x+1) - 2 * line1(x-1) + 2 * line1(x+1) - line2(x-1) + line2(x+1)
-        gy = -line0(x-1) - 2 * line0(x) - line0(x+1) + line2(x-1) + 2 * line2(x) + line2(x+1)
-        ; Calcul de la magnitude (approximation norme L1)
+        ; Lecture directe en RAM via le cache CPU (Adieu les Dim line() !)
+        gx = -PeekA(*src + offset0 + x - 1) + PeekA(*src + offset0 + x + 1) - 2 * PeekA(*src + offset1 + x - 1) + 2 * PeekA(*src + offset1 + x + 1) - PeekA(*src + offset2 + x - 1) + PeekA(*src + offset2 + x + 1)
+             
+        gy = -PeekA(*src + offset0 + x - 1) - 2 * PeekA(*src + offset0 + x) - PeekA(*src + offset0 + x + 1) + PeekA(*src + offset2 + x - 1) + 2 * PeekA(*src + offset2 + x) + PeekA(*src + offset2 + x + 1)
+        
         magnitude = Abs(gx) + Abs(gy)
         If magnitude > 255 : magnitude = 255 : EndIf
-        ; Calcul de l’orientation (angle en degrés entre 0 et 180)
-        ;angle = Degree(ATan2(gy, gx))
-        ;If angle < 0 : angle + 180  : EndIf
+        
+        ; Classification de l'angle simplifiée et ultra rapide
         If Abs(gx) > Abs(gy)
           If gx * gy >= 0
-            angle = 0    ; ≈ 0°
+            angle = 0    ; Horizontal (0°)
           Else
-            angle = 3    ; ≈ 135°
+            angle = 3    ; Diagonale (135°)
           EndIf
         Else
           If gx * gy >= 0
-            angle = 1    ; ≈ 45°
+            angle = 1    ; Diagonale (45°)
           Else
-            angle = 2    ; ≈ 90°
+            angle = 2    ; Vertical (90°)
           EndIf
         EndIf
-        PokeA(*dir + y * lg + x, angle)
-        ; Stockage des résultats (magnitude et direction)
-        PokeA(*mag + y * lg + x, magnitude)
-        PokeA(*dir + y * lg + x, angle)
+        
+        PokeA(*mag + offset1 + x, magnitude)
+        PokeA(*dir + offset1 + x, angle)
       Next
     Next
   EndWith
@@ -404,8 +392,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 383
-; FirstLine = 354
+; CursorPosition = 81
+; FirstLine = 48
 ; Folding = --
 ; EnableXP
 ; DPIAware

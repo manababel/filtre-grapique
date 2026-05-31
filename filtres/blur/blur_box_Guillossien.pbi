@@ -45,8 +45,8 @@ Procedure blur_box_Guillossien_MT(*FilterCtx.FilterParams)
     Protected lg = \image_lg[0]
     Protected ht = \image_ht[0]
     ; Paramètres du filtre
-    Protected nrx = \option[0] + 1
-    Protected nry = \option[1] + 1
+    Protected nrx = (\option[0] * 2) + 1
+    Protected nry = (\option[1] * 2) + 1
     Protected div = Int($800000 / (nrx * nry))  ; Pow(2,23) = $800000
     
     macro_calul_tread(ht)
@@ -66,7 +66,7 @@ Procedure blur_box_Guillossien_MT(*FilterCtx.FilterParams)
     ; === Étape 2 : Application du filtre pour chaque ligne ===
     For j = thread_start To thread_stop - 1
       ; Mise à jour du buffer colonne (soustraction d’une ancienne ligne et ajout d’une nouvelle)
-      p1 = ( *ly\l[nry + j] * lg)
+      p1 = ( *ly\l[j + nry] * lg)
       p2 = ( *ly\l[j]       * lg)
       For i = 0 To lg - 1
         getargb(*srcPixel\pixel[p1 + i], a1, r1, g1, b1)
@@ -87,7 +87,7 @@ Procedure blur_box_Guillossien_MT(*FilterCtx.FilterParams)
       Next
       ; Boucle de sortie pour chaque pixel de la ligne
       For i = 0 To lg - 1
-        p1 = *lx\l[nrx + i]
+        p1 = *lx\l[i + nrx]
         p2 = *lx\l[i]
         ax1 + a(p1) - a(p2)
         rx1 + r(p1) - r(p2)
@@ -202,8 +202,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 66
-; FirstLine = 51
+; CursorPosition = 88
+; FirstLine = 63
 ; Folding = --
 ; EnableXP
 ; DPIAware

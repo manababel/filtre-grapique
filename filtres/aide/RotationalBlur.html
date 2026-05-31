@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme RotationalBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #1e3a8a;
+            border: 1px solid #3b82f6;
+            color: #3b82f6;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #38bdf8;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Échantillonnage Angulaire Symétrique</div>
+        <h1>Documentation - Algorithme <span>RotationalBlur</span></h1>
+        <p>Effet de filé cinétique circulaire par rotation matricielle vectorielle et sommation fenêtrée</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation de Flou de Rotation ?</h2>
+        <ul>
+            <li>
+                <strong>Distribution Équilibrée du Flou (Centrage de l'Arc) :</strong> Plutôt que d'effectuer une rotation brute allant de 0 à l'Angle cible, votre code répartit symétriquement l'échantillonnage de part et d'autre de la position initiale du pixel (<code>-angle * 0.5 + angle * t</code>). L'image reste ainsi parfaitement calée sur ses formes d'origine sans subir de décalage ou de torsion unilatérale.
+            </li>
+            <li>
+                <strong>Correction Dynamique des Bords (Compteur Flottant) :</strong> Lorsque les coordonnées calculées le long de l'arc de cercle sortent des frontières de la texture, l'algorithme rejette proprement le point (<code>Continue</code>). La moyenne finale s'ajuste dynamiquement en divisant uniquement par le nombre de points valides effectivement collectés (variable <code>count</code>), évitant l'apparition de franges noires ou transparentes en bordure.
+            </li>
+            <li>
+                <strong>Préservation de la netteté en cas de rejet total :</strong> Si la trajectoire circulaire d'un pixel se situe intégralement en dehors du cadre de l'image (<code>count = 0</code>), le filtre bascule automatiquement sur une sécurité (bloc <code>Else</code>) qui réinjecte le pixel source d'origine sans altération, éliminant tout risque d'affichage de pixel mort ou vide.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Effet de crénelage en hélice (Aliasing) :</strong> La distance spatiale parcourue par l'arc de rotation augmente proportionnellement à l'éloignement par rapport au point central. À l'extrême périphérie de l'image, le nombre maximal de 50 échantillons devient insuffisant, transformant le flou en une suite de points pointillés ou de motifs hachés disgracieux.
+                </li>
+                <li>
+                    <strong>Lenteur critique liée aux calculs trigonométriques :</strong> Contrairement à la version IIR par rayonnement, ce filtre recalcule les fonctions <code>Cos(rotAngle)</code> et <code>Sin(rotAngle)</code> à chaque pas de la sous-boucle pour chaque pixel de l'image. L'absence de table de correspondance (LUT) rend l'algorithme particulièrement gourmand en temps processeur.
+                </li>
+                <li>
+                    <strong>Inégalité du flou selon la distance (Gradient Spatial) :</strong> Près du centre (<code>cx, cy</code>), les vecteurs de déplacement (<code>dx, dy</code>) sont minuscules, le flou y est donc pratiquement invisible. À l'inverse, les zones éloignées tournent à grande vitesse. Cette spécificité mathématique interdit l'obtention d'un flou circulaire uniforme sur l'intégralité du calque.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface convertit les positions en valeurs pixelisées et reçoit l'amplitude angulaire du mouvement ainsi que la densité de balayage.</p>
+        <pre><code><span class="keyword">Procedure</span> RotationalBlur(source, cible, mask, cx, cy, angle, echantillons)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = cx
+    \option[1] = cy
+    \option[2] = angle
+    \option[3] = echantillons
+  <span class="keyword">EndWith</span>
+  RotationalBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Détermination du Centrage Angulaire</h3>
+        <p>Cette section montre comment l'algorithme calcule le décalage de phase pour ancrer l'échantillonnage de façon équitable autour de la coordonnée de base.</p>
+        <pre><code><span class="comment">; Conversion de l'angle d'entrée en radians :</span>
+<span class="keyword">Protected</span> angle.f = \option[<span class="number">2</span>] * #PI / <span class="number">180.0</span>
+
+<span class="comment">; Dans la sous-boucle (i évoluant de 0 à samples - 1) :</span>
+<span class="keyword">Protected</span> t.f = i / (samples - <span class="number">1.0</span>)
+rotAngle = -angle * <span class="number">0.5</span> + angle * t <span class="comment">; Balayage de -DemiAngle à +DemiAngle</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Pour chaque coordonnée spatiale, l'algorithme extrait le rayon qui la relie au centre, puis applique une matrice de rotation trigonométrique standard bidimensionnelle.</p>
+
+        <div class="card">
+            <h3>La Matrice de Rotation Vectorielle</h3>
+            <p>La déviation d'un point autour du repère focal s'obtient en croisant les coordonnées de distance relative avec les rapports sinus/cosinus de l'angle courant :<br>
+            <code>rx = dx * cosA - dy * sinA</code><br>
+            <code>ry = dx * sinA + dy * cosA</code><br>
+            Les nouvelles coordonnées absolues de lecture deviennent alors : <code>sx = cx + rx</code> et <code>sy = cy + ry</code>.</p>
+        </div>
+
+        <h3>Visualisation du Balayage Circulaire</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Arc de Flou</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">t=0</td><td></td><td></td></tr>
+                            <tr><td></td><td class="center-pixel">Pixel</td><td></td></tr>
+                            <tr><td></td><td></td><td class="active-blur">t=1</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Formule de Calcul Spatiale :</strong></p>
+                        <div class="math-box">
+                            Distance_X = X_Courant - Centre_X<br>
+                            Distance_Y = Y_Courant - Centre_Y<br><br>
+                            Nouveau_X = Centre_X + (Distance_X * Cos - Distance_Y * Sin)
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            L'indice de progression <b>t</b> pilote la rotation. À chaque étape, la position du pixel d'origine subit une légère déviation circulaire. L'ensemble des points d'échantillonnage dessine un arc de cercle parfait dont la courbure dépend de la distance par rapport au <b>Centre</b> focal.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Sécurité par Contrôle de Limites Discrètes</h3>
+        <p>La vérification des coordonnées exclut immédiatement les calculs d'extraction colorimétrique si le pixel ciblé se trouve hors-champ de la mémoire vidéo :</p>
+        <div class="math-box" style="font-family: monospace; font-size: 0.95em; border-left-color: #ef4444; color: #e2e8f0;">
+            If sx &lt; 0 Or sx &gt;= lg Or sy &lt; 0 Or sy &gt;= ht : Continue : EndIf
+        </div>
+        <p style="font-size: 0.9em; color: #94a3b8;">
+            L'utilisation du mot-clé <code>Int()</code> lors de la conversion finale de l'adresse (<code>(Int(sy) * lg + Int(sx)) &lt;&lt; 2</code>) réalise une interpolation par troncature brute (plus proche voisin), garantissant un pointage mémoire rapide et intègre.
+        </p>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici l'ordonnancement séquentiel des instructions du filtre de flou rotationnel :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Centre X (%), Centre Y (%), Angle (Degrés), Échantillons
+
+<span class="comment">// 1. CONVERSION ET VERROUILLAGE DES BORNES</span>
+Si Échantillons &lt; 2 Alors Échantillons = 2
+Si Échantillons &gt; 50 Alors Échantillons = 50
+
+Foyer_X = Largeur_Image * (Centre_X / 100.0)
+Foyer_Y = Hauteur_Image * (Centre_Y / 100.0)
+Angle_Rad = Angle * PI / 180.0
+
+<span class="comment">// 2. BALAYAGE DE LA SURFACE</span>
+<span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+    <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+        
+        Somme_A = 0.0 : Somme_R = 0.0 : Somme_G = 0.0 : Somme_B = 0.0
+        Points_Valides = 0
+        
+        <span class="comment">// Coordonnées de distance par rapport à l'axe</span>
+        Delta_X = X - Foyer_X
+        Delta_Y = Y - Foyer_Y
+        
+        <span class="comment">// Exploration de l'arc de rotation</span>
+        <span class="keyword">Pour</span> i = 0 <span class="keyword">To</span> Échantillons - 1
+            Ratio_T = i / (Échantillons - 1.0)
+            Angle_Etape = -Angle_Rad * 0.5 + Angle_Rad * Ratio_T
+            
+            Cos_A = Cos(Angle_Etape)
+            Sin_A = Sin(Angle_Etape)
+            
+            <span class="comment">// Transformation géométrique matricielle</span>
+            Rotation_X = Foyer_X + (Delta_X * Cos_A - Delta_Y * Sin_A)
+            Rotation_Y = Foyer_Y + (Delta_X * Sin_A + Delta_Y * Cos_A)
+            
+            <span class="comment">// Test d'exclusion des débordements</span>
+            <span class="keyword">Si</span> Rotation_X &gt;= 0 Et Rotation_X &lt; Largeur_Image Et Rotation_Y &gt;= 0 Et Rotation_Y &lt; Hauteur_Image
+                Index_Memoire = (Int(Rotation_Y) * Largeur_Image + Int(Rotation_X)) * 4
+                Pixel = Lire_Pixel_Source(Index_Memoire)
+                
+                Somme_A + Extraire_Alpha(Pixel)
+                Somme_R + Extraire_Rouge(Pixel)
+                Somme_G + Extraire_Vert(Pixel)
+                Somme_B + Extraire_Bleu(Pixel)
+                Points_Valides + 1
+            <span class="keyword">Fin Si</span>
+        <span class="keyword">Next</span> i
+        
+        <span class="comment">// 3. ETAPE DE NORMALISATION DES CANAUX</span>
+        <span class="keyword">Si</span> Points_Valides &gt; 0
+            Alpha_Final = Somme_A / Points_Valides
+            Rouge_Final = Somme_R / Points_Valides
+            Vert_Final  = Somme_G / Points_Valides
+            Bleu_Final  = Somme_B / Points_Valides
+        <span class="keyword">Sinon</span>
+            <span class="comment">// Repli de sécurité : restauration du pixel d'origine</span>
+            Pixel_Origine = Lire_Pixel_Source((Y * Largeur_Image + X) * 4)
+            (Alpha_Final, Rouge_Final, Vert_Final, Bleu_Final) = Extraire_ARGB(Pixel_Origine)
+        <span class="keyword">Fin Si</span>
+        
+        <span class="comment">// Protection contre le dépassement d'octets et écriture</span>
+        Pixel_Assemble = Réassembler_ARGB(Clamp(Alpha_Final), Clamp(Rouge_Final), Clamp(Vert_Final), Clamp(Bleu_Final))
+        Écrire_Pixel_Cible(X, Y, Pixel_Assemble)
+        
+    <span class="keyword">Next</span> X
+<span class="keyword">Fin Pour</span>
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Traitement Numérique Spatial par Transformation Vectorielle Circulaire.</p>
+    </footer>
+
+</body>
+</html>

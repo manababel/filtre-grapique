@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme Blur IIR (Infinite Impulse Response)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        /* Structure de démo compatible (Tableau au lieu de Flexbox) */
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            color: #ffffff;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Traitement de Signal Appliqué</div>
+        <h1>Documentation - Algorithme <span>Blur IIR</span></h1>
+        <p>Flou récursif à Réponse Impulsionnelle Infinie à vitesse constante</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser le flou IIR ?</h2>
+        <ul>
+            <li>
+                <strong>Performance O(1) de type Gaussien :</strong> Tout comme la technique du Box Blur SAT, le temps d'exécution d'un filtre IIR est totalement indépendant de la taille du rayon d'action (<code>rx</code>, <code>ry</code>). Cependant, là où le Box Blur produit un flou angulaire "au rendu carré", l'IIR génère nativement une approximation fluide et mathématiquement superbe du <strong>Flou Gaussien</strong>.
+            </li>
+            <li>
+                <strong>Économie de mémoire Drastique :</strong> Contrairement à la Summed-Area Table qui nécessite l'allocation de 4 immenses buffers de données en 64 bits, le filtre IIR traite l'image de manière séquentielle en n'utilisant que quelques variables tampons pour propager le calcul.
+            </li>
+            <li>
+                <strong>Nombre de Passes Ajustable (ndp) :</strong> Le paramètre de passe permet de choisir le compromis parfait entre vitesse et qualité. Une seule passe offre un flou ultra-rapide, tandis que 2 ou 3 passes affinent la courbe pour obtenir une approximation parfaite de l'authentique cloche de Gauss.
+            </li>
+        </ul>
+
+        <h2>2. Exemples d'implémentation (PureBasic)</h2>
+
+        <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
+        <p>Idéal pour une intégration simple, cette procédure configure automatiquement l'ensemble des paramètres requis par le moteur de rendu.</p>
+        <pre><code>IncludeFile "filtres.pbi"
+UseModule filtres
+
+If OpenWindow(0, 0, 0, 800, 600, "Exemple IIR...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = 1
+  CibleImage  = 2
+  AucunMasque = 0
+  RayonX      = 15  <span class="comment">; Intensité du flou horizontal</span>
+  RayonY      = 15  <span class="comment">; Intensité du flou vertical</span>
+  Passes      = 1   <span class="comment">; 'ndp' : Nombre de passes récursives (souvent égal à 1, 2 ou 3)</span>
+ 
+  file$ = OpenFileRequester("Ouvrir une Image","","",0)
+  If load_image_32(SourceImage , file$) = 0
+    End
+  Else
+    ResizeImage(SourceImage, 800, 600)
+  EndIf
+  
+  CopyImage(SourceImage, CibleImage)
+
+  <span class="comment">; Appel de la procédure avec ses paramètres explicites</span>
+  Blur_IIR(SourceImage, CibleImage, AucunMasque, RayonX, RayonY, Passes)
+  
+  StartDrawing(WindowOutput(0))
+    DrawImage(ImageID(CibleImage) ,  0 , 0)
+  StopDrawing()
+  
+  Repeat
+    Event = WaitWindowEvent()
+  Until Event = #PB_Event_CloseWindow
+EndIf</code></pre>
+
+        <h3>Option B : Fonctionnement Interne de la Structure Réceptrice</h3>
+        <p>Pour information, l'appel ci-dessus encapsule la distribution des données directement dans la structure globale du framework avant d'appeler l'exécuteur bas niveau :</p>
+        <pre><code><span class="keyword">With</span> FilterCtx
+  \option[0] = rx  <span class="comment">// Transmis à l'exécuteur</span>
+  \option[1] = ry
+  \option[2] = ndp <span class="comment">// Nombre de passes</span>
+<span class="keyword">EndWith</span>
+Blur_IIREx(FilterCtx.FilterParams)</code></pre>
+
+        <h2>3. Le Filtre : Comment ça marche ?</h2>
+        <p>Un filtre <strong>IIR (Infinite Impulse Response)</strong> utilise la réactivité des pixels précédents pour calculer le pixel actuel. C'est le principe du **filtre à rétroaction**. La couleur d'un pixel est "injectée" et se dissout progressivement dans ses voisins au fil du balayage.</p>
+
+        <div class="card">
+            <h3>Le concept de la propagation d'onde</h3>
+            <p>Imaginez que vous fassiez glisser un pinceau mouillé de gauche à droite sur une suite de tâches de couleur. Le pinceau accumule la couleur de la tâche précédente et la dépose doucement sur la tâche suivante. Pour éviter que le flou ne bave que vers la droite, l'algorithme fait immédiatement la même chose en sens inverse (de droite à gauche).</p>
+        </div>
+
+        <h3>L'importance des Balayages Bidirectionnels</h3>
+        <p>Pour obtenir un flou parfaitement symétrique et homogène sans décalage visuel, l'algorithme <code>Blur_IIREx</code> effectue des passes croisées sur les lignes et les colonnes :</p>
+
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Les 2 Passes Ligne</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">➔</td><td class="center-pixel">P</td><td class="active-blur">➔</td></tr>
+                            <tr><td class="active-blur"> WINTER-PAUSE </td><td class="center-pixel">P</td><td class="active-blur">🠔</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>L'équation de récursion d'ordre 2 classique :</strong></p>
+                        <div class="math-box">
+                            Pixel_Flou = (a0 * Pixel_Brut) + (b1 * Pixel_Precedent_1) + (b2 * Pixel_Precedent_2)
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            La couleur finale du pixel dépend d'un ratio de sa propre couleur originale, mélangé avec l'historique des deux pixels qui viennent d'être traités juste avant lui. Les coefficients mathématiques ($a, b$) sont calculés au démarrage selon le rayon ($rx, ry$).
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique interne de l'algorithme (Pseudo-code)</h3>
+        <p>Voici la structure logique générale appliquée lors de l'exécution de <code>Blur_IIREx</code> :</p>
+
+<pre>
+<span class="comment">// Calcul initial des coefficients mathématiques basés sur le Rayon</span>
+Calculer_Coefficients_Filtre(RayonX, RayonY)
+
+<span class="keyword">Pour</span> passe = <span class="number">1</span> <span class="keyword">To</span> ndp  <span class="comment">// Répétition selon le nombre de passes demandé</span>
+
+    <span class="comment">// --- PASSE HORIZONTALE ---</span>
+    <span class="keyword">Pour chaque</span> ligne Y de l'image
+        <span class="comment">// Passe Causal (Aller : de gauche à droite)</span>
+        <span class="keyword">Pour</span> X = <span class="number">0</span> <span class="keyword">To</span> Largeur - <span class="number">1</span>
+            Buffer_Aller[X] = (Coeff_A * Pixel_Source) + (Coeff_B1 * Buffer_Aller[X-1]) + ...
+        <span class="keyword">Next</span>
+        
+        <span class="comment">// Passe Anti-Causal (Retour : de droite à gauche)</span>
+        <span class="keyword">Pour</span> X = Largeur - <span class="number">1</span> <span class="keyword">To</span> <span class="number">0</span> <span class="keyword">Step</span> -1
+            Buffer_Retour[X] = (Coeff_A * Buffer_Aller[X]) + (Coeff_B1 * Buffer_Retour[X+1]) + ...
+        <span class="keyword">Next</span>
+    <span class="keyword">Fin Pour</span>
+
+    <span class="comment">// --- PASSE VERTICALE ---</span>
+    <span class="keyword">Pour chaque</span> colonne X de l'image
+        <span class="comment">// Passe Causal (Aller : du haut vers le bas)</span>
+        <span class="keyword">Pour</span> Y = <span class="number">0</span> <span class="keyword">To</span> Hauteur - <span class="number">1</span>
+            Buffer_Vertical_Aller[Y] = (Coeff_A * Pixel_Intermediaire) + (Coeff_B1 * Buffer_Vertical_Aller[Y-1]) + ...
+        <span class="keyword">Next</span>
+        
+        <span class="comment">// Passe Anti-Causal (Retour : du bas vers le haut)</span>
+        <span class="keyword">Pour</span> Y = Hauteur - <span class="number">1</span> <span class="keyword">To</span> <span class="number">0</span> <span class="keyword">Step</span> -1
+            Pixel_Final[X, Y] = (Coeff_A * Buffer_Vertical_Aller[Y]) + (Coeff_B1 * Buffer_Vertical_Retour[Y+1]) + ...
+        <span class="keyword">Next</span>
+    <span class="keyword">Fin Pour</span>
+
+<span class="keyword">Next</span> passe
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Filtres Graphiques de Traitement Séquentiel par Récursion Temporelle.</p>
+    </footer>
+
+</body>
+</html>

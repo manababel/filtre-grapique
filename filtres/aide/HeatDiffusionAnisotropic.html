@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme HeatDiffusionAnisoBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #14532d;
+            border: 1px solid #22c55e;
+            color: #22c55e;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #38bdf8;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Équation Différentielle Partielle (EDP)</div>
+        <h1>Documentation - Algorithme <span>HeatDiffusionAnisoBlur</span></h1>
+        <p>Flou anisotrope intelligent par conduction thermique sélective (Perona-Malik)</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser ce filtre anisotrope ?</h2>
+        <ul>
+            <li>
+                <strong>Lissage préservant les contours :</strong> Contrairement à un flou gaussien standard qui est "isotrope" (il lisse aveuglément tout sur son passage), ce filtre simule la propagation physique de la chaleur dans un milieu hétérogène. Le flou s'arrête net dès qu'il rencontre une transition brutale de couleur (un contour).
+            </li>
+            <li>
+                <strong>Optimisation par Table de Correspondance (Lookup Table) :</strong> L'évaluation de l'équation de Perona-Malik requiert une fonction exponentielle par pixel et par voisin. Votre code élimine ce goulot d'étranglement en pré-calculant les 256 coefficients de conductivité possibles au démarrage de la procédure dans la table <code>\addr[3]</code>. Le traitement interne n'effectue plus qu'un simple <code>PeekF</code> ultra-rapide.
+            </li>
+            <li>
+                <strong>Stratégie de Double Tampon (Ping-Pong Buffering) :</strong> Pour que la diffusion mathématique se propage sainement sans altérer les calculs de voisinage en cours, le filtre utilise deux espaces mémoires de taille identique. À chaque itération, l'algorithme alterne le rôle des pointeurs via l'instruction <code>Swap *buf_src, *buf_dst</code>.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Surcharge liée au processus itératif :</strong> Pour obtenir un résultat visible et un lissage de type "peinture à l'huile", le filtre doit s'exécuter sur plusieurs cycles (variable <code>iterations</code>). Si une image demande 50 itérations, la totalité des pixels de l'image devra être lue, calculée et réécrite 50 fois de suite, rendant l'algorithme lourd.
+                </li>
+                <li>
+                    <strong>Instabilité de la vitesse de diffusion (Paramètre Lambda) :</strong> Le coefficient de vitesse de diffusion <code>lambda</code> (contrôlé par <code>\option[2]</code>) est limité à une valeur maximale stricte. Si la valeur configurée dépasse 0.25 (25%), l'équation mathématique diverge : le filtre devient instable, génère des artéfacts numériques violents et détruit la cohérence visuelle des pixels.
+                </li>
+                <li>
+                    <strong>Difficulté de calibrage du seuil de contraste (K) :</strong> Le paramètre de contraste K (<code>\option[1]</code>) définit la sensibilité du détecteur de contours. Si K est trop bas, aucune diffusion n'a lieu (l'image reste intacte). Si K est trop haut, le filtre considère les contours comme du bruit et se comporte comme un simple flou gaussien classique, annulant tout l'intérêt de l'anisotropie.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface initialise les trois options de contrôle : le nombre de passes, le seuil de contraste (K) et la vitesse de diffusion exprimée en pourcentage.</p>
+        <pre><code><span class="keyword">Procedure</span> HeatDiffusionBlur(source, cible, mask, iterations, contraste, lambda_percent)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = iterations
+    \option[1] = contraste
+    \option[2] = lambda_percent
+  <span class="keyword">EndWith</span>
+  HeatDiffusionBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Le Moteur du Noyau : Génération de la table Exponentielle</h3>
+        <p>Le programme pré-calcule la courbe d'atténuation. Plus l'écart de couleur entre deux pixels est grand, plus la conductivité tend vers 0.</p>
+        <pre><code><span class="comment">; Extrait de la phase d'initialisation :</span>
+<span class="keyword">Protected</span> invK.f = <span class="number">1.0</span> / \option[1]
+<span class="keyword">Protected</span> invKSq.f = invK * invK
+
+<span class="keyword">For</span> i = <span class="number">0</span> <span class="keyword">To</span> <span class="number">255</span>
+  <span class="comment">; Formule de Perona-Malik : c(g) = Exp(-(g/K)²)</span>
+  var = Exp(-i * i * invKSq)
+  PokeF(\addr[<span class="number">3</span>] + (i &lt;&lt; <span class="number">2</span>), var)
+<span class="keyword">Next</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>À chaque itération, le pixel central analyse ses 4 voisins directs (Nord, Sud, Ouest, Est) pour mesurer le gradient thermique local.</p>
+
+        <div class="card">
+            <h3>Le Rôle de la Macro d'Évolution (HeatDiffusionAnisoBlur_sp1)</h3>
+            <p>La macro calcule l'écart absolu de couleur entre le pixel courant et ses voisins. Cet écart sert d'index dans la table pour obtenir les coefficients d'atténuation <code>cN, cS, cW, cE</code>. Le pixel central absorbe ou transmet ensuite une fraction de couleur régulée par le paramètre <code>lambda</code>.</p>
+        </div>
+
+        <h3>Le Voisinage en Croix de Von Neumann</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Voisins Analysés</strong>
+                        <table class="matrix">
+                            <tr><td></td><td class="active-blur">Nord</td><td></td></tr>
+                            <tr><td class="active-blur">Ouest</td><td class="center-pixel">Pixel</td><td class="active-blur">Est</td></tr>
+                            <tr><td></td><td class="active-blur">Sud</td><td></td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>L'équation d'ajustement de la valeur :</strong></p>
+                        <div class="math-box">
+                            Variation = cN * (Nord - Pixel) + cS * (Sud - Pixel) + cW * (Ouest - Pixel) + cE * (Est - Pixel)<br><br>
+                            Nouvelle_Valeur = Pixel + Lambda * Variation
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Si la différence de couleur entre le pixel central et son voisin du Nord est inférieure au seuil K, le coefficient <code>cN</code> sera proche de 1.0, permettant l'homogénéisation. Si l'écart est supérieur à K, <code>cN</code> chute vers 0.0 : la barrière est fermée, le contour est préservé.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Gestion des Frontières de l'Image</h3>
+        <p>Le code intègre un système de repli automatique en cas de contact avec les bordures de la matrice :</p>
+        <div class="math-box" style="font-family: monospace; font-size: 0.95em; border-left-color: #ef4444; color: #e2e8f0;">
+            If y &gt; 0 : getrgb(*source\pixel[pos - lg], Nr...) : Else : Nr = r : EndIf
+        </div>
+        <p style="font-size: 0.9em; color: #94a3b8;">
+            Lorsqu'un pixel se trouve sur la ligne tout en haut de l'image (Y = 0), il n'a pas de voisin Nord. L'algorithme clone alors de manière transparente les valeurs du pixel central lui-même (<code>Nr = r</code>), ce qui annule proprement le transfert thermique vers l'extérieur.
+        </p>
+
+        <h3>Logique Interne du Système (Pseudo-code Global)</h3>
+        <p>Voici la séquence séquentielle exacte du traitement de diffusion :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Itérations, Contraste K, Vitesse Lambda
+
+<span class="comment">// 1. PHASE D'INITIALISATION</span>
+Lambda_Réel = Vitesse_Lambda * 0.01
+Allouer_Table_Correspondance(256 cases * 4 octets)
+<span class="keyword">Pour</span> i de 0 à 255
+    Table[i] = Exp(-i * i / (K * K))
+<span class="keyword">Next</span> i
+
+Allouer_Buffer_Temporaire(*tempo, Taille_Image)
+Copier_Mémoire(Image_Source -> *tempo)
+
+Pointeur_Source = *tempo
+Pointeur_Cible = Image_Cible
+
+<span class="comment">// 2. BOUCLE PRINCIPALE DES ITÉRATIONS (Cycle de diffusion)</span>
+<span class="keyword">Pour</span> cycle = 1 <span class="keyword">To</span> Itérations
+    
+    <span class="comment">// Pour chaque pixel de la matrice</span>
+    <span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+        <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+            Pos = Y * Largeur + X
+            (R, G, B) = Extraire_RGB(Pointeur_Source[Pos])
+            
+            <span class="comment">// Échantillonnage avec sécurité des bords</span>
+            (Nr, Ng, Nb) = (Y > 0) ? Extraire_RGB(Pointeur_Source[Pos - Largeur]) : (R, G, B)
+            (Sr, Sg, Sb) = (Y < Hauteur - 1) ? Extraire_RGB(Pointeur_Source[Pos + Largeur]) : (R, G, B)
+            (Wr, Wg, Wb) = (X > 0) ? Extraire_RGB(Pointeur_Source[Pos - 1]) : (R, G, B)
+            (Er, Eg, Eb) = (X < Largeur - 1) ? Extraire_RGB(Pointeur_Source[Pos + 1]) : (R, G, B)
+            
+            <span class="comment">// Application du lissage sélectif</span>
+            R = R + Lambda_Réel * (Table[Abs(Nr - R)] * (Nr - R) + Table[Abs(Sr - R)] * (Sr - R) + ...)
+            G = G + Lambda_Réel * (Table[Abs(Ng - G)] * (Ng - G) + Table[Abs(Sg - G)] * (Sg - G) + ...)
+            B = B + Lambda_Réel * (Table[Abs(Nb - B)] * (Nb - B) + Table[Abs(Sb - B)] * (Sb - B) + ...)
+            
+            Pointeur_Cible[Pos] = Réassembler_ARGB(255, Clamping(R), Clamping(G), Clamping(B))
+        <span class="keyword">Next</span> X
+    <span class="keyword">Next</span> Y
+    
+    <span class="comment">// Inversion de la source et du buffer pour la passe suivante</span>
+    Swap Pointeur_Source, Pointeur_Cible
+<span class="keyword">Next</span> cycle
+
+<span class="comment">// 3. ÉTAPE DE VÉRIFICATION FINALE ET NETTOYAGE</span>
+<span class="keyword">Si</span> Pointeur_Source n'est pas le calque final attendu
+    Copier_Mémoire(Pointeur_Source -> Image_Cible)
+<span class="keyword">Fin Si</span>
+
+Libérer_Mémoire(*tempo)
+Libérer_Mémoire(Table)
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Traitement Numérique de l'Image Avancé par Équations aux Dérivées Partielles.</p>
+    </footer>
+
+</body>
+</html>

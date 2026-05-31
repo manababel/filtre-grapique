@@ -154,7 +154,7 @@ EndProcedure
 
 DataSection
   CircularMeanblur_data:
-  Data.s "CircularMeanBlurSAT"
+  Data.s "CircularMeanBlur"
   Data.s "Moyenne circulaire via somme intégrale 2D"
   Data.i #FilterType_Blur
   Data.i #Blur_Classic
@@ -165,7 +165,7 @@ DataSection
 EndDataSection
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 138
+; CursorPosition = 156
 ; FirstLine = 105
 ; Folding = -
 ; EnableXP

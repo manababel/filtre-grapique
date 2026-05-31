@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme CircularMeanblur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        /* Structure de démo compatible (Tableau au lieu de Flexbox) */
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            color: #ffffff;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Rendu Optique Réaliste</div>
+        <h1>Documentation - Algorithme <span>CircularMeanblur</span></h1>
+        <p>Flou artistique de moyenne circulaire par délimitation de masque en disque</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser le CircularMeanblur ?</h2>
+        <ul>
+            <li>
+                <strong>Simulation de Bokeh Optique :</strong> Contrairement au Box Blur dont le balayage rectangulaire étire les détails le long des axes X et Y, le flou circulaire mélange les pixels de manière parfaitement isotrope (uniforme dans toutes les directions). Il imite la forme d'un diaphragme d'appareil photo circulaire ouvert, créant des flous d'arrière-plan très esthétiques.
+            </li>
+            <li>
+                <strong>Préservation des formes organiques :</strong> En éliminant les angles droits lors de la phase de calcul, ce filtre adoucit les contours sans générer l'effet de "grille pixelisée" ou de "bandes fantômes" propre aux convolutions carrées standards.
+            </li>
+            <li>
+                <strong>Calcul de distance Euclidienne :</strong> L'algorithme isole précisément les pixels environnants à l'aide de l'équation du cercle. Seuls les points dont la distance par rapport au centre est inférieure ou égale au <code>rayon</code> sont invités dans le calcul de la moyenne.
+            </li>
+        </ul>
+
+        <h2>2. Exemples d'implémentation (PureBasic)</h2>
+
+        <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
+        <p>Idéal pour exécuter un flou circulaire simple et uniforme directement sur l'image cible via un rayon global.</p>
+        <pre><code>IncludeFile "filtres.pbi"
+UseModule filtres
+
+If OpenWindow(0, 0, 0, 800, 600, "Exemple Flou Circulaire...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = 1
+  CibleImage  = 2
+  AucunMasque = 0
+  Rayon       = 8   <span class="comment">; Rayon du disque de lissage</span>
+ 
+  file$ = OpenFileRequester("Sélectionner l'image","","",0)
+  If load_image_32(SourceImage , file$) = 0
+    End
+  Else
+    ResizeImage(SourceImage, 800, 600)
+  EndIf
+  
+  CopyImage(SourceImage, CibleImage)
+
+  <span class="comment">; Lancement du traitement circulaire</span>
+  CircularMeanblur(SourceImage, CibleImage, AucunMasque, Rayon)
+  
+  StartDrawing(WindowOutput(0))
+    DrawImage(ImageID(CibleImage) ,  0 , 0)
+  StopDrawing()
+  
+  Repeat
+    Event = WaitWindowEvent()
+  Until Event = #PB_Event_CloseWindow
+EndIf</code></pre>
+
+        <h3>Option B : Traitement par l'exécuteur étendu</h3>
+        <p>L'argument est injecté au sein de la structure de contexte avant le déploiement de la fonction noyau :</p>
+        <pre><code><span class="keyword">With</span> FilterCtx
+  \option[0] = rayon <span class="comment">// Transfert du rayon d'action dans le tableau de contexte</span>
+<span class="keyword">EndWith</span>
+CircularMeanblurEx(FilterCtx.FilterParams)</code></pre>
+
+        <h2>3. Le Filtre : Comment ça marche ?</h2>
+        <p>Le principe fondamental reste le calcul d'une moyenne locale, mais la boîte de voisinage géométrique devient un **disque**.</p>
+
+        <div class="card">
+            <h3>Le test d'inclusion du Pixel</h3>
+            <p>Pour chaque pixel situé dans la zone d'étude, l'algorithme calcule sa distance par rapport au pixel central <code>(X, Y)</code>. Si le résultat respecte le théorème de Pythagore réadapté au cercle, la couleur est enregistrée pour la moyenne, sinon elle est purement ignorée.</p>
+        </div>
+
+        <h3>Comparaison du voisinage (Masque de Rayon = 2)</h3>
+        <p>La grille ci-dessous montre comment l'algorithme exclut les quatre coins de la boîte pour former le cercle :</p>
+
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">La Boîte Circulaire</strong>
+                        <table class="matrix">
+                            <tr><td>0</td><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td><td>0</td></tr>
+                            <tr><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td></tr>
+                            <tr><td class="active-blur">1</td><td class="active-blur">1</td><td class="center-pixel">C</td><td class="active-blur">1</td><td class="active-blur">1</td></tr>
+                            <tr><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td></tr>
+                            <tr><td>0</td><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td><td>0</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>La condition mathématique d'inclusion :</strong></p>
+                        <div class="math-box">
+                            (dx * dx) + (dy * dy) &lt;= Rayon * Rayon
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Les cases marquées <b>0</b> (les coins) échouent au test car elles sont géométriquement trop éloignées du centre (<b>C</b>). Seules les cases bleues (<b>1</b>) participent au mélange. Le diviseur final correspond exactement au nombre de cases validées.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique interne de l'algorithme (Pseudo-code)</h3>
+        <p>Voici le parcours itératif effectué par la procédure <code>CircularMeanblurEx</code> :</p>
+
+<pre>
+<span class="keyword">Pour chaque</span> ligne Y de la photo
+    <span class="keyword">Pour chaque</span> pixel X de cette ligne
+        
+        SommeA = <span class="number">0</span> : SommeR = <span class="number">0</span> : SommeG = <span class="number">0</span> : SommeB = <span class="number">0</span>
+        CompteurValid = <span class="number">0</span>
+        
+        <span class="comment">// Parcourir le bloc englobant (Carré temporaire de côté = Rayon * 2)</span>
+        <span class="keyword">Pour</span> dy = -rayon <span class="keyword">To</span> rayon
+            <span class="keyword">Pour</span> dx = -rayon <span class="keyword">To</span> rayon
+                
+                <span class="comment">// Validation mathématique de la forme du disque</span>
+                <span class="keyword">Si</span> (dx * dx) + (dy * dy) &lt;= rayon * rayon
+                    
+                    VoisinX = X + dx
+                    VoisinY = Y + dy
+                    
+                    <span class="comment">// Vérification de sécurité (ne pas déborder des bords de l'image)</span>
+                    <span class="keyword">Si</span> VoisinX dans les limites Et VoisinY dans les limites
+                        SommeA + Pixel_Voisin_Alpha
+                        SommeR + Pixel_Voisin_Rouge
+                        SommeG + Pixel_Voisin_Vert
+                        SommeB + Pixel_Voisin_Bleu
+                        CompteurValid + <span class="number">1</span>
+                    <span class="keyword">Fin Si</span>
+                    
+                <span class="keyword">Fin Si</span>
+                
+            <span class="keyword">Next</span> dx
+        <span class="keyword">Next</span> dy
+        
+        <span class="comment">// Calcul final de la moyenne locale du disque</span>
+        MoyenneA = SommeA / CompteurValid
+        MoyenneR = SommeR / CompteurValid
+        MoyenneG = SommeG / CompteurValid
+        MoyenneB = SommeB / CompteurValid
+        
+        <span class="comment">// Écriture finale sur l'image cible</span>
+        Pixel_Cible[X, Y] = ARGB(MoyenneA, MoyenneR, MoyenneG, MoyenneB)
+        
+    <span class="keyword">Next</span> X
+<span class="keyword">Fin Pour</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Filtres d'Échantillonnage Spatial Isotrope.</p>
+    </footer>
+
+</body>
+</html>

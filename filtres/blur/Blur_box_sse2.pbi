@@ -87,14 +87,14 @@ Procedure BoxBlur_SSE2_X(*FilterCtx.FilterParams)
     !mov rbx, 1                  ; On commence à l'index 1
     !BoxBlur_SSE2_X_l_x_sliding_00:
       !cmp ebx, [p.v_lg]
-      !jae BoxBlur_SSE2_X_NextLine
+      !jae BoxBlur_SSE2_X_NextLine1
       BoxBlur_SSE2_X_sub_pixel()
       BoxBlur_SSE2_X_add_pixel()
       BoxBlur_SSE2_X_write_pixel()
       !movd [rdi + rbx * 4], xmm4
       !inc rbx
       !jmp BoxBlur_SSE2_X_l_x_sliding_00
-    !BoxBlur_SSE2_X_NextLine:
+    !BoxBlur_SSE2_X_NextLine1:
     !inc r12d
     !cmp r12d, [p.v_thread_stop]
   !jb BoxBlur_SSE2_X_Y_Loop
@@ -198,7 +198,8 @@ Procedure BoxBlur_SSE2_Y(*FilterCtx.FilterParams)
 EndProcedure
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 59
+; CursorPosition = 96
+; FirstLine = 54
 ; Folding = --
 ; EnableXP
 ; DPIAware

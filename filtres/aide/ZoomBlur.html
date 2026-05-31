@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme ZoomBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #064e3b;
+            border: 1px solid #10b981;
+            color: #10b981;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #38bdf8;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Échantillonnage Homothétique</div>
+        <h1>Documentation - Algorithme <span>ZoomBlur</span></h1>
+        <p>Simulation d'effet de vitesse focale par mise à l'échelle vectorielle et accumulation discrète</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation de Zoom Blur ?</h2>
+        <ul>
+            <li>
+                <strong>Préservation Intégrale du Canal Alpha :</strong> Contrairement à de nombreuses implémentations qui négligent la transparence lors de la sommation, votre code accumule et fait la moyenne de la composante Alpha (<code>sumA</code>) au même titre que les canaux RVB. Le filtre reste pleinement compatible avec les images détourées et les calques composites.
+            </li>
+            <li>
+                <strong>Focalisation relative standardisée :</strong> Les coordonnées de l'épicentre du zoom sont définies en pourcentage (0 à 100%). L'algorithme calcule dynamiquement le point d'ancrage en pixels (<code>cx, cy</code>) par rapport aux dimensions de l'image. Cela garantit une invariance du centre graphique lors des changements de résolution d'image.
+            </li>
+            <li>
+                <strong>Calcul d'Échelle Linéaire Uniforme :</strong> Le facteur d'interpolation (variable <code>t</code>) évolue de manière strictement proportionnelle de 0.0 à 1.0. Associé à la variable <code>strength</code>, il permet de générer une déformation projective propre et progressive vers l'observateur.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Effet de dédoublement (Ghosting) sur les contours nets :</strong> L'échantillonnage effectuant un nombre fixe de pas (bridé entre 2 et 50), une force de zoom élevée combinée à un nombre d'échantillons trop faible laissera apparaître des copies fantômes distinctes de l'image au lieu d'une traînée floue continue.
+                </li>
+                <li>
+                    <strong>Étirement baveux aux périphéries (Clamping radial) :</strong> Lorsque les rayons de projection sortent des dimensions de l'image, le filtre force le verrouillage des coordonnées sur le dernier pixel valide situé à la bordure (<code>sx = lg - 1</code>, etc.). Sur les bords, le flou se transforme alors en lignes d'étirement monochromes très visibles (effet de traînée infinie).
+                </li>
+                <li>
+                    <strong>Complexité Algorithmique Lourde :</strong> Le coût de calcul est directement proportionnel à la formule O(Largeur * Hauteur * Échantillons). Étant donné qu'aucune mise en cache ou factorisation spatiale n'est géométriquement possible (chaque pixel possédant son propre vecteur homothétique), les performances dépendent strictement du nombre de passes d'échantillonnage.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface configure la force du zoom, la précision algorithmique ainsi que le centre de projection focal exprimé en pourcentage.</p>
+        <pre><code><span class="keyword">Procedure</span> ZoomBlur(source, cible, mask, Force, echantillons, cx, cy)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = Force
+    \option[1] = echantillons
+    \option[2] = cx
+    \option[3] = cy
+  <span class="keyword">EndWith</span>
+  ZoomBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Gestion des Bornes de Sécurité</h3>
+        <p>Afin d'éviter tout plantage du moteur ou division par zéro lors du calcul du ratio d'échelle, la fonction applique un cloisonnement strict sur la quantité d'échantillons autorisée.</p>
+        <pre><code><span class="comment">; Confinement de la précision d'échantillonnage :</span>
+<span class="keyword">Protected</span> samples = \option[<span class="number">1</span>]
+<span class="keyword">If</span> samples &lt; <span class="number">2</span> : samples = <span class="number">2</span> : <span class="keyword">EndIf</span>
+<span class="keyword">If</span> samples &gt; <span class="number">50</span> : samples = <span class="number">50</span> : <span class="keyword">EndIf</span>
+
+<span class="comment">; Calcul de la position absolue du foyer :</span>
+<span class="keyword">Protected</span> cx.f = lg * (\option[<span class="number">2</span>] / <span class="number">100.0</span>)
+<span class="keyword">Protected</span> cy.f = ht * (\option[<span class="number">3</span>] / <span class="number">100.0</span>)</code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Contrairement au flou radial classique qui progresse à pas constants, le flou de zoom calcule la distance relative séparant le pixel de l'épicentre pour appliquer un coefficient de mise à l'échelle (homothétie).</p>
+
+        <div class="card">
+            <h3>La formule de réduction d'échelle (Scale)</h3>
+            <p>Pour un pixel donné, l'algorithme calcule son écart vectoriel (<code>dx, dy</code>) par rapport au centre. <br>
+            À chaque étape de la sous-boucle, le facteur d'échelle est évalué via : <code>scale = 1.0 - (i / (samples - 1.0)) * strength</code>. <br>
+            Le curseur de lecture

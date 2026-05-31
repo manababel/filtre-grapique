@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme de Roberts</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        /* Structure de démo compatible (Tableau au lieu de Flexbox) */
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-positive {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+        }
+
+        table.matrix td.active-negative {
+            background-color: #4c1d24;
+            border: 1px solid #f43f5e;
+            color: #f43f5e;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            color: #ffffff;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Analyse d'Image</div>
+        <h1>Documentation - Algorithme de <span>Roberts</span></h1>
+        <p>Analyse de la structure géométrique par calcul des gradients croisés</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser le filtre de Roberts ?</h2>
+        <ul>
+            <li>
+                <strong>Extrêmement rapide (Masque 2x2) :</strong> L'opérateur de Roberts est l'un des détecteurs de contours les plus légers en calcul. En travaillant sur un voisinage restreint de seulement 2x2 pixels, il nécessite très peu d'accès mémoire et d'opérations mathématiques, ce qui le rend idéal pour les systèmes à ressources limitées.
+            </li>
+            <li>
+                <strong>Contours très fins :</strong> Grâce à sa petite taille de masque, le filtre calcule un gradient diagonal très localisé. Il génère ainsi des lignes de contours nettement plus fines et précises qu'un opérateur 3x3 (comme Sobel ou Prewitt), bien qu'il soit plus sensible au bruit.
+            </li>
+            <li>
+                <strong>Analyse des gradients diagonaux :</strong> Contrairement aux filtres traditionnels qui calculent les variations horizontales et verticales, Roberts utilise des différences croisées (diagonales). Combiné au mode d'orientation HSV, il offre une excellente cartographie visuelle des angles obliques dans l'image.
+            </li>
+        </ul>
+
+        <h2>2. Exemples d'implémentation (PureBasic)</h2>
+
+        <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
+        <p>Idéal pour les appels simples et rapides avec passage de paramètres en arguments.</p>
+        <pre><code><span class="keyword">IncludeFile</span> "filtres.pbi"
+<span class="keyword">UseModule</span> filtres
+
+<span class="keyword">If</span> OpenWindow(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">800</span>, <span class="number">600</span>, "Exemple Roberts...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = <span class="number">1</span>
+  CibleImage  = <span class="number">2</span>
+  AucunMasque = <span class="number">0</span>
+  Multiply    = <span class="number">10</span>  <span class="comment">; Multiplicateur de luminance du gradient</span>
+  Math        = <span class="number">0</span>   <span class="comment">; 0: SQR (Euclidien), 1: ABS (Approximation rapide)</span>
+  NiveauGris  = <span class="number">0</span>   <span class="comment">; Convertit le résultat final en niveaux de gris</span>
+  Inverser    = <span class="number">0</span>   <span class="comment">; 1 pour inverser les couleurs (contours sombres sur fond blanc)</span>
+  Seuillage   = <span class="number">0</span>   <span class="comment">; Seuil de coupure (0 = Désactivé, 1-255)</span>
+  Orientation = <span class="number">0</span>   <span class="comment">; 1 pour activer la coloration selon l'angle (HSV)</span>
+  AngleAjust  = <span class="number">0</span>   <span class="comment">; Angle d'ajustement pour le mode orientation (0-360)</span>
+ 
+  file$ = OpenFileRequester("Image","","",<span class="number">0</span>)
+  <span class="keyword">If</span> load_image_32(SourceImage , file$) = <span class="number">0</span>
+    <span class="keyword">End</span>
+  <span class="keyword">Else</span>
+    ResizeImage(SourceImage, <span class="number">800</span>, <span class="number">600</span>)
+  <span class="keyword">EndIf</span>
+  
+  CopyImage(SourceImage,CibleImage)
+
+  <span class="comment">; Appel du filtre de Roberts</span>
+  Roberts(SourceImage, CibleImage, AucunMasque, Multiply, Math, NiveauGris, Inverser, Seuillage, Orientation, AngleAjust)
+  
+  StartDrawing(WindowOutput(<span class="number">0</span>))
+  DrawImage(ImageID(CibleImage) ,  <span class="number">0</span> , <span class="number">0</span>)
+  StopDrawing()
+  
+  <span class="keyword">Repeat</span>
+    Event = WaitWindowEvent()
+    <span class="keyword">Select</span> Event 
+      <span class="keyword">Case</span> #PB_Event_Gadget
+        <span class="keyword">Select</span> EventGadget()
+          <span class="keyword">Case</span> <span class="number">1</span> 
+            CloseWindow(<span class="number">0</span>)
+            <span class="keyword">End</span>  
+        <span class="keyword">EndSelect</span>
+    <span class="keyword">EndSelect</span>
+
+  <span class="keyword">Until</span> Event = #PB_Event_CloseWindow
+<span class="keyword">EndIf</span></code></pre>
+
+        <h3>Option B : Utilisation Avancée (Via Structure de Contexte / RobertsEx)</h3>
+        <p>Idéal pour la gestion de pointeurs mémoires complexes, les buffers personnalisés ou le traitement par l'API multi-thread en conservant le contexte du filtre.</p>
+        <pre><code><span class="keyword">IncludeFile</span> "filtres.pbi"
+<span class="keyword">UseModule</span> filtres
+
+<span class="keyword">If</span> OpenWindow(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">800</span>, <span class="number">600</span>, "Exemple Roberts Avancé...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = <span class="number">1</span>
+  CibleImage  = <span class="number">2</span>
+  AucunMasque = <span class="number">0</span>
+   
+  file$ = OpenFileRequester("Image","","",<span class="number">0</span>)
+  <span class="keyword">If</span> load_image_32(SourceImage , file$) = <span class="number">0</span>
+    <span class="keyword">End</span>
+  <span class="keyword">Else</span>
+    ResizeImage(SourceImage, <span class="number">800</span>, <span class="number">600</span>)
+  <span class="keyword">EndIf</span>
+  
+  CopyImage(SourceImage,CibleImage)
+  
+  Clear_Data_Filter(FilterCtx)
+  
+  <span class="comment">; Configuration des options dans le contexte</span>
+  FilterCtx\option[<span class="number">0</span>] = <span class="number">10</span>  <span class="comment">; Multiplicateur</span>
+  FilterCtx\option[<span class="number">1</span>] = <span class="number">0</span>   <span class="comment">; Math (0:SQR, 1:ABS)</span>
+  FilterCtx\option[<span class="number">2</span>] = <span class="number">0</span>   <span class="comment">; Niveaux de gris (Boolean)</span>
+  FilterCtx\option[<span class="number">3</span>] = <span class="number">0</span>   <span class="comment">; Inverser (Boolean)</span>
+  FilterCtx\option[<span class="number">4</span>] = <span class="number">0</span>   <span class="comment">; Seuillage (0-255)</span>
+  FilterCtx\option[<span class="number">5</span>] = <span class="number">0</span>   <span class="comment">; Orientation HSV (Boolean)</span>
+  FilterCtx\option[<span class="number">6</span>] = <span class="number">0</span>   <span class="comment">; Angle d'ajustement</span>
+  
+  Set_Source(SourceImage)
+  Set_Cible(CibleImage)
+  
+  <span class="comment">; Exécution du filtre étendu (gère le Multi-Thread et les bordures 2x2)</span>
+  RobertsEx(FilterCtx)
+  
+  StartDrawing(WindowOutput(<span class="number">0</span>))
+  DrawImage(ImageID(CibleImage) ,  <span class="number">0</span> , <span class="number">0</span>)
+  StopDrawing()
+  
+  <span class="keyword">Repeat</span>
+    Event = WaitWindowEvent()
+    <span class="keyword">Select</span> Event 
+      <span class="keyword">Case</span> #PB_Event_Gadget
+        <span class="keyword">Select</span> EventGadget()
+          <span class="keyword">Case</span> <span class="number">1</span> 
+            CloseWindow(<span class="number">0</span>)
+            <span class="keyword">End</span>  
+        <span class="keyword">EndSelect</span>
+    <span class="keyword">EndSelect</span>
+
+  <span class="keyword">Until</span> Event = #PB_Event_CloseWindow
+<span class="keyword">EndIf</span></code></pre>
+
+        <h2>3. Le Filtre : Comment ça marche ?</h2>
+        <p>Le filtre de <strong>Roberts</strong> est un détecteur de contours minimaliste et ultra-rapide. Son objectif fondamental est de mettre en lumière les lignes et les séparations structurelles d'une image en observant les variations de lumière à une échelle très locale.</p>
+        
+        <p>Contrairement aux autres filtres qui étudient de larges zones, le filtre de Roberts possède une spécificité mathématique et visuelle unique : il travaille sur un format miniature et se concentre uniquement sur les diagonales.</p>
+
+        <div class="card">
+            <h3>La force du format 2x2</h3>
+            <p>Pour analyser l'image, l'algorithme regarde un micro-carré composé de seulement <strong>4 pixels (une grille de 2x2)</strong>. Grâce à cette petite taille, le filtre est capable de détecter des détails extrêmement fins et produit des lignes de contours beaucoup plus minces et serrées que la plupart des autres méthodes.</p>
+        </div>
+
+        <h3>Le principe des Différences Croisées</h3>
+        <p>Au lieu de mesurer les écarts de luminosité de gauche à droite ou de haut en bas, l'opérateur de Roberts calcule les contrastes <strong>en croix</strong>. Il effectue deux soustractions en diagonale pour capter les changements obliques :</p>
+
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Première Diagonale (Prendre la pente)</strong>
+                        <table class="matrix">
+                            <tr><td class="active-positive">+1</td><td>0</td></tr>
+                            <tr><td>0</td><td class="active-negative">-1</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>La règle mathématique visuelle :</strong></p>
+                        <div class="math-box">
+                            Ligne_Détectée = Intensité_Diagonale_1 + Intensité_Diagonale_2
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Le filtre compare le pixel supérieur gauche au pixel inférieur droit <span style="color:#38bdf8">(+1 vs -1)</span>, puis fait l'inverse pour la seconde diagonale. Si un changement brutal de couleur traverse cette croix, le filtre sait qu'un morceau de contour est présent.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="demo-container" style="margin-top: 25px;">
+            <table class="demo-table">
+                <tr>
+                    <td style="width: 100%; text-align: left; vertical-align: top;">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Seconde Diagonale (Croiser le calcul)</strong>
+                        <table class="matrix">
+                            <tr><td>0</td><td class="active-positive">+1</td></tr>
+                            <tr><td class="active-negative">-1</td><td>0</td></tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique de rendu globale (Pseudo-code)</h3>
+        <p>Voici le cheminement logique simplifié que suit l'algorithme sur l'ensemble de la surface graphique :</p>
+
+<pre><span class="keyword">Pour chaque</span> ligne de l'image
+    <span class="keyword">Pour chaque</span> pixel de cette ligne
+        
+        <span class="comment">// 1. Isoler le carré de 2x2 pixels à partir de la position actuelle</span>
+        Pixel_Haut_Gauche = RécupérerPixel(x, y)
+        Pixel_Haut_Droit  = RécupérerPixel(x + <span class="number">1</span>, y)
+        Pixel_Bas_Gauche  = RécupérerPixel(x, y + <span class="number">1</span>)
+        Pixel_Bas_Droit   = RécupérerPixel(x + <span class="number">1</span>, y + <span class="number">1</span>)
+        
+        <span class="comment">// 2. Calculer l'écart en croix (les deux diagonales)</span>
+        Ecart_Diagonale_1 = Pixel_Haut_Gauche - Pixel_Bas_Droit
+        Ecart_Diagonale_2 = Pixel_Haut_Droit - Pixel_Bas_Gauche
+        
+        <span class="comment">// 3. Combiner les deux résultats pour obtenir la force totale du contour</span>
+        Force_Contour = Combiner_Gradients(Ecart_Diagonale_1, Ecart_Diagonale_2)
+        
+        <span class="comment">// 4. Dessiner le tracé sur la feuille blanche finale</span>
+        Dessiner_Pixel_Contours(x, y, Force_Contour)
+        
+    <span class="keyword">Next</span>
+<span class="keyword">Fin Pour</span></pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Algorithmes Graphiques de Rendu.</p>
+    </footer>
+
+</body>
+</html>

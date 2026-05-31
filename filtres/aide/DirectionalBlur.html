@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme DirectionalBoxBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #1e3a8a;
+            border: 1px solid #3b82f6;
+            color: #3b82f6;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #581c87;
+            border: 1px solid #a855f7;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #38bdf8;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Intégration Linéaire Itérative</div>
+        <h1>Documentation - Algorithme <span>DirectionalBoxBlur</span></h1>
+        <p>Flou directionnel par accumulation fenêtrée et approximations de Gauss par passes successives</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation de Directional Box Blur ?</h2>
+        <ul>
+            <li>
+                <strong>Approximation d'un flou directionnel gaussien :</strong> Selon le théorème central limite, répéter plusieurs fois un flou de boîte (Box Blur) donne un résultat très proche d'un flou gaussien. Le paramètre du nombre de passes (<code>ndp</code>) permet d'adoucir les traînées rectilignes pour obtenir un rendu soyeux à moindre coût mathématique.
+            </li>
+            <li>
+                <strong>Division optimisée par multiplication inverse :</strong> La division est l'une des opérations les plus gourmandes pour un processeur. Votre code calcule la division une seule fois par pixel (<code>invCount = 1.0 / count</code>) puis applique une simple multiplication (<code>rSum * invCount</code>) pour normaliser la moyenne, accélérant sensiblement le traitement.
+            </li>
+            <li>
+                <strong>Optimisation mémoire intelligente à l'écriture :</strong> La fonction maîtresse planifie la boucle de répétition du filtre de façon à réinjecter l'image de sortie comme source de la passe suivante (<code>CopyMemory</code>). Le code intègre un test de garde (<code>If i &lt; passes</code>) pour s'épargner une copie mémoire totalement inutile lors du dernier cycle.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Atténuation du flou aux frontières de l'image :</strong> Contrairement au flou de bougé qui fige ses index sur les bords (Clamping), ce filtre choisit de rejeter les lectures hors-cadre (<code>If sx &gt;= 0 And sx &lt; width...</code>) et de recalculer la moyenne uniquement sur les pixels valides (variable <code>count</code>). Conséquence : le flou devient de moins en moins prononcé à mesure que l'on s'approche des bordures de la texture, créant une disparité visuelle.
+                </li>
+                <li>
+                    <strong>Effet de bandes (Banding) persistant :</strong> Un flou de boîte distribue ses poids de manière uniforme. Si le nombre de passes est configuré à 1, les textures floutées laissent apparaître des lignes parallèles nettes et disgracieuses, typiques des filtres à moyenne brute.
+                </li>
+                <li>
+                    <strong>Complexité cumulative des passes — O(N * (2R + 1) * P) :</strong> Pour obtenir un flou de qualité (3 passes), l'algorithme doit relire et retraiter l'intégralité des pixels trois fois de suite. Le coût machine initial lié au rayon se retrouve multiplié par le nombre de passes, ce qui nuit aux performances sur les gros rayons de traitement.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface initialise les paramètres requis par le contexte moteur : l'angle en degrés, le rayon d'action et le nombre de passes d'adoucissement désirées.</p>
+        <pre><code><span class="keyword">Procedure</span> DirectionalBoxBlur(source, cible, mask, angle, radius, ndp)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = angle
+    \option[1] = radius
+    \option[2] = ndp
+  <span class="keyword">EndWith</span>
+  DirectionalBoxBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Gestion du Cycle de Répétition</h3>
+        <p>Cette section supervise l'application des passes successives et gère le chaînage des buffers mémoire de façon optimale.</p>
+        <pre><code><span class="comment">; Extrait de la boucle de traitement par passes :</span>
+<span class="keyword">Protected</span> i, passes = \option[<span class="number">2</span>]
+
+<span class="keyword">For</span> i = <span class="number">1</span> <span class="keyword">To</span> passes
+  <span class="comment">; Exécute le traitement sur les axes obliques</span>
+  Create_MultiThread_MT(@DirectionalBoxBlur_MT())
+  
+  <span class="comment">; Si une autre passe suit, la destination devient la nouvelle source</span>
+  <span class="keyword">If</span> i &lt; passes
+    CopyMemory(\addr[<span class="number">1</span>], \addr[<span class="number">0</span>], total)
+  <span class="keyword">EndIf</span>
+<span class="keyword">Next</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Le filtre applique une fenêtre coulissante rectiligne symétrique (de <code>-radius</code> à <code>+radius</code>) orientée selon le vecteur trigonométrique calculé.</p>
+
+        <div class="card">
+            <h3>Le mécanisme du compteur dynamique (Count)</h3>
+            <p>Parce que la ligne de flou exclut les pixels situés en dehors des coordonnées physiques de l'image, la taille de l'échantillon varie. Le programme ne divise pas par une constante fixe, mais comptabilise les points réels accumulés (<code>count + 1</code>) afin de garantir que la moyenne colorimétrique reste mathématiquement équilibrée.</p>
+        </div>
+
+        <h3>Bilan d'échantillonnage asymétrique</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Ligne de boîte</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">-1</td><td></td><td></td></tr>
+                            <tr><td></td><td class="center-pixel">P</td><td></td></tr>
+                            <tr><td></td><td></td><td class="active-blur">+1</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Calcul du décalage des coordonnées :</strong></p>
+                        <div class="math-box">
+                            Pas_X = Cos(Angle) &nbsp;|&nbsp; Pas_Y = Sin(Angle)<br><br>
+                            Pixel_Voisin(i) = (Pixel_X + i * Pas_X, Pixel_Y + i * Pas_Y)
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            La variable de boucle <b>i</b> évolue symétriquement autour du pixel central <b>P</b>. Le programme extrait la couleur de chaque voisin via un calcul d'adresse optimisé par décalage de bits gauche (<code>&lt;&lt; 2</code>), équivalent à une multiplication rapide par 4 octets.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Sécurité par rejet des coordonnées</h3>
+        <p>Pour faire barrage aux violations d'accès mémoire sans ralentir la boucle par des sauts conditionnels multiples, la validation des coordonnées se fait sur une seule ligne :</p>
+        <div class="math-box" style="font-family: monospace; font-size: 0.95em; border-left-color: #f43f5e; color: #e2e8f0;">
+            If sx &gt;= 0 And sx &lt; width And sy &gt;= 0 And sy &lt; height
+        </div>
+        <p style="font-size: 0.9em; color: #94a3b8;">
+            Les valeurs flottantes décimales (<code>sx, sy</code>) sont implicitement converties en valeurs entières lors de la sélection finale par la commande <code>Int()</code>, isolant uniquement les données contenues à l'intérieur de la matrice de l'image.
+        </p>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici la chronologie séquentielle des opérations effectuées par le module de flou de boîte directionnel :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Angle, Rayon, Passes
+
+<span class="comment">// 1. PREPARATION DES PARAMETRES VECTORIELS</span>
+Angle_Radians = Angle * PI / 180.0
+Pas_X = Cos(Angle_Radians)
+Pas_Y = Sin(Angle_Radians)
+Taille_Image_Octets = Largeur * Hauteur * 4
+
+Allouer_Espace_Temporaire(*Buffer_Source, Taille_Image_Octets)
+Copier_Mémoire(Image_Source -> *Buffer_Source)
+
+<span class="comment">// 2. ENCHAINEMENT DES PASSES</span>
+<span class="keyword">Pour</span> cycle = 1 <span class="keyword">To</span> Passes
+    
+    <span class="comment">// Balayage de la surface de l'image</span>
+    <span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+        <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+            
+            Somme_R = 0 : Somme_G = 0 : Somme_B = 0 : Pixels_Valides = 0
+            
+            <span class="comment">// Échantillonnage rectiligne symétrique</span>
+            <span class="keyword">Pour</span> i = -Rayon <span class="keyword">To</span> Rayon
+                Voisin_X = X + i * Pas_X
+                Voisin_Y = Y + i * Pas_Y
+                
+                <span class="comment">// Rejet des points en dehors de l'image</span>
+                <span class="keyword">Si</span> Voisin_X &gt;= 0 Et Voisin_X &lt; Largeur Et Voisin_Y &gt;= 0 Et Voisin_Y &lt; Hauteur
+                    Pixel = Lire_Pixel(*Buffer_Source, Int(Voisin_X), Int(Voisin_Y))
+                    Somme_R + Extraction_Rouge(Pixel)
+                    Somme_G + Extraction_Vert(Pixel)
+                    Somme_B + Extraction_Bleu(Pixel)
+                    Pixels_Valides + 1
+                <span class="keyword">Fin Si</span>
+            <span class="keyword">Next</span> i
+            
+            <span class="comment">// Calcul de la moyenne par inverse</span>
+            <span class="keyword">Si</span> Pixels_Valides &gt; 0
+                Inverse_Multiplicateur = 1.0 / Pixels_Valides
+                R_Final = Somme_R * Inverse_Multiplicateur
+                G_Final = Somme_G * Inverse_Multiplicateur
+                B_Final = Somme_B * Inverse_Multiplicateur
+            <span class="keyword">Sinon</span>
+                R_Final = 0 : G_Final = 0 : B_Final = 0
+            <span class="keyword">Fin Si</span>
+            
+            Écrire_Pixel(Image_Cible, X, Y, Réassembler_ARGB(255, R_Final, G_Final, B_Final))
+        <span class="keyword">Next</span> X
+    <span class="keyword">Next</span> Y
+    
+    <span class="comment">// Préparation de la passe suivante si nécessaire</span>
+    <span class="keyword">Si</span> cycle &lt; Passes
+        Copier_Mémoire(Image_Cible -> *Buffer_Source)
+    <span class="keyword">Fin Si</span>
+
+<span class="keyword">Next</span> cycle
+
+<span class="comment">// 3. NETTOYAGE</span>
+Libérer_Mémoire(*Buffer_Source)
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Traitement Vectoriel des Images par Analyse Algorithmique Fenêtrée.</p>
+    </footer>
+
+</body>
+</html>

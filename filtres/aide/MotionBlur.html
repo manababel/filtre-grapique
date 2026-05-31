@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme MotionBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #7c2d12;
+            border: 1px solid #ea580c;
+            color: #ea580c;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #38bdf8;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Échantillonnage Vectoriel</div>
+        <h1>Documentation - Algorithme <span>MotionBlur</span></h1>
+        <p>Simulation physique de vitesse d'obturation par intégration rectiligne orientée</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation de Motion Blur ?</h2>
+        <ul>
+            <li>
+                <strong>Projection Trigonométrique Précise :</strong> Le filtre convertit l'angle utilisateur (0 à 360 degrés) en radians pour générer un vecteur de direction unitaire (dx, dy) à l'aide des fonctions <code>Cos()</code> et <code>Sin()</code>. Cela permet de balayer l'image dans n'importe quelle direction spatiale avec une précision absolue.
+            </li>
+            <li>
+                <strong>Algorithme non séparable optimisé :</strong> Contrairement à un flou gaussien, un flou directionnel incliné ne peut pas être séparé simplement en deux passes orthogonales (X puis Y). Votre code résout le problème en effectuant un unique voyage rectiligne centré sur le pixel cible, minimisant la structure algorithmique.
+            </li>
+            <li>
+                <strong>Optimisations bas niveau (Bit Shift) :</strong> Pour maximiser la vitesse, le nombre total d'échantillons (la taille de la ligne de flou) est calculé via l'opérateur de décalage de bits gauche <code>radius &lt;&lt; 1</code> au lieu d'une multiplication standard par 2.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Effet de crénelage (Aliasing) sur les coordonnées entières :</strong> Comme le vecteur de déplacement (dx, dy) utilise des valeurs flottantes décimales mais que la lecture finale en mémoire est convertie en entiers via <code>Int(xi)</code>, l'échantillonnage subit de légères approximations. Sur de grands rayons, cela peut créer des saccades visuelles ou un effet d'escalier sur le flou, faute d'une véritable interpolation bilinéaire.
+                </li>
+                <li>
+                    <strong>Surcharge algorithmique redondante — O(N * (2R + 1)) :</strong> Pour chaque pixel de l'image, le moteur doit recalculer l'intégralité du segment de droite. Aucun tampon intermédiaire ne sauvegarde les calculs des pixels adjacents. Le coût machine explose de manière strictement linéaire lorsque le rayon augmente.
+                </li>
+                <li>
+                    <strong>Distorsion des bords par "Clamping" directionnel :</strong> Lorsque la ligne de balayage sort du cadre de l'image, le système fige les coordonnées sur les pixels des bordures. Dans le cas d'un flou directionnel, cela produit un effet d'étirement "baveux" très prononcé et asymétrique sur les limites de la texture.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface convertit les entrées de l'interface graphique (Rayon et Angle de rotation en degrés) avant de solliciter le traitement.</p>
+        <pre><code><span class="keyword">Procedure</span> MotionBlur(source, cible, mask, rayon, angle)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = rayon
+    \option[1] = angle
+  <span class="keyword">EndWith</span>
+  MotionBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Le Noyau Vectoriel : Précalcul des Composantes</h3>
+        <p>Cette section prépare les facteurs de déplacement du repère pour transformer la boucle interne en un simple suivi de trajectoire.</p>
+        <pre><code><span class="comment">; Conversion de l'angle en radians et calcul de la taille du segment :</span>
+<span class="keyword">Protected</span> angle.f = \option[<span class="number">1</span>] * #PI / <span class="number">180.0</span>
+<span class="keyword">Protected</span> dx.f = Cos(angle)
+<span class="keyword">Protected</span> dy.f = Sin(angle)
+
+<span class="keyword">Protected</span> size = (radius &lt;&lt; <span class="number">1</span>) + <span class="number">1</span>  <span class="comment">; Équivalent à : (radius * 2) + 1</span>
+<span class="keyword">Protected</span> coeff.f = <span class="number">1.0</span> / size       <span class="comment">; Coefficient multiplicateur pour la moyenne</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>L'algorithme n'applique pas une matrice carrée. Il trace une ligne droite imaginaire à travers le pixel et fait la moyenne de tous les points rencontrés le long de ce segment.</p>
+
+        <div class="card">
+            <h3>Calcul du point de départ du segment</h3>
+            <p>Pour que le flou soit parfaitement équilibré autour du pixel d'origine, le code recule d'abord la position de lecture initiale en multipliant le rayon par les pas directionnels : <br>
+            <code>xi = x - dx * radius</code> et <code>yi = y - dy * radius</code>. Ensuite, la boucle avance pas à pas vers l'avant en ajoutant <code>dx</code> et <code>dy</code> à chaque échantillon.</p>
+        </div>
+
+        <h3>Tracé d'une trajectoire à 45 Degrés</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Ligne de flou</strong>
+                        <table class="matrix">
+                            <tr><td></td><td></td><td class="active-blur">➔</td></tr>
+                            <tr><td></td><td class="center-pixel">P</td><td></td></tr>
+                            <tr><td class="active-blur">🠔</td><td></td><td></td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Calcul des incréments successifs :</strong></p>
+                        <div class="math-box">
+                            Pas_X = Cos(Angle) &nbsp;|&nbsp; Pas_Y = Sin(Angle)<br><br>
+                            Position(k) = Point_Départ + k * (Pas_X, Pas_Y)
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            À chaque itération de la boucle <b>k</b>, la coordonnée glisse le long du vecteur. Les valeurs de Rouge, Vert et Bleu sont extraites de l'image source, cumulées, puis multipliées par le coefficient inverse (<code>coeff</code>) pour générer l'effet de vitesse.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Le Clamping de protection d'index</h3>
+        <p>Pour éviter les débordements de mémoire lors de la lecture des pixels en dehors de l'écran, le code applique une structure conditionnelle stricte :</p>
+        <div class="math-box" style="font-family: monospace; font-size: 0.95em; border-left-color: #f43f5e; color: #e2e8f0;">
+            If xi &lt; 0 : xiClamped = 0 : ElseIf xi &gt;= w : xiClamped = wMinus1 : Else : xiClamped = Int(xi) : EndIf
+        </div>
+        <p style="font-size: 0.9em; color: #94a3b8;">
+            Cette sécurité tronque la valeur décimale en position entière valide (<code>Int(xi)</code>) tout en s'assurant que le résultat reste verrouillé entre l'index 0 et la largeur maximale de l'image (<code>wMinus1</code>).
+        </p>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici le cheminement logique du processus d'intégration rectiligne :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Rayon, Angle en Degrés
+
+<span class="comment">// 1. PREPARATION DES VECTEURS</span>
+Angle_Radians = Angle * PI / 180.0
+Pas_X = Cos(Angle_Radians)
+Pas_Y = Sin(Angle_Radians)
+Nombre_Echantillons = (Rayon * 2) + 1
+Coefficient_Moyenne = 1.0 / Nombre_Echantillons
+
+<span class="comment">// 2. BALAYAGE DE LA MATRICE</span>
+<span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+    <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+        
+        Somme_R = 0 : Somme_G = 0 : Somme_B = 0
+        
+        <span class="comment">// Reculer au point de départ de la trajectoire</span>
+        Curseur_X = X - (Pas_X * Rayon)
+        Curseur_Y = Y - (Pas_Y * Rayon)
+        
+        <span class="comment">// Échantillonner le long de la ligne droite</span>
+        <span class="keyword">Pour</span> k = 0 <span class="keyword">To</span> Nombre_Echantillons - 1
+            
+            <span class="comment">// Encapsulation de sécurité (Clamping)</span>
+            X_Valide = Verrouiller_Bornes(Int(Curseur_X), 0, Largeur - 1)
+            Y_Valide = Verrouiller_Bornes(Int(Curseur_Y), 0, Hauteur - 1)
+            
+            <span class="comment">// Accumulation des couleurs</span>
+            Pixel_Couleur = Lire_Pixel(Image_Source, X_Valide, Y_Valide)
+            Somme_R + Extraction_Rouge(Pixel_Couleur)
+            Somme_G + Extraction_Vert(Pixel_Couleur)
+            Somme_B + Extraction_Bleu(Pixel_Couleur)
+            
+            <span class="comment">// Avancer vers le point suivant sur le vecteur</span>
+            Curseur_X + Pas_X
+            Curseur_Y + Pas_Y
+        <span class="keyword">Next</span> k
+        
+        <span class="comment">// Calcul de la moyenne et réassemblage</span>
+        R_Final = Somme_R * Coefficient_Moyenne
+        G_Final = Somme_G * Coefficient_Moyenne
+        B_Final = Somme_B * Coefficient_Moyenne
+        
+        Écrire_Pixel(Image_Cible, X, Y, Réassembler_ARGB(255, R_Final, G_Final, B_Final))
+        
+    <span class="keyword">Next</span> X
+<span class="keyword">Fin Pour</span>
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Traitement Numérique de l'Image Spatiale par Échantillonnage Directionnel.</p>
+    </footer>
+
+</body>
+</html>

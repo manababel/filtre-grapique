@@ -87,7 +87,7 @@ EndProcedure
 
 DataSection
   MotionBlur_data:
-  Data.s "MotionBlurEx"
+  Data.s "MotionBlur"
   Data.s ""
   Data.i #FilterType_Blur
   Data.i #Blur_Directional
@@ -99,8 +99,8 @@ DataSection
   Data.s "XXX"  
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 31
-; FirstLine = 21
+; CursorPosition = 89
+; FirstLine = 41
 ; Folding = -
 ; EnableXP
 ; DPIAware

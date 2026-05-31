@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme SpiralBlur Separable</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #bae6fd;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #e2e8f0;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Box Blur Itératif Séparable</div>
+        <h1>Documentation - Algorithme <span>SpiralBlur_Separable</span></h1>
+        <p>Optimisation mathématique en coordonnées polaires par réduction fractionnelle du noyau de convolution</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation Séparable ?</h2>
+        <ul>
+            <li>
+                <strong>Rupture de Complexité Algorithmique (O(n)) :</strong> Au lieu d'avoir un coût de calcul proportionnel au rayon de floutage (O(n * Rayon)), la technique séparable stabilise la charge. Le coût reste linéaire (O(n)), rendant cet algorithme 5 à 10 fois plus rapide pour des rayons de moyenne et grande taille.
+            </li>
+            <li>
+                <strong>Approximation Gaussienne par Passes Multiples :</strong> En limitant le traitement à un maximum strict de 3 passes (<code>Min(passes, Radius, 3)</code>) combiné à un noyau fractionné (<code>Radius / passes</code>), le filtre applique le théorème central limite. L'accumulation de ces passes de flou basique (Box Blur) produit un lissage dont le profil final imite une courbe gaussienne de haute qualité.
+            </li>
+            <li>
+                <strong>Transformation Polaire Virtuelle :</strong> Pour chaque pixel, l'algorithme calcule sa distance et son angle par rapport au centre de rotation. L'effet de spirale est induit en injectant un décalage angulaire proportionnel à la distance (<code>rotation = force * dist * direction / 100.0</code>) avant l'échantillonnage du noyau.
+            </li>
+            <li>
+                <strong>Double Tampon (Buffer Swap) stable :</strong> L'utilisation d'un espace mémoire temporaire (<code>*temp</code>) pour écrire le résultat de chaque passe évite les phénomènes d'auto-contamination des pixels (collisions de lecture/écriture). Les données sont réinjectées proprement d'une passe à l'autre via une copie mémoire globale (<code>CopyMemory</code>).
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Surcharge d'Échantillonnage Synchrone :</strong> Bien qu'il s'autoproclame "Séparable", le code effectue une conversion trigonométrique complète (<code>Cos</code>, <code>Sin</code>, <code>ATan2</code>) à l'intérieur de la triple boucle imbriquée pour chaque échantillon. L'absence d'une véritable séparation en deux passes unidimensionnelles orthogonales (X puis Y) limite le plein potentiel théorique de l'optimisation.
+                    </li>
+                <li>
+                    <strong>Consommation mémoire et duplication :</strong> Pour assurer l'indépendance des passes, l'algorithme doit allouer un bloc de mémoire vive égal à la taille brute de l'image (<code>lg * ht * 4 octets</code>). À chaque fin de passe, le transfert massif d'octets via <code>CopyMemory</code> sollicite fortement la bande passante du bus mémoire.
+                </li>
+                <li>
+                    <strong>Inutilisation des tables trigonométriques :</strong> La procédure d'extension <code>spiral_SeparableEx</code> génère et remplit des tableaux précalculés de sinus et cosinus (<code>cosTable()</code>, <code>sinTable()</code>), mais la fonction de traitement <code>SpiralBlur_Separable_MT</code> ne lit jamais ces pointeurs (<code>\addr[2]</code> et <code>\addr[3]</code>), préférant recalculer les fonctions natives à la volée.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface configure les paramètres fondamentaux de l'échantillonnage polaire fractionné :</p>
+        <pre><code><span class="keyword">Procedure</span> spiral_Separable(source , cible , mask , rayon , posx , posy , force , qualite , ra , sens)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = rayon
+    \option[1] = posx
+    \option[2] = posy
+    \option[3] = force
+    \option[4] = qualite
+    \option[5] = ra
+    \option[6] = sens
+  <span class="keyword">EndWith</span>
+  spiral_SeparableEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Calcul du Noyau et Limiteur de Passes</h3>
+        <p>Le secret du lissage réside dans la fragmentation du rayon. Le rayon global est divisé équitablement selon le nombre de passes définies :</p>
+        <pre><code><span class="comment">; Limitation stricte à 3 passes pour simuler une courbe gaussienne :</span>
+<span class="keyword">Protected</span> passes
+Min(passes , Radius, <span class="number">3</span>)
+
+<span class="comment">// Calcul de l'envergure du sous-noyau (Kernel) par passe :</span>
+<span class="keyword">Protected</span> kernelSize = (Radius / passes)</code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>L'algorithme se déplace pixel par pixel. Il calcule la position polaire courante du point, applique la déviation angulaire de la spirale, puis effectue une moyenne des couleurs sur un segment radial rectiligne centré sur cette nouvelle coordonnée.</p>
+
+        <div class="card">
+            <h3>Principe de Convolution Radiale Incurvée</h3>
+            <p>Pour un pixel <code>(x, y)</code> donné, sa distance au centre définit l'angle de torsion de la spirale (<code>newAngle</code>). <br>
+            La boucle de convolution (<code>k = -kernelSize To kernelSize</code>) explore ensuite les pixels voisins situés exclusivement le long de cet angle projeté en faisant varier la distance (<code>dist + k</code>). C'est un flou directionnel calculé localement pour chaque coordonnée.</p>
+        </div>
+
+        <h3>Cinématique de la Passe Séparable</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Axe du Kernel</strong>
+                        <table class="matrix">
+                            <tr><td></td><td></td><td class="active-blur">dist+k</td></tr>
+                            <tr><td></td><td class="center-pixel">x,y</td><td></td></tr>
+                            <tr><td class="active-blur">dist-k</td><td></td><td></td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Formule d'Échantillonnage Linéaire :</strong></p>
+                        <div class="math-box">
+                            Angle_Torsion = Angle_Base + (Force * Distance * Sens) / 100.0<br><br>
+                            Echantillon_X = Centre_X + (Distance + k) * Cos(Angle_Torsion)<br>
+                            Echantillon_Y = Centre_Y + (Distance + k) * Sin(Angle_Torsion)
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            La boucle <b>k</b> balaie l'axe radial aligné sur l'angle de torsion. Les couleurs prélevées le long de ce segment sont additionnées puis divisées par le nombre de points valides (<code>samples</code>) pour générer la valeur du double tampon.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici l'enchaînement mathématique complet pour le traitement séparable itératif :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Rayon, Foyer X (%), Foyer Y (%), Force, Sens
+
+<span class="comment">// 1. PREPARATION DES ALLOCATIONS MEMOIRE MOYENNES</span>
+Taille_Image_Octets = Largeur_Image * Hauteur_Image * 4
+Buffer_Temp = Allouer_Espace_Memoire(Taille_Image_Octets)
+
+Axe_X = Largeur_Image * (Foyer_X / 100.0)
+Axe_Y = Hauteur_Image * (Foyer_Y / 100.0)
+
+Incrément_Sens = (Sens * 2) - 1
+Diagonale_Max = Sqr(Largeur_Image * Largeur_Image + Hauteur_Image * Hauteur_Image)
+
+Nombre_Passes = Fixer_Minimum(Rayon, 3)
+
+<span class="comment">// 2. EXECUTION DES PASSES ITERATIVES DE BLUR (APPROXIMATION GAUSSIENNE)</span>
+<span class="keyword">Pour</span> Etape_Pass de 1 À Nombre_Passes
+    
+    Taille_Sous_Noyau = Rayon / Etape_Pass
+    
+    <span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur_Image - 1
+        <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur_Image - 1
+            
+            Diff_X = X - Axe_X
+            Diff_Y = Y - Axe_Y
+            Distance = Sqr(Diff_X * Diff_X + Diff_Y * Diff_Y)
+            Angle_Origine = ATan2(Diff_Y, Diff_X)
+            
+            Si Distance &lt; 1 Alors Distance = 1
+            
+            <span class="comment">// Calcul de la déviation angulaire de la spirale</span>
+            Angle_Rotation = (Force * Distance * Incrément_Sens) / 100.0
+            Angle_Tordu = Angle_Origine + Convertir_En_Radians(Angle_Rotation)
+            
+            Somme_R = 0.0 : Somme_G = 0.0 : Somme_B = 0.0 : Alpha_Sortie = 0
+            Compteur_Echantillons = 0
+            
+            <span class="comment">// 3. KERNEL DE CONVOLUTION RADIALE</span>
+            <span class="keyword">Pour</span> k de -Taille_Sous_Noyau À Taille_Sous_Noyau
+                
+                Distance_Echantillon = Distance + k
+                
+                <span class="comment">// Ignorer les points en dehors de la géométrie maximale</span>
+                <span class="keyword">Si</span> Distance_Echantillon &lt; 0 Ou Distance_Echantillon &gt; Diagonale_Max Alors
+                    Continuer Boucle K
+                <span class="keyword">Fin Si</span>
+                
+                Proj_X = Axe_X + Distance_Echantillon * Cos(Angle_Tordu)
+                Proj_Y = Axe_Y + Distance_Echantillon * Sin(Angle_Tordu)
+                
+                Idx_X = Convertir_En_Entier(Proj_X)
+                Idx_Y = Convertir_En_Entier(Proj_Y)
+                
+                <span class="comment">// Vérification des limites physiques de l'image</span>
+                <span class="keyword">Si</span> Idx_X &gt;= 0 Et Idx_X &lt; Largeur_Image Et Idx_Y &gt;= 0 Et Idx_Y &lt; Hauteur_Image Alors
+                    Pixel_Couleur = Lire_Pixel_Source(Idx_X, Idx_Y)
+                    
+                    Somme_R = Somme_R + Extraire_Rouge(Pixel_Couleur)
+                    Somme_G = Somme_G + Extraire_Vert(Pixel_Couleur)
+                    Somme_B = Somme_B + Extraire_Bleu(Pixel_Couleur)
+                    Alpha_Sortie = Extraire_Alpha(Pixel_Couleur)
+                    
+                    Compteur_Echantillons = Compteur_Echantillons + 1
+                <span class="keyword">Fin Si</span>
+                
+            <span class="keyword">Next</span> k
+            
+            <span class="comment">// Écriture dans le buffer temporaire de la passe en cours</span>
+            <span class="keyword">Si</span> Compteur_Echantillons &gt; 0 Alors
+                R_Moy = Somme_R / Compteur_Echantillons
+                G_Moy = Somme_G / Compteur_Echantillons
+                B_Moy = Somme_B / Compteur_Echantillons
+                
+                Ecrire_Pixel_Dans_Buffer_Temp(X, Y, Réassembler_ARGB(Alpha_Sortie, R_Moy, G_Moy, B_Moy))
+            <span class="keyword">Fin Si</span>
+            
+        <span class="keyword">Next</span> X
+    <span class="keyword">Fin Pour</span>
+    
+    <span class="comment">// 4. PERMUTATION DES TAMPONS MÉMOIRE (SWAP)</span>
+    Copier_Contenu_Memoire(Source: Buffer_Temp, Destination: Image_Source, Taille_Image_Octets)
+    
+<span class="keyword">Fin Pour</span>
+
+<span class="comment">// Transfert final vers le buffer de sortie écran</span>
+Copier_Contenu_Memoire(Source: Buffer_Temp, Destination: Image_Cible, Taille_Image_Octets)
+Libérer_Espace_Memoire(Buffer_Temp)
+Fin
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Algorithme O(n) de Floutage Polaire par Décomposition Temporelle.</p>
+    </footer>
+
+</body>
+</html>

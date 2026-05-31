@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme TwistBlur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #a855f7;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #a855f7;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #4c1d95;
+            border: 1px solid #a855f7;
+            color: #f5f3ff;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #a855f7;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #e2e8f0;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #4c1d95;
+            color: #c084fc;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Échantillonnage par Arc de Torsion</div>
+        <h1>Documentation - Algorithme <span>TwistBlur</span></h1>
+        <p>Effet de tourbillonnement localisé par atténuation géométrique linéaire et interpolation circulaire symétrique</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation de Twist Blur ?</h2>
+        <ul>
+            <li>
+                <strong>Torsion Dégressive Proportionnelle :</strong> Contrairement à un flou radial ou directionnel uniforme, cet algorithme calcule un coefficient de pénétration (<code>angleAmount = 1.0 - (distance / radius)</code>). La force de rotation est maximale au centre précis de l'effet, puis décroît linéairement pour s'annuler complètement dès que la distance dépasse la frontière du rayon. Cela permet une intégration parfaite et invisible du flou dans le reste de l'image.
+            </li>
+            <li>
+                <strong>Échantillonnage Bidirectionnel Équilibré :</strong> L'exploration des pixels ne se fait pas de manière unidirectionnelle. La variable d'arc <code>rotAngle</code> distribue les prélèvements de façon symétrique de part et d'autre de la position d'origine (<code>(t - 0.5) * 2.0</code>, ce qui donne un intervalle allant de -1 à +1). L'image finale ne subit ainsi aucun décentrage visuel.
+            </li>
+            <li>
+                <strong>Préservation Native de la Texture :</strong> Si un pixel se trouve en dehors de la zone d'influence du rayon, ou si aucun échantillon n'est validé, le filtre bascule automatiquement sur un mode de secours (fallback). Il effectue une lecture directe par <code>PeekL</code> pour recopier fidèlement le pixel d'origine, évitant les zones noires ou les artefacts de calcul.
+            </li>
+            <li>
+                <strong>Sécurisation par Bornage (Clamping) :</strong> Avant l'écriture finale en mémoire, chaque canal de couleur (A, R, G, B) passe par une fonction de bridage stricte (<code>Clamp(valeur, 0, 255)</code>), ce qui élimine tout risque d'artefact de débordement de type "integer overflow".
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Lenteur Trigonométrique Quadratique :</strong> C'est le point faible de cette implémentation. Pour chaque pixel situé à l'intérieur du disque, et pour chaque échantillon demandé, le programme appelle de manière synchrone les fonctions mathématiques lourdes <code>Cos()</code> et <code>Sin()</code>. Pour une image standard avec un échantillonnage moyen, le processeur exécute des millions d'opérations trigonométriques à la volée, sans aucune table de précalcul.
+                </li>
+                <li>
+                    <strong>Saut d'Index de Fin de Ligne :</strong> La boucle principale de balayage vertical est configurée avec la borne supérieure <code>thread_stop - 1</code>. Selon l'arrondi du découpage géométrique des lignes de l'image, cette soustraction peut oublier de traiter la toute dernière ligne de pixels de la zone, laissant une bande non filtrée au bas du rendu.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface initialise les paramètres et les transmet à la structure de traitement géométrique :</p>
+        <pre><code><span class="keyword">Procedure</span> TwistBlur(source, cible, mask, cx, cy, angle, rayon, echantillons)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = cx
+    \option[1] = cy
+    \option[2] = angle
+    \option[3] = rayon
+    \option[4] = echantillons
+  <span class="keyword">EndWith</span>
+  TwistBlurEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Régulation Sûre des Paramètres d'Échantillonnage</h3>
+        <p>L'algorithme valide et contraint les variables d'entrée pour éviter les divisions par zéro ou les boucles infinies :</p>
+        <pre><code><span class="comment">; Bornage de sécurité des options utilisateur :</span>
+<span class="keyword">If</span> samples &lt; <span class="number">2</span>  : samples = <span class="number">2</span>  : <span class="keyword">EndIf</span>
+<span class="keyword">If</span> samples &gt; <span class="number">50</span> : samples = <span class="number">50</span> : <span class="keyword">EndIf</span>
+<span class="keyword">If</span> radius &lt; <span class="number">1</span>  : radius = <span class="number">1</span>  : <span class="keyword">EndIf</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Pour chaque pixel de l'image, l'algorithme calcule sa distance par rapport au centre choisi. Si le pixel est dans le rayon, un vecteur de rotation oscille comme un pendule pour faire la moyenne des couleurs environnantes sur un arc de cercle.</p>
+
+        <div class="card">
+            <h3>Calcul de la Matrice de Rotation 2D</h3>
+            <p>Pour faire pivoter le vecteur de position sans repasser par des coordonnées polaires pures, l'algorithme applique une multiplication matricielle standard sur les deltas de position :<br>
+            <code>rx = dx * cosA - dy * sinA</code><br>
+            <code>ry = dx * sinA + dy * cosA</code><br>
+            Les nouvelles coordonnées échantillonnées sont immédiatement reconstituées par rapport au centre : <code>(cx + rx, cy + ry)</code>.</p>
+        </div>
+
+        <h3>Cinématique de l'Arc de Torsion</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Balayage en Arc</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">t=0</td><td></td><td></td></tr>
+                            <tr><td></td><td class="center-pixel">Pixel</td><td></td></tr>
+                            <tr><td></td><td></td><td class="active-blur">t=1</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Formule de Calcul de l'Angle Oscillant :</strong></p>
+                        <div class="math-box">
+                            angleAmount = 1.0 - (Distance / Rayon)<br>
+                            rotAngle = Angle_Max * angleAmount * (t - 0.5) * 2.0
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            La variable <b>t</b> évolue linéairement entre 0.0 et 1.0. Le facteur <code>(t - 0.5) * 2.0</code> transforme cette progression pour balayer l'arc de cercle de façon symétrique, en partant de l'angle négatif maximum jusqu'à l'angle positif maximum.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici la description pas à pas de la logique de calcul de torsion globale :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Foyer_X (%), Foyer_Y (%), Angle_Max_Degres, Rayon, Nb_Echantillons
+
+<span class="comment">// 1. CONVERSION DES UNITES ET CONTRAINTES</span>
+Axe_X_Pixel = Largeur_Image * (Foyer_X / 100.0)
+Axe_Y_Pixel = Hauteur_Image * (Foyer_Y / 100.0)
+Angle_Max_Radians = Angle_Max_Degres * 3.14159265 / 180.0
+
+Si Nb_Echantillons &lt; 2 Alors Nb_Echantillons = 2
+Si Nb_Echantillons &gt; 50 Alors Nb_Echantillons = 50
+Si Rayon &lt; 1 Alors Rayon = 1
+
+<span class="comment">// 2. PARCOURS GÉOMÉTRIQUE DE L'IMAGE</span>
+<span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur_Image - 1
+    <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur_Image - 1
+        
+        Cumul_R = 0.0 : Cumul_G = 0.0 : Cumul_B = 0.0 : Cumul_A = 0.0
+        Nombre_Points_Valides = 0
+        
+        Delta_X = X - Axe_X_Pixel
+        Delta_Y = Y - Axe_Y_Pixel
+        Distance_Centre = Sqr(Delta_X * Delta_X + Delta_Y * Delta_Y)
+        
+        <span class="comment">// Détermination du taux de torsion selon la distance</span>
+        <span class="keyword">Si</span> Distance_Centre &lt;= Rayon Alors
+            Facteur_Atténuation = 1.0 - (Distance_Centre / Rayon)
+        <span class="keyword">Sinon</span>
+            Facteur_Atténuation = 0.0
+        <span class="keyword">Fin Si</span>
+        
+        <span class="comment">// 3. BOUCLE D'ÉCHANTILLONNAGE SUR L'ARC DE CERCLE</span>
+        <span class="keyword">Pour</span> i = 0 <span class="keyword">À</span> Nb_Echantillons - 1
+            
+            Pas_Normalisé = i / (Nb_Echantillons - 1.0) <span class="comment">// Évolue de 0.0 à 1.0</span>
+            Multiplicateur_Symétrique = (Pas_Normalisé - 0.5) * 2.0 <span class="comment">// Évolue de -1.0 à +1.0</span>
+            
+            Angle_Oscillation = Angle_Max_Radians * Facteur_Atténuation * Multiplicateur_Symétrique
+            
+            Cos_A = Cos(Angle_Oscillation)
+            Sin_A = Sin(Angle_Oscillation)
+            
+            <span class="comment">// Rotation trigonométrique du vecteur position</span>
+            Rotated_X = Delta_X * Cos_A - Delta_Y * Sin_A
+            Rotated_Y = Delta_X * Sin_A + Delta_Y * Cos_A
+            
+            Cible_X = Axe_X_Pixel + Rotated_X
+            Cible_Y = Axe_Y_Pixel + Rotated_Y
+            
+            <span class="comment">// Test de confinement dans les limites de la texture</span>
+            <span class="keyword">Si</span> Cible_X &gt;= 0 Et Cible_X &lt; Largeur_Image Et Cible_Y &gt;= 0 Et Cible_Y &lt; Hauteur_Image Alors
+                
+                Pixel = Lire_Pixel_Source_Direct(Int(Cible_X), Int(Cible_Y))
+                
+                Cumul_R = Cumul_R + Extraire_Rouge(Pixel)
+                Cumul_G = Cumul_G + Extraire_Vert(Pixel)
+                Cumul_B = Cumul_B + Extraire_Bleu(Pixel)
+                Cumul_A = Cumul_A + Extraire_Alpha(Pixel)
+                Nombre_Points_Valides = Nombre_Points_Valides + 1
+                
+            <span class="keyword">Fin Si</span>
+        <span class="keyword">Next</span> i
+        
+        <span class="comment">// 4. MIXAGE ET COMPRESSION DU PIXEL FINAL</span>
+        <span class="keyword">Si</span> Nombre_Points_Valides &gt; 0 Alors
+            A_Final = Cumul_A / Nombre_Points_Valides
+            R_Final = Cumul_R / Nombre_Points_Valides
+            G_Final = Cumul_G / Nombre_Points_Valides
+            B_Final = Cumul_B / Nombre_Points_Valides
+        <span class="keyword">Sinon</span>
+            <span class="comment">// Mode fallback : Récupération du pixel d'origine</span>
+            Pixel_Origine = Lire_Pixel_Source_Direct(X, Y)
+            A_Final = Extraire_Alpha(Pixel_Origine)
+            R_Final = Extraire_Rouge(Pixel_Origine)
+            G_Final = Extraire_Vert(Pixel_Origine)
+            B_Final = Extraire_Bleu(Pixel_Origine)
+        <span class="keyword">Fin Si</span>
+        
+        <span class="comment">// Limitation stricte des couleurs (0-255)</span>
+        A_Final = Limiter(A_Final, 0, 255)
+        R_Final = Limiter(R_Final, 0, 255)
+        G_Final = Limiter(G_Final, 0, 255)
+        B_Final = Limiter(B_Final, 0, 255)
+        
+        Écrire_Pixel_Cible(X, Y, Réassembler_ARGB(A_Final, R_Final, G_Final, B_Final))
+        
+    <span class="keyword">Next X</span>
+<span class="keyword">Fin Pour</span>
+Fin
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Algorithme de Floutage par Déformation Angulaire Linéaire Régressive.</p>
+    </footer>
+
+</body>
+</html>

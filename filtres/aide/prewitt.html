@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme Prewitt</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        /* Structure de démo compatible (Tableau au lieu de Flexbox) */
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-positive {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+        }
+
+        table.matrix td.active-negative {
+            background-color: #4c1d24;
+            border: 1px solid #f43f5e;
+            color: #f43f5e;
+        }
+
+        table.matrix td.active-center {
+            background-color: #334155;
+            border: 1px solid #64748b;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            color: #ffffff;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Analyse d'Image</div>
+        <h1>Documentation - Algorithme <span>Prewitt</span></h1>
+        <p>Analyse de la structure géométrique par détection des contours</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser l'opérateur de Prewitt ?</h2>
+        <ul>
+            <li>
+                <strong>Détection de contours omnidirectionnelle (Boussole) :</strong> Contrairement aux filtres de gradient basiques qui n'analysent que les axes X et Y, l'implémentation Prewitt Boussole calcule le gradient maximum sur 8 directions distinctes (N, NE, E, SE, S, SO, O, NO). Cela garantit qu'aucune ligne ni transition, quelle que soit son orientation spatiale, ne soit ignorée.
+            </li>
+            <li>
+                <strong>Immunité relative au bruit local :</strong> En effectuant une sommation pondérée sur un voisinage de 3x3 pixels, l'opérateur de Prewitt intègre un lissage uniforme inhérent à sa structure. Cela lui permet de mieux tolérer le bruit haute fréquence qu'un simple filtre de dérivation de type Roberts.
+            </li>
+            <li>
+                <strong>Idéal pour la segmentation et le détourage :</strong> L'extraction des contours par Prewitt est une étape fondamentale pour l'analyse de formes, la vectorisation d'images, le traitement de cartographies ou la préparation d'un masque binaire d'accentuation (Unsharp Mask).
+            </li>
+        </ul>
+
+        <h2>2. Exemples d'implémentation (PureBasic)</h2>
+
+        <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
+        <p>Idéal pour les appels simples et rapides avec passage de paramètres en arguments.</p>
+        <pre><code><span class="keyword">IncludeFile</span> "filtres.pbi"
+<span class="keyword">UseModule</span> filtres
+
+<span class="keyword">If</span> OpenWindow(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">800</span>, <span class="number">600</span>, "Exemple Prewitt...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage    = <span class="number">1</span>
+  CibleImage     = <span class="number">2</span>
+  AucunMasque    = <span class="number">0</span>
+  Multiplicateur = <span class="number">10</span> <span class="comment">; Ajuste la sensibilité/luminosité des contours (0 à 100)</span>
+  NoirEtBlanc    = <span class="number">1</span>  <span class="comment">; 1 pour convertir le gradient en niveaux de gris, 0 pour garder les contours colorés</span>
+  Inversion      = <span class="number">0</span>  <span class="comment">; 1 pour avoir les contours noirs sur fond blanc (pratique pour l'impression)</span>
+ 
+  file$ = OpenFileRequester("Image","","",<span class="number">0</span>)
+  <span class="keyword">If</span> load_image_32(SourceImage , file$) = <span class="number">0</span>
+    <span class="keyword">End</span>
+  <span class="keyword">Else</span>
+    ResizeImage(SourceImage, <span class="number">800</span>, <span class="number">600</span>)
+  <span class="keyword">EndIf</span>
+  
+  CopyImage(SourceImage, CibleImage)
+
+  Prewitt(SourceImage, CibleImage, AucunMasque, Multiplicateur, NoirEtBlanc, Inversion)
+  
+  StartDrawing(WindowOutput(<span class="number">0</span>))
+  DrawImage(ImageID(CibleImage) ,  <span class="number">0</span> , <span class="number">0</span>)
+  StopDrawing()
+  
+  <span class="keyword">Repeat</span>
+    Event = WaitWindowEvent()
+    <span class="keyword">Select</span> Event 
+      <span class="keyword">Case</span> #PB_Event_Gadget
+        <span class="keyword">Select</span> EventGadget()
+          <span class="keyword">Case</span> <span class="number">1</span> 
+            CloseWindow(<span class="number">0</span>)
+            <span class="keyword">End</span>  
+        <span class="keyword">EndSelect</span>
+    <span class="keyword">EndSelect</span>
+
+  <span class="keyword">Until</span> Event = #PB_Event_CloseWindow
+<span class="keyword">EndIf</span></code></pre>
+
+        <h3>Option B : Utilisation Avancée (Via Structure de Contexte / PrewittEx)</h3>
+        <p>Idéal pour la gestion de pointeurs mémoires complexes, les buffers personnalisés ou le traitement par lots en conservant un contexte de filtre.</p>
+        <pre><code><span class="keyword">IncludeFile</span> "filtres.pbi"
+<span class="keyword">UseModule</span> filtres
+
+<span class="keyword">If</span> OpenWindow(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">800</span>, <span class="number">600</span>, "Exemple Prewitt Avancé...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  
+  SourceImage = <span class="number">1</span>
+  CibleImage  = <span class="number">2</span>
+  AucunMasque = <span class="number">0</span>
+   
+  file$ = OpenFileRequester("Image","","",<span class="number">0</span>)
+  <span class="keyword">If</span> load_image_32(SourceImage , file$) = <span class="number">0</span>
+    <span class="keyword">End</span>
+  <span class="keyword">Else</span>
+    ResizeImage(SourceImage, <span class="number">800</span>, <span class="number">600</span>)
+  <span class="keyword">EndIf</span>
+  
+  CopyImage(SourceImage, CibleImage)
+  
+  Clear_Data_Filter(FilterCtx)
+  
+  FilterCtx\option[<span class="number">0</span>] = <span class="number">10</span> <span class="comment">; Multiplicateur d'intensité du contour</span>
+  FilterCtx\option[<span class="number">1</span>] = <span class="number">1</span>  <span class="comment">; Rendu en Noir et Blanc (Gris)</span>
+  FilterCtx\option[<span class="number">2</span>] = <span class="number">0</span>  <span class="comment">; Inverser le résultat (0 = normal, 1 = inversé)</span>
+  
+  Set_Source(SourceImage)
+  Set_cible(CibleImage)
+  
+  PrewittEx(FilterCtx)
+  
+  StartDrawing(WindowOutput(<span class="number">0</span>))
+  DrawImage(ImageID(CibleImage) ,  <span class="number">0</span> , <span class="number">0</span>)
+  StopDrawing()
+  
+  <span class="keyword">Repeat</span>
+    Event = WaitWindowEvent()
+    <span class="keyword">Select</span> Event 
+      <span class="keyword">Case</span> #PB_Event_Gadget
+        <span class="keyword">Select</span> EventGadget()
+          <span class="keyword">Case</span> <span class="number">1</span> 
+            CloseWindow(<span class="number">0</span>)
+            <span class="keyword">End</span>  
+        <span class="keyword">EndSelect</span>
+    <span class="keyword">EndSelect</span>
+
+  <span class="keyword">Until</span> Event = #PB_Event_CloseWindow
+<span class="keyword">EndIf</span></code></pre>
+
+        <h2>3. Le Filtre : Comment ça marche ?</h2>
+        <p>Le filtre de <strong>Prewitt</strong> est ce qu'on appelle un détecteur de contours géométriques. Son but fondamental est de scanner une image pixel par pixel pour repérer les endroits où les couleurs changent brusquement (par exemple, la frontière entre les cheveux sombres d'une personne et un mur blanc).</p>
+        
+        <p>Pour faire cela de manière ultra-simple, le filtre utilise une méthode visuelle basée sur la comparaison de voisinage.</p>
+
+        <div class="card">
+            <h3>Le jeu des différences</h3>
+            <p>Pour chaque point de la photo, le filtre regarde un petit carré de 3x3 pixels. Il va comparer la quantité de lumière d'un côté du carré par rapport au côté opposé :</p>
+            <ul>
+                <li>Si les deux côtés ont la même luminosité (comme une zone de ciel bleu uni), la différence est de <strong>zéro</strong>. Le filtre comprend qu'il n'y a rien à voir et laisse la zone noire.</li>
+                <li>Si un côté est très clair et l'autre très sombre, la différence est <strong>très élevée</strong>. Le filtre détecte une cassure : il s'agit d'une ligne ou d'une bordure d'objet.</li>
+            </ul>
+        </div>
+
+        <h3>Le principe de la boussole directionnelle</h3>
+        <p>L'originalité de cet algorithme est de chercher les lignes dans toutes les directions possibles (vers le Haut, le Bas, la Gauche, la Droite, et les 4 Diagonales), un peu comme les points cardinaux d'une boussole.</p>
+
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Recherche vers le HAUT</strong>
+                        <table class="matrix">
+                            <tr><td class="active-positive">+1</td><td class="active-positive">+1</td><td class="active-positive">+1</td></tr>
+                            <tr><td class="active-center">0</td><td class="active-center">0</td><td class="active-center">0</td></tr>
+                            <tr><td class="active-negative">-1</td><td class="active-negative">-1</td><td class="active-negative">-1</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>La règle mathématique visuelle :</strong></p>
+                        <div class="math-box">
+                            Score_Du_Pixel = Écart_Maximum_Mesuré_(Côté_Clair_-_Côté_Sombre)
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            La ligne du milieu <span style="color:#ffffff">(0)</span> sert de pivot. Les pixels du haut reçoivent un poids positif <span style="color:#38bdf8">(+1)</span> et ceux du bas un poids négatif <span style="color:#f43f5e;">(-1)</span>. Le filtre fait glisser ce calcul sur toute l'image.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="demo-container" style="margin-top: 25px;">
+            <table class="demo-table">
+                <tr>
+                    <td style="width: 50%; text-align: center; vertical-align: top; padding-right: 15px;">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Recherche à DROITE</strong>
+                        <table class="matrix">
+                            <tr><td class="active-negative">-1</td><td class="active-center">0</td><td class="active-positive">+1</td></tr>
+                            <tr><td class="active-negative">-1</td><td class="active-center">0</td><td class="active-positive">+1</td></tr>
+                            <tr><td class="active-negative">-1</td><td class="active-center">0</td><td class="active-positive">+1</td></tr>
+                        </table>
+                    </td>
+                    <td style="width: 50%; text-align: center; vertical-align: top; padding-left: 15px;">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Recherche en DIAGONALE</strong>
+                        <table class="matrix">
+                            <tr><td class="active-center">0</td><td class="active-positive">+1</td><td class="active-positive">+1</td></tr>
+                            <tr><td class="active-negative">-1</td><td class="active-center">0</td><td class="active-positive">+1</td></tr>
+                            <tr><td class="active-negative">-1</td><td class="active-negative">-1</td><td class="active-center">0</td></tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique de rendu globale (Pseudo-code)</h3>
+        <p>Voici le cheminement logique simplifié que suit l'algorithme sur l'ensemble de la surface graphique :</p>
+
+<pre><span class="keyword">Pour chaque</span> ligne de l'image
+    <span class="keyword">Pour chaque</span> pixel de cette ligne
+        
+        Écart_Le_Plus_Fort = <span class="number">0</span>
+        
+        <span class="comment">// Analyser l'environnement sur 8 angles (boussole)</span>
+        <span class="keyword">Pour</span> direction = <span class="number">1</span> <span class="keyword">To</span> <span class="number">8</span>
+            Valeur_Calculée = Mesurer_Ecart_Lumière(pixel_actuel, direction)
+            
+            <span class="keyword">Si</span> Valeur_Calculée > Écart_Le_Plus_Fort
+                Écart_Le_Plus_Fort = Valeur_Calculée
+            <span class="keyword">Fin Si</span>
+        <span class="keyword">Next</span>
+        
+        <span class="comment">// Allumer le pixel sur l'image finale</span>
+        Dessiner_Pixel_Contours(pixel_actuel, Écart_Le_Plus_Fort)
+        
+    <span class="keyword">Next</span>
+<span class="keyword">Fin Pour</span></pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Algorithmes Graphiques de Rendu.</p>
+    </footer>
+
+</body>
+</html>

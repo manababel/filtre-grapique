@@ -1,90 +1,81 @@
 ﻿; ============================================================================
 ; Filtre Beucher Gradient - Gradient morphologique de Beucher
 ; ============================================================================
-; Variante du gradient morphologique proposée par Serge Beucher
-; Utilise la moyenne des gradients internes et externes pour une meilleure
-; localisation des contours
-; Gradient de Beucher = (Dilatation - Image) + (Image - Érosion) / 2
 
-Macro Beucher_ReadPixel(var)
-  Protected pixel = PeekL(*srcPixel)
-  getrgb(pixel, r, g, b)
-  r3(var) = r : g3(var) = g : b3(var) = b
-  gray(var) = (r * 77 + g * 150 + b * 29) >> 8
-  *srcPixel + 4
-EndMacro
-
-Procedure.i Beucher_Dilate(Array values(1), size)
+Procedure.i Beucher_Dilate(*values.Long, *mask.Long, size)
   Protected i, maxVal = 0
   For i = 0 To size - 1
-    If values(i) > maxVal : maxVal = values(i) : EndIf
+    If *mask\l = 1 And *values\l > maxVal : maxVal = *values\l : EndIf
+    *values + 4 : *mask + 4
   Next
   ProcedureReturn maxVal
 EndProcedure
 
-Procedure.i Beucher_Erode(Array values(1), size)
+Procedure.i Beucher_Erode(*values.Long, *mask.Long, size)
   Protected i, minVal = 255
   For i = 0 To size - 1
-    If values(i) < minVal : minVal = values(i) : EndIf
+    If *mask\l = 1 And *values\l < minVal : minVal = *values\l : EndIf
+    *values + 4 : *mask + 4
   Next
   ProcedureReturn minVal
 EndProcedure
 
-Procedure Beucher_DilateRGB(Array r3(1), Array g3(1), Array b3(1), size, *rOut.Integer, *gOut.Integer, *bOut.Integer)
+Procedure Beucher_DilateRGB(*r3.Long, *g3.Long, *b3.Long, *mask.Long, size, *rOut.Integer, *gOut.Integer, *bOut.Integer)
   Protected i, maxR = 0, maxG = 0, maxB = 0
   For i = 0 To size - 1
-    If r3(i) > maxR : maxR = r3(i) : EndIf
-    If g3(i) > maxG : maxG = g3(i) : EndIf
-    If b3(i) > maxB : maxB = b3(i) : EndIf
+    If *mask\l = 1
+      If *r3\l > maxR : maxR = *r3\l : EndIf
+      If *g3\l > maxG : maxG = *g3\l : EndIf
+      If *b3\l > maxB : maxB = *b3\l : EndIf
+    EndIf
+    *r3 + 4 : *g3 + 4 : *b3 + 4 : *mask + 4
   Next
-  PokeI(*rOut, maxR) : PokeI(*gOut, maxG) : PokeI(*bOut, maxB)
+  *rOut\i = maxR : *gOut\i = maxG : *bOut\i = maxB
 EndProcedure
 
-Procedure Beucher_ErodeRGB(Array r3(1), Array g3(1), Array b3(1), size, *rOut.Integer, *gOut.Integer, *bOut.Integer)
+Procedure Beucher_ErodeRGB(*r3.Long, *g3.Long, *b3.Long, *mask.Long, size, *rOut.Integer, *gOut.Integer, *bOut.Integer)
   Protected i, minR = 255, minG = 255, minB = 255
   For i = 0 To size - 1
-    If r3(i) < minR : minR = r3(i) : EndIf
-    If g3(i) < minG : minG = g3(i) : EndIf
-    If b3(i) < minB : minB = b3(i) : EndIf
+    If *mask\l = 1
+      If *r3\l < minR : minR = *r3\l : EndIf
+      If *g3\l < minG : minG = *g3\l : EndIf
+      If *b3\l < minB : minB = *b3\l : EndIf
+    EndIf
+    *r3 + 4 : *g3 + 4 : *b3 + 4 : *mask + 4
   Next
-  PokeI(*rOut, minR) : PokeI(*gOut, minG) : PokeI(*bOut, minB)
+  *rOut\i = minR : *gOut\i = minG : *bOut\i = minB
 EndProcedure
 
-Procedure Beucher_CreateStructuringElement(Array element(1), shape, size)
-  Protected x, y, idx, center, radius.f, dist.f, distManhattan
-  center = size >> 1 : radius = center : idx = 0
+Procedure Beucher_CreateStructuringElement(*element.Long, shape, size)
+  Protected x, y, center, radius.f, dist.f, distManhattan
+  center = size >> 1 : radius = center
   For y = 0 To size - 1
     For x = 0 To size - 1
       Select shape
-        Case 0 : element(idx) = 1 ; Carré
-        Case 1 : If x = center Or y = center : element(idx) = 1 : Else : element(idx) = 0 : EndIf ; Croix
+        Case 0 : *element\l = 1 ; Carré
+        Case 1 : If x = center Or y = center : *element\l = 1 : Else : *element\l = 0 : EndIf ; Croix
         Case 2 : dist = Sqr((x - center) * (x - center) + (y - center) * (y - center))
-                 If dist <= radius : element(idx) = 1 : Else : element(idx) = 0 : EndIf ; Disque
+                 If dist <= radius + 0.5 : *element\l = 1 : Else : *element\l = 0 : EndIf ; Disque
         Case 3 : distManhattan = Abs(x - center) + Abs(y - center)
-                 If distManhattan <= center : element(idx) = 1 : Else : element(idx) = 0 : EndIf ; Diamant
+                 If distManhattan <= center : *element\l = 1 : Else : *element\l = 0 : EndIf ; Diamant
         Case 4 : dist = Sqr((x - center) * (x - center) + (y - center) * (y - center))
                  distManhattan = Abs(x - center) + Abs(y - center)
-                 If dist <= radius Or distManhattan <= center : element(idx) = 1 : Else : element(idx) = 0 : EndIf ; Octogone
+                 If dist <= radius Or distManhattan <= center : *element\l = 1 : Else : *element\l = 0 : EndIf ; Octogone
       EndSelect
-      idx + 1
+      *element + 4
     Next
   Next
 EndProcedure
 
 Procedure BeucherGradient_MT(*FilterCtx.FilterParams)
   With *FilterCtx
-    Protected *source = \addr[0]
-    Protected *cible  = \addr[1]
     Protected lg = \image_lg[0]
-    Protected ht = \image_ht[1]
-    
-    Protected strength.f = \option[0]    ; Force du gradient (1-100)
-    Protected kernelSize = \option[1]    ; Taille noyau (0=3x3, 1=5x5, 2=7x7)
+    Protected ht = \image_ht[0]
+    Protected mul.f = \option[0] * 0.1 ; Adaptation du multiplicateur
+    Protected kernelSize = \option[1]    
     Protected toGray = \option[2]
     Protected inverse = \option[3]
-    Protected shape = \option[4]         ; Forme élément structurant
-    
-    Clamp(strength, 1, 100) : strength * 0.01
+    Protected shape = \option[4]         
     
     Protected kSize
     Select kernelSize
@@ -96,59 +87,93 @@ Procedure BeucherGradient_MT(*FilterCtx.FilterParams)
     
     Protected kRadius = kSize >> 1
     Protected maxPixels = kSize * kSize
-    Protected Dim r3(maxPixels - 1)
-    Protected Dim g3(maxPixels - 1)
-    Protected Dim b3(maxPixels - 1)
-    Protected Dim gray(maxPixels - 1)
-    Protected Dim structElement(maxPixels - 1)
     
-    Beucher_CreateStructuringElement(structElement(), shape, kSize)
+    ; Allocation dynamique de buffers temporaires par thread (évite les conflits et FreeArray)
+    Protected *r3 = AllocateMemory(maxPixels * 4)
+    Protected *g3 = AllocateMemory(maxPixels * 4)
+    Protected *b3 = AllocateMemory(maxPixels * 4)
+    Protected *gray = AllocateMemory(maxPixels * 4)
+    Protected *structElement = AllocateMemory(maxPixels * 4)
     
-    Protected *srcPixel.Long, *dstPixel.Long
-    Protected r, g, b, x, y, i, j, idx
+    Beucher_CreateStructuringElement(*structElement, shape, kSize)
+    
+    Protected x, y, i, j, idx, pos
+    Protected a, r, g, b
     Protected original, dilated, eroded, beucherGrad, magnitude.f
     Protected originalR, originalG, originalB, dilatedR, dilatedG, dilatedB, erodedR, erodedG, erodedB
     Protected beucherR, beucherG, beucherB
     
-    macro_calul_tread((ht - kSize + 1))
+    Protected *src.Pixelarray32 = \addr[0]
+    Protected *dst.Pixelarray32 = \addr[1]
     
-    For y = thread_start + kRadius To thread_stop + kRadius - 1
+    macro_calul_tread(ht)
+    
+    ; Gestion des bordures pour éviter de lire hors de l'image
+    Protected y_start = thread_start
+    Protected y_stop = thread_stop
+    If y_start < kRadius : y_start = kRadius : EndIf
+    If y_stop > ht - kRadius - 1 : y_stop = ht - kRadius - 1 : EndIf
+    
+    For y = y_start To y_stop
       For x = kRadius To lg - kRadius - 1
+        
         idx = 0
         For j = -kRadius To kRadius
           For i = -kRadius To kRadius
-            *srcPixel = *source + ((y + j) * lg + (x + i)) * 4
-            Beucher_ReadPixel(idx)
+            pos = ((y + j) * lg) + (x + i)
+            getargb(*src\Pixel[pos], a, r, g, b)
+            
+            ; On stocke les valeurs dans nos buffers de voisinage via des pointeurs
+            PokeL(*r3 + (idx * 4), r)
+            PokeL(*g3 + (idx * 4), g)
+            PokeL(*b3 + (idx * 4), b)
+            PokeL(*gray + (idx * 4), (r * 77 + g * 150 + b * 29) >> 8)
             idx + 1
           Next
         Next
         
+        pos = (y * lg) + x
+        Protected centerIdx = maxPixels >> 1
+        
         If toGray
-          original = gray((maxPixels >> 1))
-          dilated = Beucher_Dilate(gray(), maxPixels)
-          eroded = Beucher_Erode(gray(), maxPixels)
+          original = PeekL(*gray + (centerIdx * 4))
+          dilated = Beucher_Dilate(*gray, *structElement, maxPixels)
+          eroded = Beucher_Erode(*gray, *structElement, maxPixels)
+          
           beucherGrad = ((dilated - original) + (original - eroded)) >> 1
-          magnitude = beucherGrad * strength * 10.0
-          Clamp(magnitude, 0, 255)
-          If inverse : magnitude = 255 - magnitude : EndIf
-          *dstPixel = *cible + (y * lg + x) * 4
-          PokeL(*dstPixel, $FF000000 | (Int(magnitude) * $010101))
+          magnitude = beucherGrad * mul
+          
+          r = Int(magnitude) : g = r : b = r
         Else
-          originalR = r3((maxPixels >> 1)) : originalG = g3((maxPixels >> 1)) : originalB = b3((maxPixels >> 1))
-          Beucher_DilateRGB(r3(), g3(), b3(), maxPixels, @dilatedR, @dilatedG, @dilatedB)
-          Beucher_ErodeRGB(r3(), g3(), b3(), maxPixels, @erodedR, @erodedG, @erodedB)
+          originalR = PeekL(*r3 + (centerIdx * 4))
+          originalG = PeekL(*g3 + (centerIdx * 4))
+          originalB = PeekL(*b3 + (centerIdx * 4))
+          
+          Beucher_DilateRGB(*r3, *g3, *b3, *structElement, maxPixels, @dilatedR, @dilatedG, @dilatedB)
+          Beucher_ErodeRGB(*r3, *g3, *b3, *structElement, maxPixels, @erodedR, @erodedG, @erodedB)
+          
           beucherR = ((dilatedR - originalR) + (originalR - erodedR)) >> 1
           beucherG = ((dilatedG - originalG) + (originalG - erodedG)) >> 1
           beucherB = ((dilatedB - originalB) + (originalB - erodedB)) >> 1
-          r = beucherR * strength * 10.0 : g = beucherG * strength * 10.0 : b = beucherB * strength * 10.0
-          Clamp(r, 0, 255) : Clamp(g, 0, 255) : Clamp(b, 0, 255)
-          If inverse : r = 255 - r : g = 255 - g : b = 255 - b : EndIf
-          *dstPixel = *cible + (y * lg + x) * 4
-          PokeL(*dstPixel, $FF000000 | (r << 16) | (g << 8) | b)
+          
+          r = Int(beucherR * mul)
+          g = Int(beucherG * mul)
+          b = Int(beucherB * mul)
         EndIf
+        
+        clamp_rgb(r, g, b)
+        
+        ; Traitements optionnels identiques au premier programme (Roberts)
+        ; (Si vous avez une fonction seuil_rgb, décommentez-la)
+        ; If seuillage > 0 : seuil_rgb(seuillage , r , g , b) : EndIf
+        If inverse : r = 255 - r : g = 255 - g : b = 255 - b : EndIf
+        
+        *dst\Pixel[pos] = (a << 24) | (r << 16) | (g << 8) | b
       Next
     Next
-    FreeArray(r3()) : FreeArray(g3()) : FreeArray(b3()) : FreeArray(gray()) : FreeArray(structElement())
+    
+    ; Libération propre de la mémoire du thread
+    FreeMemory(*r3) : FreeMemory(*g3) : FreeMemory(*b3) : FreeMemory(*gray) : FreeMemory(*structElement)
   EndWith
 EndProcedure
 
@@ -156,10 +181,22 @@ Procedure BeucherGradientEx(*FilterCtx.FilterParams)
   Restore BeucherGradient_data
   Protected last_data = Filter_InitAndValidate()
   If last_data < 0 : ProcedureReturn 0 : EndIf
-
+  
   With *FilterCtx
-    Create_MultiThread_MT(@BeucherGradient_MT())
-    mask_update(*FilterCtx.FilterParams , last_data)
+    ; Même logique de buffer temporaire In-Place que votre exemple Roberts
+    Protected size = \image_lg[0] * \image_ht[0] * 4
+    If \addr[1] = \addr[0]
+      \addr[2] = AllocateMemory(size)
+      If \addr[2]
+        CopyMemory(\addr[0], \addr[2], size)
+        \addr[0] = \addr[2]
+        Create_MultiThread_MT(@BeucherGradient_MT())
+        FreeMemory(\addr[2])
+      EndIf
+    Else
+      Create_MultiThread_MT(@BeucherGradient_MT())
+    EndIf
+    mask_update(*FilterCtx, last_data)
   EndWith
 EndProcedure
 
@@ -185,7 +222,7 @@ DataSection
   Data.i #EdgeDetect_Morphological
   
   Data.s "Force du gradient"       
-  Data.i 1, 100, 50
+  Data.i 1, 100, 10
   Data.s "Taille noyau (0=3x3/1=5x5/2=7x7)"   
   Data.i 0, 2, 0
   Data.s "Noir et blanc"        
@@ -193,12 +230,12 @@ DataSection
   Data.s "Inversion"  
   Data.i 0, 1, 0
   Data.s "Forme (0=Sq/1=Cr/2=Di/3=Dm/4=Oc)" 
-  Data.i 0, 4, 2
+  Data.i 0, 4, 0
   Data.s "XXX"  
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 165
-; FirstLine = 146
+; CursorPosition = 234
+; FirstLine = 185
 ; Folding = --
 ; EnableXP
 ; DPIAware

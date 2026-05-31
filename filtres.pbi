@@ -8,6 +8,126 @@ UsePNGImageEncoder()
 UseTGAImageDecoder()
 UseTIFFImageDecoder()
 
+;-- partie qui gere la camera
+
+Structure SimpleCapParams
+  *mTargetBuf ; Must be at least mWidth * mHeight * SizeOf(int) of size! 
+  mWidth.l
+  mHeight.l
+EndStructure
+Global scp.SimpleCapParams
+Global camera_lg
+Global camera_ht
+Global camera_buf
+
+;/* Return the number of capture devices found */
+PrototypeC countCaptureDevicesProc()
+PrototypeC initCaptureProc(deviceno, *aParams.SimpleCapParams) 
+PrototypeC deinitCaptureProc(deviceno) ;/* deinitCapture closes the video capture device. */
+PrototypeC doCaptureProc(deviceno) ; ;/* doCapture requests video frame To be captured. */  
+PrototypeC isCaptureDoneProc(deviceno) ;/* isCaptureDone returns 1 when the requested frame has been captured.*/ 
+PrototypeC getCaptureDeviceNameProc(deviceno, *namebuffer, bufferlength) ;/* Get the user-friendly name of a capture device. */
+PrototypeC ESCAPIDLLVersionProc() ;/* Returns the ESCAPI DLL version. 0x200 For 2.0 */
+PrototypeC initCOMProc() ; ; marked as "internal" in the example
+
+Global countCaptureDevices.countCaptureDevicesProc
+Global initCapture.initCaptureProc
+Global deinitCapture.deinitCaptureProc
+Global doCapture.doCaptureProc
+Global isCaptureDone.isCaptureDoneProc
+Global getCaptureDeviceName.getCaptureDeviceNameProc
+Global ESCAPIDLLVersion.ESCAPIDLLVersionProc
+
+
+
+Procedure setupESCAPI()
+  
+  ; load library
+  CompilerSelect #PB_Compiler_Processor
+    CompilerCase #PB_Processor_x86
+      Protected.i capdll = OpenLibrary(#PB_Any, "escapi\escapi_x32.dll")
+    CompilerCase #PB_Processor_x64
+      Protected.i capdll = OpenLibrary(#PB_Any, "escapi\escapi_x64.dll")
+  CompilerEndSelect
+  If capdll = 0
+    Debug "fichier escapi non trouvé"
+    ProcedureReturn #Null
+  EndIf
+  
+  ;/* Fetch function entry points */
+  countCaptureDevices  = GetFunction(capdll, "countCaptureDevices")
+  initCapture          = GetFunction(capdll, "initCapture")
+  deinitCapture        = GetFunction(capdll, "deinitCapture")
+  doCapture            = GetFunction(capdll, "doCapture")
+  isCaptureDone        = GetFunction(capdll, "isCaptureDone")
+  initCOM.initCOMProc  = GetFunction(capdll, "initCOM")
+  getCaptureDeviceName = GetFunction(capdll, "getCaptureDeviceName")
+  ESCAPIDLLVersion     = GetFunction(capdll, "ESCAPIDLLVersion")
+  
+  If countCaptureDevices = 0 Or initCapture = 0 Or deinitCapture = 0 Or doCapture = 0 Or isCaptureDone = 0 Or initCOM = 0 Or getCaptureDeviceName = 0 Or ESCAPIDLLVersion = 0
+    Debug "probleme 1"
+    ProcedureReturn #Null
+  EndIf
+  
+  ;/* Verify DLL version */
+  If ESCAPIDLLVersion() < $200
+    Debug "probleme 2"
+    ProcedureReturn #Null
+  EndIf
+  
+  ;/* Initialize COM.. */
+  initCOM();  
+  
+  ; returns number of devices found
+  ProcedureReturn countCaptureDevices()
+EndProcedure
+
+Procedure Camera_init()
+  Protected name$
+  If setupESCAPI() = #Null
+    Debug "Camera ok mais peut etre non accessible(protegée)"
+    ProcedureReturn #Null
+  Else
+    name$ = Space(1000)
+    getCaptureDeviceName(0, @name$, 1000)
+    name$ = PeekS(@name$, -1, #PB_Ascii)
+    ProcedureReturn countCaptureDevices()
+  EndIf
+EndProcedure
+
+Procedure Camera_on(cam , lg, ht)
+  If scp\mTargetBuf : FreeMemory(scp\mTargetBuf) : EndIf
+  scp\mWidth = lg
+  scp\mHeight = ht
+  scp\mTargetBuf = AllocateMemory (scp\mWidth * scp\mHeight * 4)
+  initCapture(cam, @scp)
+EndProcedure
+
+Procedure CameraToBuffer(cam , Buffer)
+EndProcedure
+
+Procedure CameraToImage(cam , img)
+  Protected pos , size , compt , i , var
+  If scp\mTargetBuf = 0 : ProcedureReturn : EndIf
+  doCapture(cam)
+  ;isCaptureDone(cam)
+  If StartDrawing(ImageOutput(img))
+    pos = DrawingBuffer()
+    If pos
+      size = scp\mWidth * scp\mHeight * 4 - 1
+      compt = size - 3
+      For i = 0 To size Step 4
+        var = PeekL(scp\mTargetBuf + i)
+        PokeL(pos + compt , var)
+        compt - 4
+      Next
+    EndIf
+    StopDrawing()
+  EndIf
+EndProcedure
+
+;--
+
 DeclareModule filtres
   
   ;-- constantes
@@ -616,7 +736,7 @@ DeclareModule filtres
     #Filter_Blend_Glow                  ; Luminescence
     #Filter_Blend_Logarithmic           ; Logarithmique
     
-     
+    
     ; ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
     ; ▓ RESIZE
     ; ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
@@ -671,13 +791,14 @@ DeclareModule filtres
     thread_max.l         ; nombre total de threads 
     thread_pos.l         ; position du thread courant
     
-    asm.l
-    asm_max.l ; language maximum supporter
+    asm.l     ; language selectionne par l'utilisateur
+    asm_max.l ; language maximum supporter par le cpu
+    asm_dispo.l ; language disponible
     
     StructureUnion
       convol3.l[9] ; (3 * 3) 
-      convol5.l[25] ; (5 * 5)
-      convol7.l[49] ; (7 * 7)
+      convol5.l[25]; (5 * 5)
+      convol7.l[49]; (7 * 7)
     EndStructureUnion
     
     typ.l
@@ -883,25 +1004,25 @@ DeclareModule filtres
   DeclareModule_filtresadd_function(RobertsEx , #Filter_Roberts)
   Declare Roberts(source, cible, mask, multiply=10, math=0, gray=0, inverse=0, seuil=0, orient=0, angle=0)
   DeclareModule_filtresadd_function(PrewittEx , #Filter_Prewitt)
-  Declare Prewitt(source, cible, mask, multiplicateur=10, noir_blanc=0, inversion=0)
+  Declare Prewitt(source, cible, mask, multiplicateur=10, noir_blanc=0, inversion=0, seuil_bas = 0, seuil_haut = 255)
   DeclareModule_filtresadd_function(sobelEx , #Filter_sobel)
-  Declare Sobel(source, cible, mask, multiplicateur=10, methode=0, noir_blanc=0, inversion=0)
+  Declare Sobel(source, cible, mask, multiplicateur=10, noir_blanc=0, inversion=0 , seuil_bas = 0, seuil_haut = 255)
   DeclareModule_filtresadd_function(sobel_4dEx , #Filter_sobel_4d)
   Declare Sobel_4d(source, cible, mask, multiply=10, math=0, gray=0, inverse=0)
   DeclareModule_filtresadd_function(scharrEx , #Filter_scharr)
-  Declare Scharr(source, cible, mask, multiply=10, math=0, gray=0, inverse=0)
+  Declare Scharr(source, cible, mask, multiply=10, math=0, gray=0, inverse=0 , seuil_bas = 0, seuil_haut = 255)
   DeclareModule_filtresadd_function(scharr_4dEx , #Filter_scharr_4d)
   Declare Scharr_4d(source, cible, mask, multiply=10, math=0, gray=0, inverse=0)
   DeclareModule_filtresadd_function(kirschEx , #Filter_kirsch)
-  Declare Kirsch(source, cible, mask, multiply=10, gray=0, inverse=0)
+  Declare Kirsch(source, cible, mask, multiply=10, gray=0, inverse=0 , seuil_bas = 0, seuil_haut = 255)
   DeclareModule_filtresadd_function(robinsonEx , #Filter_robinson)
-  Declare Robinson(source, cible, mask, multiply=10, gray=0, inverse=0)
+  Declare Robinson(source, cible, mask, multiply=10, gray=0, inverse=0, seuil_bas = 0, seuil_haut = 255)
   DeclareModule_filtresadd_function(FreiChenEx , #Filter_FreiChen)
-  Declare FreiChen(source, cible, mask, multiply=10, gray=0, inverse=0)
+  Declare FreiChen(source, cible, mask, multiply=10, gray=0, inverse=0, seuil_bas = 0, seuil_haut = 255)
   DeclareModule_filtresadd_function(KayyaliEx , #Filter_Kayyali)
-  Declare Kayyali(source, cible, mask, multiply=10, method=1, gray=0, inverse=0)
+  Declare Kayyali(source, cible, mask, multiply=10, method=1, gray=0, inverse=0, seuil_bas = 0, seuil_haut = 255)
   DeclareModule_filtresadd_function(NevatiaBabuEx , #Filter_NevatiaBabu)
-  Declare NevatiaBabu(source, cible, mask, multiply=10, gray=0, inverse=0)
+  Declare NevatiaBabu(source, cible, mask, multiply=10, gray=0, inverse=0, seuil_bas = 0, seuil_haut = 255)
   DeclareModule_filtresadd_function(DerivativeOfGaussianEx , #Filter_DerivativeOfGaussian)
   Declare DerivativeOfGaussian(source , cible , mask , sigma , multiplicateur , inversion)
   ;Filtres basés sur les dérivées secondes (Laplaciens)
@@ -1482,6 +1603,12 @@ Module filtres
     b.b
   EndStructure
   
+  Structure Edge_Detection
+    r.l[9]
+    g.l[9]
+    b.l[9]
+  EndStructure
+  
   ;--
   Macro clamp(c,a,b)
     If c < a : c = a : ElseIf c > b : c = b : EndIf
@@ -1506,6 +1633,18 @@ Module filtres
     If r < seuil : r = 0 : ElseIf r > 255 : r = 255 : EndIf
     If g < seuil : g = 0 : ElseIf g > 255 : g = 255 : EndIf
     If b < seuil : b = 0 : ElseIf b > 255 : b = 255 : EndIf
+  EndMacro
+  
+  Macro seuil_min_rgb(seuil , r , g , b)
+    If r < seuil : r = 0 : EndIf
+    If g < seuil : g = 0 : EndIf
+    If b < seuil : b = 0 : EndIf
+  EndMacro
+  
+  Macro seuil_max_rgb(seuil , r , g , b)
+    If r > seuil : r = 255 : EndIf
+    If g > seuil : g = 255 : EndIf
+    If b > seuil : b = 255 : EndIf
   EndMacro
   
   ;--
@@ -1547,8 +1686,9 @@ Module filtres
   Procedure Create_MultiThread_MT(proc , opt = 0) ; opt = nombre de threads imposé par le programme si différent de 0
     Protected i , nombre_de_treads_max 
     nombre_de_treads_max  = CountCPUs(#PB_System_CPUs) -1 ; maximum des threads - 1
-    If opt = 0 : opt = FilterCtx\thread : EndIf ; nombre de thread demandé par l'utimisateur
-    clamp( opt , 1 , nombre_de_treads_max)
+    If nombre_de_treads_max < 1 : nombre_de_treads_max = 1 : EndIf ; nombre de thread minimum = 1
+    If opt = 0 : opt = FilterCtx\thread : EndIf                    ; nombre de thread demandé par l'utimisateur
+    clamp( opt , 1 , nombre_de_treads_max) 
     
     Protected Dim tr(opt)
     For i = 0 To opt - 1 : tr(i) = 0 : Next
@@ -1625,8 +1765,6 @@ Module filtres
           ProcedureReturn -2
         EndIf
       EndIf
-      
-      If \thread < 1 : \thread = 1 : EndIf
       
       \addr[0] = \image[0]
       \addr[1] = \image[1]
@@ -1719,6 +1857,7 @@ Module filtres
       \typ = 0
       \name = ""
       \remarque = ""
+      \asm_dispo = 0
       For i = 0 To 19
         ;*p\convolution3[i] = 0
         \addr[i] = 0
@@ -2136,13 +2275,13 @@ Module filtres
   
   ;----------------------------------------------------------
   ;-- DetectCPU()
+  
   Procedure DetectCPU()
-    ; On ne détecte qu'une seule fois
-    ;Static Done = #False
-    ;If Done : ProcedureReturn Asm_Type : EndIf
-    
     Protected eax.l, ebx.l, ecx.l, edx.l
-    
+    Protected Asm_Type.i = 0
+    Protected OSXSAVE.b = #False
+    Protected AVX_Supported.b = #False
+    Protected AVX512_Supported.b = #False
     ; --- Phase 1 : Flags Standard (EAX = 1) ---
     CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
       !mov eax, 1
@@ -2152,37 +2291,65 @@ Module filtres
       !mov [p.v_ecx], ecx
       !mov [p.v_edx], edx
     CompilerElse
-      ; Pour le Backend C, on utilise l'assembleur en ligne format GCC
       !asm volatile ("cpuid" : "=a" (v_eax), "=b" (v_ebx), "=c" (v_ecx), "=d" (v_edx) : "a" (1));
+      eax = v_eax : ebx = v_ebx : ecx = v_ecx : edx = v_edx
     CompilerEndIf
     
-    ; Hiérarchie des extensions (on monte en puissance)
+    ; Hiérarchie de base
     If edx & #CPUID_EDX_SSE   : Asm_Type = #Asm_SSE   : EndIf
     If edx & #CPUID_EDX_SSE2  : Asm_Type = #Asm_SSE2  : EndIf
     If ecx & #CPUID_ECX_SSE3  : Asm_Type = #Asm_SSE3  : EndIf
     If ecx & #CPUID_ECX_SSSE3 : Asm_Type = #Asm_SSSE3 : EndIf
     If ecx & #CPUID_ECX_SSE41 : Asm_Type = #Asm_SSE41 : EndIf
     If ecx & #CPUID_ECX_SSE42 : Asm_Type = #Asm_SSE42 : EndIf
-    If ecx & #CPUID_ECX_AVX   : Asm_Type = #Asm_AVX   : EndIf
+    
+    ; Vérification cruciale : Est-ce que le CPU supporte AVX ET est-ce que l'OS supporte XSAVE ?
+    If (ecx & #CPUID_ECX_AVX) And (ecx & (1 << 27)) ; Bit 27 = OSXSAVE
+                                                    ; L'OS supporte la gestion des états étendus. Demandons à l'OS s'il a activé la gestion de YMM/ZMM
+      Protected xcr0_low.l = 0
+      CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+        !xor ecx, ecx ; XCR0 = 0
+        !xgetbv
+        !mov [p.v_xcr0_low], eax
+      CompilerElse
+        !asm volatile ("xgetbv" : "=a" (v_xcr0_low) : "c" (0) : "edx");
+      CompilerEndIf
+      
+      ; Bit 1 = XMM (1), Bit 2 = YMM (2) -> Somme = 6 (Requis pour AVX/AVX2)
+      If (xcr0_low & 6) = 6
+        AVX_Supported = #True
+        Asm_Type = #Asm_AVX
+        
+        ; Bits 5, 6, 7 requis pour l'état AVX512 (ZMM) -> Opmask, ZMM_Hi256, Hi16_ZMM
+        If (xcr0_low & $E0) = $E0
+          AVX512_Supported = #True
+        EndIf
+      EndIf
+    EndIf
     
     ; --- Phase 2 : Flags Etendus (EAX = 7, ECX = 0) ---
-    ; Requis pour AVX2 et AVX512
-    CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
-      !mov eax, 7
-      !xor ecx, ecx
-      !cpuid
-      !mov [p.v_ebx], ebx
-    CompilerElse
-      !asm volatile ("cpuid" : "=a" (v_eax), "=b" (v_ebx), "=c" (v_ecx), "=d" (v_edx) : "a" (7), "c" (0));
-    CompilerEndIf
+    If AVX_Supported
+      CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+        !mov eax, 7
+        !xor ecx, ecx
+        !cpuid
+        !mov [p.v_ebx], ebx
+      CompilerElse
+        !asm volatile ("cpuid" : "=a" (v_eax), "=b" (v_ebx), "=c" (v_ecx), "=d" (v_edx) : "a" (7), "c" (0));
+        ebx = v_ebx
+      CompilerEndIf
+      
+      If ebx & #CPUID_EBX_AVX2   : Asm_Type = #Asm_AVX2   : EndIf
+      If AVX512_Supported And (ebx & #CPUID_EBX_AVX512) ; AVX512_F flag généralement
+        Asm_Type = #Asm_AVX512 
+      EndIf
+    EndIf
     
-    If ebx & #CPUID_EBX_AVX2   : Asm_Type = #Asm_AVX2   : EndIf
-    If ebx & #CPUID_EBX_AVX512 : Asm_Type = #Asm_AVX512 : EndIf
-    
+    ; --- Phase 3 : Attribution à votre structure ---
     FilterCtx\asm_max = 0
     Select Asm_Type
       Case #Asm_SSE2   : FilterCtx\asm_max = 1
-      Case #Asm_SSE42  : FilterCtx\asm_max = 2
+      Case #Asm_SSE42  : FilterCtx\asm_max = 2 ; (Note: inclus SSE3 à SSE4.2)
       Case #Asm_AVX2   : FilterCtx\asm_max = 3
       Case #Asm_AVX512 : FilterCtx\asm_max = 4
     EndSelect
@@ -2205,151 +2372,270 @@ Module filtres
   Global *Buffer_ZMM = AllocateMemory(#Reg_ZMM_Size * 128)
   
   Procedure Push_Reg(*FilterCtx.FilterParams)
+    CompilerIf #PB_Compiler_Processor = #PB_Processor_x86 : ProcedureReturn : CompilerEndIf
     Protected *pos = *Buffer_GP + (FilterCtx\thread_pos * #Reg_GP_Size)
-    !mov rax,[p.p_pos]
-    !mov [rax + 0],   rbx
-    !mov [rax + 8],   rcx
-    !mov [rax + 16],  rdx
-    !mov [rax + 24],  rsi
-    !mov [rax + 32],  rdi
-    !mov [rax + 40],  rbp
-    !mov [rax + 48],  r8
-    !mov [rax + 56],  r9
-    !mov [rax + 64],  r10
-    !mov [rax + 72],  r11
-    !mov [rax + 80],  r12
-    !mov [rax + 88],  r13
-    !mov [rax + 96],  r14
-    !mov [rax + 104], r15
+    CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+      !mov rax,[p.p_pos]
+      !mov [rax + 0],   rbx
+      !mov [rax + 8],   rcx
+      !mov [rax + 16],  rdx
+      !mov [rax + 24],  rsi
+      !mov [rax + 32],  rdi
+      !mov [rax + 40],  rbp
+      !mov [rax + 48],  r8
+      !mov [rax + 56],  r9
+      !mov [rax + 64],  r10
+      !mov [rax + 72],  r11
+      !mov [rax + 80],  r12
+      !mov [rax + 88],  r13
+      !mov [rax + 96],  r14
+      !mov [rax + 104], r15
+    CompilerElse ; (Syntaxe AT&T)
+      ;!asm volatile ( \
+      ;!  "movq v_pos(%rip), %rax \n\t" \
+      ;!  "movq %rbx, 0(%rax) \n\t" \
+      ;!  "movq %rcx, 8(%rax) \n\t" \
+      ;!  "movq %rdx, 16(%rax) \n\t" \
+      ;!  "movq %rsi, 24(%rax) \n\t" \
+      ;!  "movq %rdi, 32(%rax) \n\t" \
+      ;!  "movq %rbp, 40(%rax) \n\t" \
+      ;!  "movq %r8,  48(%rax) \n\t" \
+      ;!  "movq %r9,  56(%rax) \n\t" \
+      ;!  "movq %r10, 64(%rax) \n\t" \
+      ;!  "movq %r11, 72(%rax) \n\t" \
+      ;!  "movq %r12, 80(%rax) \n\t" \
+      ;!  "movq %r13, 88(%rax) \n\t" \
+      ;!  "movq %r14, 96(%rax) \n\t" \
+      ;!  "movq %r15, 104(%rax)" \
+      ;!);
+    CompilerEndIf
   EndProcedure
   
-  Macro macro_Push_Reg_XMM(v1, v2)
-    !mov rdx , rax
-    !add rdx , v1
-    !movdqu [rdx], xmm#v2
-  EndMacro
-  
   Procedure Push_Reg_XMM(*FilterCtx.FilterParams)
+    CompilerIf #PB_Compiler_Processor = #PB_Processor_x86 : ProcedureReturn : CompilerEndIf
     Protected *pos = *Buffer_XMM + (FilterCtx\thread_pos * #Reg_XMM_Size)
-    !mov rax, [p.p_pos]
-    !movdqu [rax + 0], xmm0
-    !movdqu [rax + 16], xmm1
-    !movdqu [rax + 32], xmm2
-    !movdqu [rax + 48], xmm3
-    !movdqu [rax + 64], xmm4
-    !movdqu [rax + 80], xmm5
-    !movdqu [rax + 96], xmm6
-    !movdqu [rax + 112], xmm7
-    !movdqu [rax + 128], xmm8
-    !movdqu [rax + 144], xmm9
-    !movdqu [rax + 160], xmm10
-    !movdqu [rax + 176], xmm11
-    !movdqu [rax + 192], xmm12
-    !movdqu [rax + 208], xmm13
-    !movdqu [rax + 224], xmm14
-    !movdqu [rax + 240], xmm15
+    CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+      !mov rax, [p.p_pos]
+      !movdqu [rax + 0],   xmm0
+      !movdqu [rax + 16],  xmm1
+      !movdqu [rax + 32],  xmm2
+      !movdqu [rax + 48],  xmm3
+      !movdqu [rax + 64],  xmm4
+      !movdqu [rax + 80],  xmm5
+      !movdqu [rax + 96],  xmm6
+      !movdqu [rax + 112], xmm7
+      !movdqu [rax + 128], xmm8
+      !movdqu [rax + 144], xmm9
+      !movdqu [rax + 160], xmm10
+      !movdqu [rax + 176], xmm11
+      !movdqu [rax + 192], xmm12
+      !movdqu [rax + 208], xmm13
+      !movdqu [rax + 224], xmm14
+      !movdqu [rax + 240], xmm15
+    CompilerElse; Backend C (Syntaxe AT&T)
+      ;!asm ("movq v_pos(%rip), %rax");
+      ;!asm ("movdqu %xmm0,   0(%rax)");
+      ;!asm ("movdqu %xmm1,  16(%rax)");
+      ;!asm ("movdqu %xmm2,  32(%rax)");
+      ;!asm ("movdqu %xmm3,  48(%rax)");
+      ;!asm ("movdqu %xmm4,  64(%rax)");
+      ;!asm ("movdqu %xmm5,  80(%rax)");
+      ;!asm ("movdqu %xmm6,  96(%rax)");
+      ;!asm ("movdqu %xmm7, 112(%rax)");
+      ;!asm ("movdqu %xmm8, 128(%rax)");
+      ;!asm ("movdqu %xmm9, 144(%rax)");
+      ;!asm ("movdqu %xmm10, 160(%rax)");
+      ;!asm ("movdqu %xmm11, 176(%rax)");
+      ;!asm ("movdqu %xmm12, 192(%rax)");
+      ;!asm ("movdqu %xmm13, 208(%rax)");
+      ;!asm ("movdqu %xmm14, 224(%rax)");
+      ;!asm ("movdqu %xmm15, 240(%rax)");
+    CompilerEndIf
   EndProcedure
   
   
   Procedure Pop_reg(*FilterCtx.FilterParams)
+    CompilerIf #PB_Compiler_Processor = #PB_Processor_x86 : ProcedureReturn : CompilerEndIf
     Protected *pos = *Buffer_GP + (FilterCtx\thread_pos * #Reg_GP_Size)
-    !mov rax, [p.p_pos]
-    !mov rbx, [rax + 0]
-    !mov rcx, [rax + 8]
-    !mov rdx, [rax + 16]
-    !mov rsi, [rax + 24]
-    !mov rdi, [rax + 32]
-    !mov rbp, [rax + 40]
-    !mov r8,  [rax + 48]
-    !mov r9,  [rax + 56]
-    !mov r10, [rax + 64]
-    !mov r11, [rax + 72]
-    !mov r12, [rax + 80]
-    !mov r13, [rax + 88]
-    !mov r14, [rax + 96]
-    !mov r15, [rax + 104]
+    CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+      !mov rax, [p.p_pos]
+      !mov rbx, [rax + 0]
+      !mov rcx, [rax + 8]
+      !mov rdx, [rax + 16]
+      !mov rsi, [rax + 24]
+      !mov rdi, [rax + 32]
+      !mov rbp, [rax + 40]
+      !mov r8,  [rax + 48]
+      !mov r9,  [rax + 56]
+      !mov r10, [rax + 64]
+      !mov r11, [rax + 72]
+      !mov r12, [rax + 80]
+      !mov r13, [rax + 88]
+      !mov r14, [rax + 96]
+      !mov r15, [rax + 104]
+    CompilerElse; Backend C (Syntaxe AT&T)
+      ;!asm ("movq v_pos(%rip), %rax");
+      ;!asm ("movq 0(%rax),   %rbx");
+      ;!asm ("movq 8(%rax),   %rcx");
+      ;!asm ("movq 16(%rax),  %rdx");
+      ;!asm ("movq 24(%rax),  %rsi");
+      ;!asm ("movq 32(%rax),  %rdi");
+      ;!asm ("movq 40(%rax),  %rbp");
+      ;!asm ("movq 48(%rax),  %r8");
+      ;!asm ("movq 56(%rax),  %r9");
+      ;!asm ("movq 64(%rax),  %r10");
+      ;!asm ("movq 72(%rax),  %r11");
+      ;!asm ("movq 80(%rax),  %r12");
+      ;!asm ("movq 88(%rax),  %r13");
+      ;!asm ("movq 96(%rax),  %r14");
+      ;!asm ("movq 104(%rax), %r15");
+    CompilerEndIf
   EndProcedure
   
   Procedure Pop_Reg_XMM(*FilterCtx.FilterParams)
+    CompilerIf #PB_Compiler_Processor = #PB_Processor_x86 : ProcedureReturn : CompilerEndIf
     Protected *pos = *Buffer_XMM + (FilterCtx\thread_pos * #Reg_XMM_Size)
-    !mov rax, [p.p_pos]
-    !movdqu xmm0,  [rax + 0]
-    !movdqu xmm1,  [rax + 16]
-    !movdqu xmm2,  [rax + 32]
-    !movdqu xmm3,  [rax + 48]
-    !movdqu xmm4,  [rax + 64]
-    !movdqu xmm5,  [rax + 80]
-    !movdqu xmm6,  [rax + 96]
-    !movdqu xmm7,  [rax + 112]
-    !movdqu xmm8,  [rax + 128]
-    !movdqu xmm9,  [rax + 144]
-    !movdqu xmm10, [rax + 160]
-    !movdqu xmm11, [rax + 176]
-    !movdqu xmm12, [rax + 192]
-    !movdqu xmm13, [rax + 208]
-    !movdqu xmm14, [rax + 224]
-    !movdqu xmm15, [rax + 240]
+    CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+      !mov rax, [p.p_pos]
+      !movdqu xmm0,  [rax + 0]
+      !movdqu xmm1,  [rax + 16]
+      !movdqu xmm2,  [rax + 32]
+      !movdqu xmm3,  [rax + 48]
+      !movdqu xmm4,  [rax + 64]
+      !movdqu xmm5,  [rax + 80]
+      !movdqu xmm6,  [rax + 96]
+      !movdqu xmm7,  [rax + 112]
+      !movdqu xmm8,  [rax + 128]
+      !movdqu xmm9,  [rax + 144]
+      !movdqu xmm10, [rax + 160]
+      !movdqu xmm11, [rax + 176]
+      !movdqu xmm12, [rax + 192]
+      !movdqu xmm13, [rax + 208]
+      !movdqu xmm14, [rax + 224]
+      !movdqu xmm15, [rax + 240]
+    CompilerElse; Backend C (Syntaxe AT&T)
+      ;!asm ("movq v_pos(%rip), %rax");
+      ;!asm ("vmovdqu 0(%rax),   %xmm0");
+      ;!asm ("vmovdqu 16(%rax),  %xmm1");
+      ;!asm ("vmovdqu 32(%rax),  %xmm2");
+      ;!asm ("vmovdqu 48(%rax),  %xmm3");
+      ;!asm ("vmovdqu 64(%rax),  %xmm4");
+      ;!asm ("vmovdqu 80(%rax),  %xmm5");
+      ;!asm ("vmovdqu 96(%rax),  %xmm6");
+      ;!asm ("vmovdqu 112(%rax), %xmm7");
+      ;!asm ("vmovdqu 128(%rax), %xmm8");
+      ;!asm ("vmovdqu 144(%rax), %xmm9");
+      ;!asm ("vmovdqu 160(%rax), %xmm10");
+      ;!asm ("vmovdqu 176(%rax), %xmm11");
+      ;!asm ("vmovdqu 192(%rax), %xmm12");
+      ;!asm ("vmovdqu 208(%rax), %xmm13");
+      ;!asm ("vmovdqu 224(%rax), %xmm14");
+      ;!asm ("vmovdqu 240(%rax), %xmm15");
+    CompilerEndIf
   EndProcedure
   
   Procedure Push_Reg_YMM(*FilterCtx.FilterParams)
+    CompilerIf #PB_Compiler_Processor = #PB_Processor_x86 : ProcedureReturn : CompilerEndIf
     Protected *pos = *Buffer_YMM + (FilterCtx\thread_pos * #Reg_YMM_Size)
-    !mov rax, [p.p_pos]
-    !vmovdqu [rax + 0],   ymm0
-    !vmovdqu [rax + 32],  ymm1
-    !vmovdqu [rax + 64],  ymm2
-    !vmovdqu [rax + 96],  ymm3
-    !vmovdqu [rax + 128], ymm4
-    !vmovdqu [rax + 160], ymm5
-    !vmovdqu [rax + 192], ymm6
-    !vmovdqu [rax + 224], ymm7
-    !vmovdqu [rax + 256], ymm8
-    !vmovdqu [rax + 288], ymm9
-    !vmovdqu [rax + 320], ymm10
-    !vmovdqu [rax + 352], ymm11
-    !vmovdqu [rax + 384], ymm12
-    !vmovdqu [rax + 416], ymm13
-    !vmovdqu [rax + 448], ymm14
-    !vmovdqu [rax + 480], ymm15
+    CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+      !mov rax, [p.p_pos]
+      !vmovdqu [rax + 0],   ymm0
+      !vmovdqu [rax + 32],  ymm1
+      !vmovdqu [rax + 64],  ymm2
+      !vmovdqu [rax + 96],  ymm3
+      !vmovdqu [rax + 128], ymm4
+      !vmovdqu [rax + 160], ymm5
+      !vmovdqu [rax + 192], ymm6
+      !vmovdqu [rax + 224], ymm7
+      !vmovdqu [rax + 256], ymm8
+      !vmovdqu [rax + 288], ymm9
+      !vmovdqu [rax + 320], ymm10
+      !vmovdqu [rax + 352], ymm11
+      !vmovdqu [rax + 384], ymm12
+      !vmovdqu [rax + 416], ymm13
+      !vmovdqu [rax + 448], ymm14
+      !vmovdqu [rax + 480], ymm15
+    CompilerElse; Backend C (Syntaxe AT&T)
+      ;!asm ("movq v_pos(%rip), %rax");
+      ;!asm ("vmovdqu %ymm0,   0(%rax)");
+      ;!asm ("vmovdqu %ymm1,  32(%rax)");
+      ;!asm ("vmovdqu %ymm2,  64(%rax)");
+      ;!asm ("vmovdqu %ymm3,  96(%rax)");
+      ;!asm ("vmovdqu %ymm4, 128(%rax)");
+      ;!asm ("vmovdqu %ymm5, 160(%rax)");
+      ;!asm ("vmovdqu %ymm6, 192(%rax)");
+      ;!asm ("vmovdqu %ymm7, 224(%rax)");
+      ;!asm ("vmovdqu %ymm8, 256(%rax)");
+      ;!asm ("vmovdqu %ymm9, 288(%rax)");
+      ;!asm ("vmovdqu %ymm10, 320(%rax)");
+      ;!asm ("vmovdqu %ymm11, 352(%rax)");
+      ;!asm ("vmovdqu %ymm12, 384(%rax)");
+      ;!asm ("vmovdqu %ymm13, 416(%rax)");
+      ;!asm ("vmovdqu %ymm14, 448(%rax)");
+      ;!asm ("vmovdqu %ymm15, 480(%rax)");
+    CompilerEndIf
   EndProcedure
   
   Procedure Pop_Reg_YMM(*FilterCtx.FilterParams)
+    CompilerIf #PB_Compiler_Processor = #PB_Processor_x86 : ProcedureReturn : CompilerEndIf
     Protected *pos = *Buffer_YMM + (FilterCtx\thread_pos * #Reg_YMM_Size)
-    !mov rax, [p.p_pos]
-    !vmovdqu [rax + 0*32],  ymm0
-    !vmovdqu [rax + 1*32],  ymm1
-    !vmovdqu [rax + 2*32],  ymm2
-    !vmovdqu [rax + 3*32],  ymm3
-    !vmovdqu [rax + 4*32],  ymm4
-    !vmovdqu [rax + 5*32],  ymm5
-    !vmovdqu [rax + 6*32],  ymm6
-    !vmovdqu [rax + 7*32],  ymm7
-    !vmovdqu [rax + 8*32],  ymm8
-    !vmovdqu [rax + 9*32],  ymm9
-    !vmovdqu [rax + 10*32], ymm10
-    !vmovdqu [rax + 11*32], ymm11
-    !vmovdqu [rax + 12*32], ymm12
-    !vmovdqu [rax + 13*32], ymm13
-    !vmovdqu [rax + 14*32], ymm14
-    !vmovdqu [rax + 15*32], ymm15
-    !vzeroupper
+    CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+      !mov rax, [p.p_pos]
+      !vmovdqu [rax + 0*32],  ymm0
+      !vmovdqu [rax + 1*32],  ymm1
+      !vmovdqu [rax + 2*32],  ymm2
+      !vmovdqu [rax + 3*32],  ymm3
+      !vmovdqu [rax + 4*32],  ymm4
+      !vmovdqu [rax + 5*32],  ymm5
+      !vmovdqu [rax + 6*32],  ymm6
+      !vmovdqu [rax + 7*32],  ymm7
+      !vmovdqu [rax + 8*32],  ymm8
+      !vmovdqu [rax + 9*32],  ymm9
+      !vmovdqu [rax + 10*32], ymm10
+      !vmovdqu [rax + 11*32], ymm11
+      !vmovdqu [rax + 12*32], ymm12
+      !vmovdqu [rax + 13*32], ymm13
+      !vmovdqu [rax + 14*32], ymm14
+      !vmovdqu [rax + 15*32], ymm15
+      !vzeroupper
+    CompilerElse; Backend C (Syntaxe AT&T)
+      ;!asm ("movq v_pos(%rip), %rax");
+      ;!asm ("vmovdqu %ymm0,   0(%rax)");
+      ;!asm ("vmovdqu %ymm1,  32(%rax)");
+      ;!asm ("vmovdqu %ymm2,  64(%rax)");
+      ;!asm ("vmovdqu %ymm3,  96(%rax)");
+      ;!asm ("vmovdqu %ymm4, 128(%rax)");
+      ;!asm ("vmovdqu %ymm5, 160(%rax)");
+      ;!asm ("vmovdqu %ymm6, 192(%rax)");
+      ;!asm ("vmovdqu %ymm7, 224(%rax)");
+      ;!asm ("vmovdqu %ymm8, 256(%rax)");
+      ;!asm ("vmovdqu %ymm9, 288(%rax)");
+      ;!asm ("vmovdqu %ymm10, 320(%rax)");
+      ;!asm ("vmovdqu %ymm11, 352(%rax)");
+      ;!asm ("vmovdqu %ymm12, 384(%rax)");
+      ;!asm ("vmovdqu %ymm13, 416(%rax)");
+      ;!asm ("vmovdqu %ymm14, 448(%rax)");
+      ;!asm ("vmovdqu %ymm15, 480(%rax)");
+      ;!asm ("vzeroupper");
+    CompilerEndIf
   EndProcedure
   
   Procedure Push_Reg_ZMM(*FilterCtx.FilterParams)
     Protected *pos = *Buffer_ZMM + (FilterCtx\thread_pos * #Reg_ZMM_Size)
-    !mov rax, [p.p_pos]
+    ;!mov rax, [p.p_pos]
     ; Rappel: 32 registres en AVX-512
-    !vmovdqu64 [rax + 0*64], zmm0
-    !vmovdqu64 [rax + 1*64], zmm1
+    ;!vmovdqu64 [rax + 0*64], zmm0
+    ;!vmovdqu64 [rax + 1*64], zmm1
     ; ...
-    !vmovdqu64 [rax + 31*64], zmm31
+    ;!vmovdqu64 [rax + 31*64], zmm31
   EndProcedure
   
   Procedure Pop_Reg_ZMM(*FilterCtx.FilterParams)
     Protected *pos = *Buffer_ZMM + (FilterCtx\thread_pos * #Reg_ZMM_Size)
-    !mov rax, [p.p_pos]
-    !vmovdqu64 zmm0,  [rax + 0*64]
+    ;!mov rax, [p.p_pos]
+    ;!vmovdqu64 zmm0,  [rax + 0*64]
     ; ...
-    !vmovdqu64 zmm31, [rax + 31*64]
+    ;!vmovdqu64 zmm31, [rax + 31*64]
   EndProcedure
   
   ;-------------------------------------------------------------------
@@ -2373,12 +2659,12 @@ Module filtres
   
   ;CompilerIf #PB_Compiler_OS = #PB_OS_Linux
   ;#Blur_Directional
-  XIncludeFile "blur_radial.pbi"
-  XIncludeFile "blur_radial_IIR.pbi"
-  XIncludeFile "blur_spiral_IIR.pbi"
-  XIncludeFile "Blur_spiral_stochastic.pbi"
-  XIncludeFile "Blur_spiral_Accumulation.pbi"
-  XIncludeFile "Blur_spiral_Separable.pbi"
+  XIncludeFile "radial.pbi"
+  XIncludeFile "radial_IIR.pbi"
+  XIncludeFile "spiral_IIR.pbi"
+  XIncludeFile "spiral_stochastic.pbi"
+  XIncludeFile "spiral_Accumulation.pbi"
+  XIncludeFile "spiral_Separable.pbi"
   XIncludeFile "DirectionalBlur.pbi"
   XIncludeFile "MotionBlur.pbi"
   XIncludeFile "ZoomBlur.pbi"
@@ -2391,7 +2677,7 @@ Module filtres
   XIncludeFile "SeparableGaussian.pbi"
   XIncludeFile "HeatDiffusionBlur.pbi"
   ;#Blur_EdgeAware
-  XIncludeFile "blur_bilateral.pbi"
+  XIncludeFile "bilateral.pbi"
   XIncludeFile "Edge_Aware.pbi"
   XIncludeFile "GuidedFilterColor.pbi"
   XIncludeFile "WLSBlur.pbi"
@@ -2401,7 +2687,7 @@ Module filtres
   XIncludeFile "SmartBlur.pbi"
   XIncludeFile "SurfaceBlur.pbi"
   ;#Blur_Adaptive
-  XIncludeFile "blur_median.pbi"
+  XIncludeFile "median.pbi"
   XIncludeFile "AnisotropicBlur.pbi"
   XIncludeFile "KuwaharaBlur.pbi"
   XIncludeFile "NLMBlur.pbi"
@@ -2698,11 +2984,11 @@ Module filtres
 EndModule
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 1420
-; FirstLine = 1399
-; Folding = ------------
+; CursorPosition = 127
+; FirstLine = 84
+; Folding = ---------------
 ; Optimizer
 ; EnableXP
 ; DPIAware
 ; CPU = 5
-; Compiler = PureBasic 6.21 (Windows - x64)
+; Compiler = PureBasic 6.40 - C Backend (Windows - x64)

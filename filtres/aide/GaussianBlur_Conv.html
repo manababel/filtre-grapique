@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme GaussianBlur Conv</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        /* Structure de démo compatible (Tableau au lieu de Flexbox) */
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            color: #ffffff;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Convolution Mathématique Avancée</div>
+        <h1>Documentation - Algorithme <span>GaussianBlur_Conv</span></h1>
+        <p>Flou gaussien mathématique de haute précision par convolution séparable 1D</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation Gaussienne ?</h2>
+        <ul>
+            <li>
+                <strong>Fidélité Mathématique Absolue :</strong> Contrairement aux approximations graphiques rapides (comme l'IIR ou le StackBlur), ce filtre génère le véritable Flou Gaussien d'une précision photographique irréprochable. Le noyau (*kernel*) de convolution est calculé dynamiquement au démarrage à l'aide de l'authentique fonction exponentielle de la cloche de Gauss.
+            </li>
+            <li>
+                <strong>Séparabilité Spatiale 2D en 1D :</strong> Effectuer une matrice de convolution 2D classique (un gros carré) de rayon $R$ requiert $(2R+1) \times (2R+1)$ lectures par pixel. Grâce à la séparabilité de la fonction Gaussienne, votre code divise drastiquement ce coût : il fait d'abord une **passe 1D horizontale**, stocke le résultat dans un tampon temporaire (`*tempo`), puis enchaîne sur une **passe 1D verticale**. 
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Complexité dépendante du rayon — $O(N \times R)$ :</strong> C'est son principal point faible par rapport aux filtres de type SAT (Summed-Area Table), IIR ou StackBlur dont le temps d'exécution reste parfaitement constant. Ici, plus le rayon ($R$) augmente, plus le nombre de lectures en mémoire par pixel augmente linéairement. Le filtre devient lourd sur de très grands rayons.
+                </li>
+                <li>
+                    <strong>Surenchère d'allocations de mémoire vive :</strong> La technique de séparabilité exige la création d'un calque tampon intermédiaire (`*tempo`) de taille strictement identique à l'image d'origine. Sur de très grandes textures (images 4K ou 8K), cela engendre une consommation de RAM non négligeable.
+                </li>
+                <li>
+                    <strong>Coût mathématique à l'initialisation :</strong> La génération dynamique du noyau fait appel à la fonction exponentielle (`Exp()`), particulièrement gourmande en cycles CPU. Bien que ce calcul ne soit fait qu'une seule fois en début de traitement, il ajoute une surcharge d'évaluation.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>Cette API standardise l'entrée utilisateur en assignant le rayon sélectionné dans la pile de paramètres globaux du moteur avant d'exécuter la fonction maîtresse.</p>
+        <pre><code><span class="keyword">Procedure</span> GaussianBlur_Conv(source, cible, mask, rayon)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = rayon
+  <span class="keyword">EndWith</span>
+  GaussianBlur_ConvEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Le Noyau Directeur : GaussianBlur_ConvEx</h3>
+        <p>C'est l'orchestrateur principal. Il s'occupe de valider les images, d'allouer la mémoire de travail, de générer le vecteur de floats représentant la courbe de Gauss (sigma = rayon / 2), de le **normaliser** pour éviter que l'image ne s'assombrisse ou ne s'illumine, puis de lancer les traitements séquentiels.</p>
+        <pre><code><span class="comment">; Extrait du traitement séquentiel interne :</span>
+<span class="keyword">Protected</span> sigma.f = radius * <span class="number">0.5</span>
+<span class="keyword">Protected</span> invTwoSigmaSq.f = <span class="number">1.0</span> / (<span class="number">2.0</span> * sigma * sigma)
+
+<span class="comment">; Génération des poids du filtre (Courbe de Gauss)</span>
+<span class="keyword">For</span> i = <span class="number">0</span> <span class="keyword">To</span> size - <span class="number">1</span>
+  x = i - radius
+  var = Exp(-x * x * invTwoSigmaSq)
+  PokeF(*kernel + (i * SizeOf(Float)), var)
+  sum + var
+<span class="keyword">Next</span>
+
+<span class="comment">; Normalisation : La somme des coefficients doit être strictement égale à 1.0</span>
+<span class="keyword">Protected</span> invSum.f = <span class="number">1.0</span> / sum
+<span class="keyword">For</span> i = <span class="number">0</span> <span class="keyword">To</span> size - <span class="number">1</span>
+  PokeF(*kernel + i * <span class="number">4</span>, PeekF(*kernel + i * <span class="number">4</span>) * invSum)
+<span class="keyword">Next</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Le traitement divise le problème bidimensionnel en deux sous-étapes indépendantes exécutées l'une après l'autre.</p>
+
+        <div class="card">
+            <h3>L'astuce de la Normalisation</h3>
+            <p>Le calcul d'une exponentielle génère des valeurs décimales brutes. Si l'on additionnait ces valeurs directement sur nos couleurs, l'image deviendrait complètement blanche ou noire. La boucle de **normalisation** divise chaque valeur par la somme totale du tableau. Ainsi, le mélange conserve rigoureusement la luminosité d'origine de la scène.</p>
+        </div>
+
+        <h3>La Révolution de la Séparabilité Spatiale</h3>
+        <p>Votre code applique un traitement orthogonal croisé redoutablement efficace :</p>
+
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Les Deux Passes 1D</strong>
+                        <table class="matrix">
+                            <tr><td></td><td class="active-blur">▲</td><td></td></tr>
+                            <tr><td class="active-blur">🠔</td><td class="center-pixel">P</td><td class="active-blur">➔</td></tr>
+                            <tr><td></td><td class="active-blur">▼</td><td></td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Formule d'une cellule de la cloche (1D) :</strong></p>
+                        <div class="math-box">
+                            $$G(x) = e^{-\frac{x^2}{2\sigma^2}}$$
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            <b>Passe 1 (Horizontale) :</b> Le pixel central <b>P</b> fusionne horizontalement avec ses voisins directs pondérés par le noyau, puis écrit le résultat dans le tampon d'échange.<br>
+                            <b>Passe 2 (Verticale) :</b> Le moteur repart du tampon et applique la même logique verticalement pour restituer la distribution 2D finale sur l'image cible.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Gestion des Bords de l'Image (Clamping)</h3>
+        <p>Une attention particulière a été portée dans vos routines pour empêcher le filtre de lire en dehors de la mémoire lorsque la convolution flirte avec les frontières de la texture :</p>
+        <div class="math-box" style="font-family: monospace; font-size: 0.95em; border-left-color: #f43f5e;">
+            If i &lt; 0 : i = 0 : ElseIf i &gt; wMinus1 : i = wMinus1 : EndIf
+        </div>
+        <p style="font-size: 0.9em; color: #94a3b8;">
+            Si le voisin théorique sort des limites à gauche ou à droite, l'index est verrouillé (*clamped*) sur le pixel le plus au bord disponible, évitant ainsi un crash de type <i>Invalid Memory Access</i>.
+        </p>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Global)</h3>
+        <p>Voici la chronologie d'exécution exacte des blocs de votre programme :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Rayon
+
+<span class="comment">// 1. INITIALISATION</span>
+Calculer_Vecteur_Gaussien_1D(Rayon, Noyau_Kernel)
+Normaliser_Vecteur(Noyau_Kernel)
+Allouer_Buffer_Temporaire(*tempo, Largeur, Hauteur)
+
+<span class="comment">// 2. PASSE HORIZONTALE</span>
+<span class="keyword">Pour chaque</span> Ligne Y de l'image (de 0 à Hauteur - 1)
+    Offset_Ligne = Y * Largeur
+    <span class="keyword">Pour chaque</span> Colonne X (de 0 à Largeur - 1)
+        Rouge = 0 : Vert = 0 : Bleu = 0
+        
+        <span class="keyword">Pour</span> k = -Rayon <span class="keyword">To</span> Rayon
+            IndexX = X + k
+            Ajuster_Index_Bornes_Image(IndexX, 0, Largeur - 1)
+            
+            Poids = Lire_Float(*kernel, k + Rayon)
+            Couleur_Pixel = Image_Source[Offset_Ligne + IndexX]
+            
+            Rouge + Couleur_Pixel_R * Poids
+            Vert  + Couleur_Pixel_V * Poids
+            Bleu  + Couleur_Pixel_B * Poids
+        <span class="keyword">Next</span> k
+        
+        *tempo[Offset_Ligne + X] = Réassembler_ARGB(255, Rouge, Vert, Bleu)
+    <span class="keyword">Next</span> X
+<span class="keyword">Fin Pour</span>
+
+<span class="comment">// 3. PASSE VERTICALE</span>
+<span class="keyword">Pour chaque</span> Ligne Y de l'image (de 0 à Hauteur - 1)
+    <span class="keyword">Pour chaque</span> Colonne X (de 0 à Largeur - 1)
+        Rouge = 0 : Vert = 0 : Bleu = 0
+        
+        <span class="keyword">Pour</span> k = -Rayon <span class="keyword">To</span> Rayon
+            IndexY = Y + k
+            Ajuster_Index_Bornes_Image(IndexY, 0, Hauteur - 1)
+            
+            Poids = Lire_Float(*kernel, k + Rayon)
+            Couleur_Pixel = *tempo[IndexY * Largeur + X] <span class="comment">// Lecture du tampon horizontal</span>
+            
+            Rouge + Couleur_Pixel_R * Poids
+            Vert  + Couleur_Pixel_V * Poids
+            Bleu  + Couleur_Pixel_B * Poids
+        <span class="keyword">Next</span> k
+        
+        Image_Cible[Y * Largeur + X] = Réassembler_ARGB(255, Rouge, Vert, Bleu)
+    <span class="keyword">Next</span> X
+<span class="keyword">Fin Pour</span>
+
+<span class="comment">// 4. NETTOYAGE</span>
+Libérer_Mémoire(*tempo)
+Libérer_Mémoire(*kernel)
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Traitement Numérique de l'Image Haute Performance par Convolution Séparable.</p>
+    </footer>
+
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme SpiralBlur_IIR</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #a855f7;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #a855f7;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #3b0764;
+            border: 1px solid #a855f7;
+            color: #d8b4fe;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #a855f7;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #e2e8f0;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #3b0764;
+            color: #d8b4fe;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Floutage Récursif Non-Linéaire</div>
+        <h1>Documentation - Algorithme <span>SpiralBlur_IIR</span></h1>
+        <p>Génération de traînées de flou en volute hélicoïdale par déplacement incrémental de Look-Up Tables</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation de Flou en Spirale ?</h2>
+        <ul>
+            <li>
+                <strong>Cinématique en Volute Unique :</strong> Contrairement au flou radial classique (rectiligne) ou au flou de rotation (circulaire pur), cet algorithme modifie dynamiquement l'indice de sa table trigonométrique (<code>idx + forceMod</code>) à chaque pas d'éloignement (<code>j</code>). Le rayon de balayage s'écarte du centre en se tordant, décrivant une spirale d'Archimède parfaite.
+            </li>
+            <li>
+                <strong>Vitesse Constante par Filtre Récursif (IIR) :</strong> L'utilisation d'un filtre exponentiel récursif (Infinite Impulse Response) permet d'obtenir une traînée de flou lissée sur de très grandes distances sans avoir besoin d'augmenter le nombre de prélèvements. Le coût de calcul reste stable même pour un rayon de flou immense.
+            </li>
+            <li>
+                <strong>Zonage par Rayon Actif :</strong> L'algorithme introduit une option intelligente de délimitation (<code>activeRadiusInt</code>). Le traitement récursif s'applique uniquement à l'intérieur de cette zone circulaire. Au-delà, le tracé de la spirale continue pour préserver la géométrie du balayage, mais les pixels sources sont recopiés sans modification, créant une transition nette et contrôlable.
+            </li>
+            <li>
+                <strong>Optimisations Bas Niveau Critiques :</strong> Le code élimine les opérations de division et de multiplication coûteuses dans la boucle principale en effectuant des précalculs rigoureux : factorisation des dimensions par décalages de bits (<code>lg &lt;&lt; 2</code>), mise en cache des angles au sein de pointeurs de tables (Look-Up Tables trigonométriques) et traitement du sens de rotation via un calcul booléen signé algébrique.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Asymétrie directionnelle inhérente à l'IIR :</strong> Le filtre accumulant l'historique des pixels du centre vers l'extérieur de la spirale, la diffusion des couleurs ne s'effectue que dans un seul sens de propagation. Les détails graphiques fins sont étirés de manière centrifuge, provoquant une signature visuelle asymétrique.
+                </li>
+                <li>
+                    <strong>Artefacts d'enroulement à basse qualité :</strong> Si la variable <code>quality</code> est trop faible, l'écartement angulaire entre deux bras de spirales consécutifs devient visible. Le flou perd son homogénéité et génère des motifs en forme de rayures ou d'effets de moiré tourbillonnant.
+                </li>
+                <li>
+                    <strong>Sensibilité au crénelage d'échantillonnage (Nearest Neighbor) :</strong> La lecture des coordonnées réelles converties en pointeurs se fait via une troncature entière directe (<code>Int(px)</code>). Près de l'axe central, la spirale tourne à l'intérieur d'un espace inférieur au pixel, provoquant de légers sauts de textures dus à l'absence d'un mélange bilinéaire.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique</h3>
+        <p>L'interface configure les paramètres fondamentaux de la spirale : son cœur géométrique, sa puissance récursive, son pas angulaire et son sens d'enroulement.</p>
+        <pre><code><span class="keyword">Procedure</span> SpiralBlur_IIR(source, cible, mask, rayon, posx, posy, force, qualite, ra, sens)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = rayon
+    \option[1] = posx
+    \option[2] = posy
+    \option[3] = force
+    \option[4] = qualite
+    \option[5] = ra
+    \option[6] = sens
+  <span class="keyword">EndWith</span>
+  SpiralBlur_IIREx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Normalisation de la Force et du Sens</h3>
+        <p>Afin d'éviter des structures conditionnelles lentes dans la boucle de rendu, le sens (0 ou 1) et le pas de rotation (force) sont traduits sous forme d'incrément cyclique unifié :</p>
+        <pre><code><span class="comment">; Conversion du sens binaire en multiplicateur signé (-1 ou 1) :</span>
+direction = (direction * <span class="number">2</span>) - <span class="number">1</span>
+
+<span class="comment">; Calcul du pas angulaire ramené au repère cyclique de la table :</span>
+<span class="keyword">Protected</span> forceMod = (force * direction) % angleCount
+<span class="keyword">If</span> forceMod &lt; <span class="number">0</span> : forceMod + angleCount : <span class="keyword">EndIf</span></code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Le filtre SpiralBlur_IIR projette des lignes d'échantillonnage incurvées. À chaque pas franchi le long du rayon, l'angle de lecture pivote pour enrouler la trajectoire.</p>
+
+        <div class="card">
+            <h3>Mécanisme de Déplacement Angulaire Alterné</h3>
+            <p>Au début de l'exploration d'un rayon (<code>j = 0</code>), le filtre lit le cosinus et le sinus correspondants à l'angle initial stocké dans la table.<br>
+            À chaque incrément spatial (<code>j &gt; 0</code>), l'index de la table glisse vers l'avant ou l'arrière : <code>idx + forceMod</code>. Les valeurs trigonométriques <code>cosVal</code> et <code>sinVal</code> sont alors immédiatement mises à jour par lecture mémoire directe (<code>PeekF</code>), ce qui courbe la trajectoire en hélice.</p>
+        </div>
+
+        <h3>Cinématique Géométrique de la Spirale</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Trajectoire IIR</strong>
+                        <table class="matrix">
+                            <tr><td></td><td></td><td class="active-blur">j = 3</td></tr>
+                            <tr><td></td><td class="active-blur">j = 2</td><td></td></tr>
+                            <tr><td></td><td class="active-blur">j = 1</td><td></td></tr>
+                            <tr><td class="center-pixel">Foyer</td><td></td><td></td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Loi d'Évolution des Coordonnées :</strong></p>
+                        <div class="math-box">
+                            Index_Angle(j) = (Index_Angle(j-1) + Pas_Force) % Max_Angles<br><br>
+                            Position_X = Foyer_X + j * Table_Cos(Index_Angle)<br>
+                            Position_Y = Foyer_Y + j * Table_Sin(Index_Angle)
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            À mesure que le rayon <b>j</b> grandit, l'index de lecture angulaire tourne. Le point échantillonné s'éloigne du <b>Foyer</b> tout en décrivant une courbe orbitale. Les couleurs rencontrées alimentent l'accumulateur exponentiel IIR.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>La Récursivité Exponentielle (IIR) Temporisée</h3>
+        <p>Le lissage s'effectue en mélangeant la couleur stockée au pas précédent avec celle du pixel courant de la spirale :</p>
+        <div class="math-box" style="font-family: monospace; font-size: 0.95em; border-left-color: #a855f7; color: #cbd5e1;">
+            r = Alpha * r + inv_Alpha * r1 <br>
+            g = Alpha * g + inv_Alpha * g1 <br>
+            b = Alpha * b + inv_Alpha * b1
+        </div>
+        <p style="font-size: 0.9em; color: #94a3b8;">
+            Le coefficient <code>Alpha = Exp(-2.3 / (Radius + 1))</code> régit la persistance rétinienne du flou. Plus le rayon est grand, plus la mémoire des pixels précédents est préservée, étirant la volute de la spirale de manière fluide.
+        </p>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici l'ordonnancement complet des instructions arithmétiques exécutées par le moteur de flou en spirale :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Rayon Filtre, Centre X/Y (%), Force, Qualité, Rayon Actif (%), Sens
+
+<span class="comment">// 1. PRÉCALCULS DE MATRICE ET DE TABLES</span>
+Max_Angles = 360 * Qualité
+Pas_Qualité = 1.0 / Qualité
+
+Pour i de 0 à Max_Angles - 1
+    Table_Cos[i] = Cos(InRadians(i * Pas_Qualité))
+    Table_Sin[i] = Sin(InRadians(i * Pas_Qualité))
+Fin Pour
+
+Foyer_X = Largeur_Image * (Centre_X / 100.0)
+Foyer_Y = Hauteur_Image * (Centre_Y / 100.0)
+
+Incrément_Sens = (Sens * 2) - 1
+Pas_Force = (Force * Incrément_Sens) Mod Max_Angles
+Si Pas_Force &lt; 0 Alors Pas_Force = Pas_Force + Max_Angles
+
+Alpha = Exp(-2.3 / (Rayon_Filtre + 1))
+Inv_Alpha = 1.0 - Alpha
+
+Rayon_Max_Espace = Déterminer_Distance_Angle_Max(Foyer_X, Foyer_Y)
+Seuil_Rayon_Actif = (Rayon_Actif * Rayon_Max_Espace) / 100.0
+
+<span class="comment">// 2. ENROULEMENT ET BALAYAGE DES BRAS DE LA SPIRALE</span>
+<span class="keyword">Pour chaque</span> Angle_Initial i de 0 à Max_Angles - 1
+    
+    Accumulateur_R = 0.0 : Accumulateur_G = 0.0 : Accumulateur_B = 0.0
+    Premier_Pixel_Du_Bras = Vrai
+    Index_Courant = i
+    
+    <span class="keyword">Pour</span> Pas_J = 0 <span class="keyword">To</span> Rayon_Max_Espace
+        
+        <span class="comment">// Courbure de l'arc si nous progressons sur le bras</span>
+        <span class="keyword">Si</span> Pas_J &gt; 0 Alors
+            Index_Courant = (Index_Courant + Pas_Force)
+            Si Index_Courant &gt;= Max_Angles Alors Index_Courant = Index_Courant - Max_Angles
+        <span class="keyword">Fin Si</span>
+        
+        Cos_V = Table_Cos[Index_Courant]
+        Sin_V = Table_Sin[Index_Courant]
+        
+        <span class="comment">// Projection spatiale</span>
+        Proj_X = Foyer_X + Pas_J * Cos_V
+        Proj_Y = Foyer_Y + Pas_J * Sin_V
+        
+        <span class="comment">// Exclusion des débordements de l'écran</span>
+        <span class="keyword">Si</span> Proj_X &gt;= 0 Et Proj_X &lt; Largeur_Image Et Proj_Y &gt;= 0 Et Proj_Y &lt; Hauteur_Image
+            
+            Pixel_Source = Lire_Pixel_Source(Int(Proj_X), Int(Proj_Y))
+            Alpha_S = Extraire_Alpha(Pixel_Source)
+            R_S = Extraire_Rouge(Pixel_Source)
+            G_S = Extraire_Vert(Pixel_Source)
+            B_S = Extraire_Bleu(Pixel_Source)
+            
+            <span class="comment">// Filtrage IIR sous condition du domaine actif</span>
+            <span class="keyword">Si</span> Pas_J &lt; Seuil_Rayon_Actif Repérer
+                <span class="keyword">Si</span> Premier_Pixel_Du_Bras == Vrai Alors
+                    Accumulateur_R = R_S : Accumulateur_G = G_S : Accumulateur_B = B_S
+                    Premier_Pixel_Du_Bras = Faux
+                <span class="keyword">Sinon</span>
+                    Accumulateur_R = Alpha * Accumulateur_R + Inv_Alpha * R_S
+                    Accumulateur_G = Alpha * Accumulateur_G + Inv_Alpha * G_S
+                    Accumulateur_B = Alpha * Accumulateur_B + Inv_Alpha * B_S
+                <span class="keyword">Fin Si</span>
+                R_S = Accumulateur_R : G_S = Accumulateur_G : B_S = Accumulateur_B
+            <span class="keyword">Fin Si</span>
+            
+            <span class="comment">// Clamping et écriture immédiate</span>
+            R_S = Limiter_0_255(R_S) : G_S = Limiter_0_255(G_S) : B_S = Limiter_0_255(B_S)
+            Écrire_Pixel_Cible(Int(Proj_X), Int(Proj_Y), Réassembler_ARGB(Alpha_S, R_S, G_S, B_S))
+            
+        <span class="keyword">Fin Si</span>
+    <span class="keyword">Next</span> Pas_J
+<span class="keyword">Fin Pour</span>
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Filtrage Numérique Récursif par Projection Tourbillonnaire d'Archimède.</p>
+    </footer>
+
+</body>
+</html>

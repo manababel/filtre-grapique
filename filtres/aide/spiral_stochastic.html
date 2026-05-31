@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Algorithme SpiralBlur Stochastic</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background-color: #0f172a;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #10b981;
+        }
+
+        h2 {
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            font-size: 1.5em;
+        }
+
+        h3 {
+            color: #ffffff;
+            margin-top: 25px;
+            background-color: #1e293b;
+            padding: 8px 12px;
+            border-left: 4px solid #10b981;
+        }
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        strong {
+            color: #ffffff;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        .danger-card {
+            background-color: #1c1917;
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ef4444;
+        }
+
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #064e3b;
+            border: 1px solid #10b981;
+            color: #a7f3d0;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #991b1b;
+            border: 1px solid #f43f5e;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #10b981;
+            padding: 15px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #e2e8f0;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #064e3b;
+            color: #10b981;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
+            overflow-x: auto;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge">Échantillonnage Discret Type Shader</div>
+        <h1>Documentation - Algorithme <span>SpiralBlur_Stochastic</span></h1>
+        <p>Approche de type Monte-Carlo par distribution de poids gaussien et dispersion angulaire adaptative</p>
+    </header>
+
+    <main>
+        <h2>1. Pourquoi utiliser cette implémentation Stochastique ?</h2>
+        <ul>
+            <li>
+                <strong>Vitesse d'Exécution Révolutionnaire (Gain 10x à 20x) :</strong> Au lieu de parcourir l'intégralité des pixels situés le long de la ligne spirale (ce qui demande des centaines de lectures), l'algorithme bride le nombre de prélèvements à un maximum strict (<code>Min(samples, Radius, 16)</code>). Cette économie drastique de boucles simule le comportement ultra-rapide des processeurs graphiques (GPU).
+            </li>
+            <li>
+                <strong>Distribution Gaussienne Intégrée :</strong> L'atténuation du flou n'est pas linéaire. Chaque échantillon reçoit un poids basé sur une approximation gaussienne clochée (<code>Exp(-(offset*offset) / (2*Radius*Radius))</code>). Les points spatialement proches de la position originale pèsent plus lourd que les points périphériques, offrant un lissage de transition de haute facture.
+            </li>
+            <li>
+                <strong>Modulation Angulaire par Distance :</strong> Le déplacement hélicoïdal s'adapte en temps réel à l'éloignement par rapport au centre. La variable de rotation (<code>force * dist * direction * s * invSamples / 100.0</code>) utilise la distance (<code>dist</code>) comme multiplicateur. Plus le pixel analysé s'éloigne du centre, plus l'arc de la spirale s'étire et s'enroule de façon dynamique.
+            </li>
+        </ul>
+
+        <h2>2. Les Inconvénients et Limites du Filtre</h2>
+        <div class="danger-card">
+            <ul>
+                <li>
+                    <strong>Grain de dispersion (Bruit stochastique) :</strong> En limitant le balayage à 16 échantillons seulement pour de grands rayons, l'algorithme effectue des sauts spatiaux importants. Cela engendre une perte de précision locale et produit un aspect légèrement granuleux ou haché (aliasing de sous-échantillonnage), typique des rendus Monte-Carlo sans post-débruitage.
+                </li>
+                <li>
+                    <strong>Surcharge Trigonométrique Redondante :</strong> Contrairement à d'autres versions optimisées, le code appelle les fonctions <code>Cos()</code> et <code>Sin()</code> à l'intérieur de la sous-boucle pour chaque échantillon de chaque pixel. L'absence d'utilisation des tables de sinus/cosinus pourtant précalculées dans la fonction d'initialisation limite le potentiel maximal de vitesse du filtre.
+                </li>
+                <li>
+                    <strong>Incohérence du code de liaison (Bug d'appel) :</strong> La procédure d'appel publique <code>spiral_stochastic()</code> redirige par erreur son exécution vers l'ancien moteur récursif <code>SpiralBlur_IIREx</code> au lieu de cibler son propre interpréteur <code>spiral_stochasticEx</code>. Cette anomalie matérielle neutralise l'appel stochastique en l'état.
+                </li>
+            </ul>
+        </div>
+
+        <h2>3. Structure et Intégration (PureBasic)</h2>
+
+        <h3>La Fonction d'Appel Publique et Correctif</h3>
+        <p>L'interface convertit les variables utilisateur pour initialiser le filtrage par dispersion. <i>Note : Le moteur interne doit être redirigé vers sa propre extension.</i></p>
+        <pre><code><span class="keyword">Procedure</span> spiral_stochastic(source , cible , mask , rayon , posx , posy , force , qualite , ra , sens)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
+  <span class="keyword">With</span> FilterCtx
+    \option[0] = rayon
+    \option[1] = posx
+    \option[2] = posy
+    \option[3] = force
+    \option[4] = qualite
+    \option[5] = ra
+    \option[6] = sens
+  <span class="keyword">EndWith</span>
+  <span class="comment">; CORRECTIF : Pointer vers spiral_stochasticEx(FilterCtx.FilterParams)</span>
+  spiral_stochasticEx(FilterCtx.FilterParams)
+<span class="keyword">EndProcedure</span></code></pre>
+
+        <h3>Régulation Critique de la Densité (Monte-Carlo)</h3>
+        <p>C'est ici que réside le secret de la vélocité de ce filtre : limiter drastiquement les points d'analyse.</p>
+        <pre><code><span class="comment">; Bridage de la boucle à 16 itérations de lecture maximum :</span>
+<span class="keyword">Protected</span> samples 
+Min(samples , Radius , <span class="number">16</span>) 
+<span class="keyword">Protected</span> invSamples.f = <span class="number">1.0</span> / samples</code></pre>
+
+        <h2>4. Le Filtre : Comment ça marche ?</h2>
+        <p>Pour chaque pixel de la texture, l'algorithme détermine l'angle d'origine, puis applique une déviation combinant décalage linéaire (offset) et rotation proportionnelle.</p>
+
+        <div class="card">
+            <h3>Calcul du Rayon et de l'Angle Propre</h3>
+            <p>L'algorithme bascule chaque pixel dans un repère polaire virtuel centré sur l'axe pivot :<br>
+            <code>dist = Sqr(dx*dx + dy*dy)</code><br>
+            <code>baseAngle = ATan2(dy, dx)</code><br>
+            La spirale se déploie ensuite en ajoutant la force de torsion à cet angle de base.</p>
+        </div>
+
+        <h3>Visualisation de la Dispersion Stochastique</h3>
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">Échantillons</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">s=0</td><td></td><td></td></tr>
+                            <tr><td></td><td class="center-pixel">Pixel</td><td></td></tr>
+                            <tr><td></td><td></td><td class="active-blur">s=15</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>Formule de Dispersion des Points :</strong></p>
+                        <div class="math-box">
+                            Offset_Gaussien = (s - Bornes/2) * (Rayon / Bornes)<br>
+                            Angle_Spirale = Angle_Base + Rotation_Proportionnelle<br><br>
+                            Nouveau_Rayon = Distance_Centre + Offset_Gaussien
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Plutôt que d'analyser chaque pixel contigu, l'algorithme "saute" d'un point à un autre le long de la trajectoire hélicoïdale. Chaque pixel prélevé injecte sa couleur dans l'accumulateur au prorata de son coefficient d'atténuation <b>weight</b>.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique Interne de l'Algorithme (Pseudo-code Synchrone)</h3>
+        <p>Voici la retranscription structurelle des calculs de rendu stochastique par pixel :</p>
+
+<pre>
+<span class="keyword">Entrée</span>: Image Source, Image Cible, Rayon, Foyer X (%), Foyer Y (%), Force, Sens
+
+<span class="comment">// 1. CALCULS DES COORDONNÉES DU FOYER EN PIXELS</span>
+Axe_X = Largeur_Image * (Foyer_X / 100.0)
+Axe_Y = Hauteur_Image * (Foyer_Y / 100.0)
+
+Incrément_Direction = (Sens * 2) - 1
+
+<span class="comment">// Détermination du nombre maximal de prélèvements (Maximum 16)</span>
+Nombre_Echantillons = Fixer_Minimum(Rayon, 16)
+Inverse_Echantillons = 1.0 / Nombre_Echantillons
+
+<span class="comment">// 2. BALAYAGE DE LA SURFACE DE L'IMAGE</span>
+<span class="keyword">Pour chaque</span> Ligne Y de 0 à Hauteur - 1
+    <span class="keyword">Pour chaque</span> Colonne X de 0 à Largeur - 1
+        
+        Distance_X = X - Axe_X
+        Distance_Y = Y - Axe_Y
+        Distance_Centre = Sqr(Distance_X * Distance_X + Distance_Y * Distance_Y)
+        
+        Angle_Polaire_Base = ATan2(Distance_Y, Distance_X)
+        
+        Cumul_R = 0.0 : Cumul_G = 0.0 : Cumul_B = 0.0
+        Somme_Poids_Total = 0.0 : Alpha_Sortie = 255
+        
+        <span class="comment">// 3. BOUCLE DE BALAYAGE STOCHASTIQUE (STYLE SHADER COUPE MONTE-CARLO)</span>
+        <span class="keyword">Pour</span> s = 0 <span class="keyword">To</span> Nombre_Echantillons - 1
+            
+            <span class="comment">// Écartement linéaire par rapport au rayon</span>
+            Offset_Spatiale = (s - Nombre_Echantillons / 2.0) * (Rayon / (Nombre_Echantillons / 2.0))
+            
+            <span class="comment">// Évaluation du filtre de profil gaussien</span>
+            Poids_Gauss = Exp(-(Offset_Spatiale * Offset_Spatiale) / (2.0 * Rayon * Rayon))
+            
+            <span class="comment">// Calcul de la déviation de l'angle de la spirale</span>
+            Facteur_Rotation = (Force * Distance_Centre * Incrément_Direction * s * Inverse_Echantillons) / 100.0
+            Angle_Echantillon = Angle_Polaire_Base + Convertir_En_Radians(Facteur_Rotation)
+            
+            Rayon_Echantillon = Distance_Centre + Offset_Spatiale
+            
+            <span class="comment">// Projection cartésienne finale de l'échantillon</span>
+            Proj_X = Axe_X + Rayon_Echantillon * Cos(Angle_Echantillon)
+            Proj_Y = Axe_Y + Rayon_Echantillon * Sin(Angle_Echantillon)
+            
+            Int_X = Convertir_En_Entier(Proj_X)
+            Int_Y = Convertir_En_Entier(Proj_Y)
+            
+            <span class="comment">// Test de confinement et d'accès direct à la mémoire</span>
+            <span class="keyword">Si</span> Int_X &gt;= 0 Et Int_X &lt; Largeur_Image Et Int_Y &gt;= 0 Et Int_Y &lt; Hauteur_Image
+                Pixel = Lire_Pixel_Source(Int_X, Int_Y)
+                
+                Cumul_R + Poids_Gauss * Extraire_Rouge(Pixel)
+                Cumul_G + Poids_Gauss * Extraire_Vert(Pixel)
+                Cumul_B + Poids_Gauss * Extraire_Bleu(Pixel)
+                Alpha_Sortie = Extraire_Alpha(Pixel)
+                
+                Somme_Poids_Total + Poids_Gauss
+            <span class="keyword">Fin Si</span>
+        <span class="keyword">Next</span> s
+        
+        <span class="comment">// 4. NORMALISATION ET ÉCRITURE DU PIXEL</span>
+        <span class="keyword">Si</span> Somme_Poids_Total &gt; 0 Alors
+            R_Final = Int(Cumul_R / Somme_Poids_Total)
+            G_Final = Int(Cumul_G / Somme_Poids_Total)
+            B_Final = Int(Cumul_B / Somme_Poids_Total)
+            
+            Écrire_Pixel_Cible(X, Y, Réassembler_ARGB(Alpha_Sortie, R_Final, G_Final, B_Final))
+        <span class="keyword">Fin Si</span>
+        
+    <span class="keyword">Next X</span>
+<span class="keyword">Fin Pour</span>
+<span class="keyword">Fin</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Algorithme Discret de Dispersion Stochastique Haute Performance.</p>
+    </footer>
+
+</body>
+</html>

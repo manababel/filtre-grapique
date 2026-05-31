@@ -6,75 +6,193 @@
     <title>Documentation - Algorithme Box Blur</title>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: Arial, sans-serif;
             line-height: 1.6;
-            color: #333;
+            color: #cbd5e1;
+            background-color: #0f172a;
             max-width: 900px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f9f9f9;
         }
+
+        header {
+            text-align: center;
+            padding: 40px 0 20px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h1 span {
+            color: #38bdf8;
+        }
+
         h2 {
-            color: #2c3e50;
-            border-bottom: 2px solid #ecf0f1;
+            color: #ffffff;
+            border-bottom: 1px solid #334155;
             padding-bottom: 8px;
             margin-top: 40px;
+            font-size: 1.5em;
         }
-        h2:first-of-type {
-            margin-top: 20px;
-        }
+
         h3 {
-            color: #34495e;
+            color: #ffffff;
             margin-top: 25px;
-            background: #eef2f5;
+            background-color: #1e293b;
             padding: 8px 12px;
-            border-left: 4px solid #3498db;
-            border-radius: 0 4px 4px 0;
+            border-left: 4px solid #38bdf8;
         }
-        ul {
+
+        p {
+            color: #cbd5e1;
+        }
+
+        ul, ol {
             padding-left: 20px;
         }
+
         li {
             margin-bottom: 12px;
+            color: #cbd5e1;
         }
+
         strong {
-            color: #2c3e50;
+            color: #ffffff;
         }
+
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 20px;
+            margin: 25px 0;
+        }
+
+        /* Structure de démo compatible (Tableau au lieu de Flexbox) */
+        .demo-container {
+            width: 100%;
+            margin: 30px 0;
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-cell-left {
+            width: 200px;
+            vertical-align: top;
+            padding-right: 30px;
+        }
+
+        .demo-cell-right {
+            vertical-align: top;
+        }
+
+        table.matrix {
+            border-collapse: separate;
+            border-spacing: 4px;
+            margin: 0 auto;
+        }
+
+        table.matrix td {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-weight: bold;
+            font-family: monospace;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+        }
+
+        table.matrix td.active-blur {
+            background-color: #0c4a6e;
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+        }
+
+        table.matrix td.center-pixel {
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #ffffff;
+        }
+
+        .math-box {
+            background-color: #0b0f19;
+            border-left: 4px solid #38bdf8;
+            padding: 15px 20px;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            color: #ffffff;
+            margin: 10px 0;
+        }
+
+        .badge {
+            background-color: #0c4a6e;
+            color: #38bdf8;
+            padding: 4px 10px;
+            font-size: 0.85em;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
         pre {
-            background-color: #1e1e1e;
-            color: #d4d4d4;
-            padding: 15px;
-            border-radius: 6px;
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            padding: 20px;
             overflow-x: auto;
-            font-family: "Consolas", "Courier New", Courier, monospace;
+            border: 1px solid #334155;
+            font-family: 'Courier New', Courier, monospace;
             font-size: 14px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        .comment {
-            color: #6a9955;
+
+        .keyword { color: #f43f5e; font-weight: bold; }
+        .comment { color: #64748b; font-style: italic; }
+        .number { color: #38bdf8; }
+
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #64748b;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
         }
     </style>
 </head>
 <body>
 
-    <h2>Pourquoi utiliser le Box Blur ?</h2>
-    <ul>
-        <li>
-            <strong>1. Ultra-rapide (O(1)) :</strong> Contrairement au flou gaussien (lourd en multiplications décimales), le Box Blur n'utilise que des additions et une division (calcul de moyenne). Combiné avec une image intégrale (Summed-Area Table), le temps de calcul reste identique, que le rayon du flou soit de 3 ou de 300 pixels.
-        </li>
-        <li>
-            <strong>2. Alternative au Flou Gaussien (Astuce des 3 passes) :</strong> Un seul Box Blur peut paraître un peu grossier/"carré". Mais si vous l'appliquez 3 fois de suite, le résultat visuel est quasi-identique à un vrai flou gaussien, tout en étant 3 à 5 fois plus rapide à calculer.
-        </li>
-        <li>
-            <strong>3. Nettoyage du bruit :</strong> Il sert de filtre de pré-traitement. Appliquer un Box Blur léger élimine les pixels parasites (le bruit) avant de lancer des algos plus complexes comme les détecteurs de contours (Sobel/Canny), évitant ainsi les fausses détections.
-        </li>
-    </ul>
+    <header>
+        <div class="badge">Traitement d'Image</div>
+        <h1>Documentation - Algorithme <span>Box Blur</span></h1>
+        <p>Analyse de l'effet d'atténuation par calcul de moyenne locale</p>
+    </header>
 
-    <h2>Exemples d'implémentation (PureBasic)</h2>
+    <main>
+        <!-- PARTIE 1 -->
+        <h2>1. Pourquoi utiliser le Box Blur ?</h2>
+        <ul>
+            <li>
+                <strong>Ultra-rapide (O(1)) :</strong> Contrairement au flou gaussien (lourd en multiplications décimales), le Box Blur n'utilise que des additions et une division (calcul de moyenne). Combiné avec une image intégrale (Summed-Area Table), le temps de calcul reste identique, que le rayon du flou soit de 3 ou de 300 pixels.
+            </li>
+            <li>
+                <strong>Alternative au Flou Gaussien (Astuce des 3 passes) :</strong> Un seul Box Blur peut paraître un peu grossier/"carré". Mais si vous l'appliquez 3 fois de suite, le résultat visuel est quasi-identique à un vrai flou gaussien, tout en étant 3 à 5 fois plus rapide à calculer.
+            </li>
+            <li>
+                <strong>Nettoyage du bruit :</strong> Il sert de filtre de pré-traitement. Appliquer un Box Blur léger élimine les pixels parasites (le bruit) avant de lancer des algos plus complexes comme les détecteurs de contours (Sobel/Canny), évitant ainsi les fausses détections.
+            </li>
+        </ul>
 
-    <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
-    <p>Idéal pour les appels simples et rapides avec passage de paramètres en arguments.</p>
-    <pre><code>IncludeFile "filtres.pbi"
+        <!-- PARTIE 2 -->
+        <h2>2. Exemples d'implémentation (PureBasic)</h2>
+
+        <h3>Option A : Utilisation Directe (Fonction Standard)</h3>
+        <p>Idéal pour les appels simples et rapides avec passage de paramètres en arguments.</p>
+        <pre><code>IncludeFile "filtres.pbi"
 UseModule filtres
 
 If OpenWindow(0, 0, 0, 800, 600, "Exemple...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
@@ -97,12 +215,9 @@ If OpenWindow(0, 0, 0, 800, 600, "Exemple...", #PB_Window_SystemMenu | #PB_Windo
   CopyImage(SourceImage,CibleImage)
 
   BoxBlur(SourceImage, CibleImage, AucunMasque, RayonX, RayonY, Passes, ModeBord)
-  <span class="comment">; L'image cible peut être la même que l'image source :</span>
-  <span class="comment">; BoxBlur(SourceImage, SourceImage, AucunMasque, RayonX, RayonY, Passes, ModeBord)</span>
   
   StartDrawing(WindowOutput(0))
   DrawImage(ImageID(CibleImage) ,  0 , 0)
-  <span class="comment">; DrawImage(ImageID(SourceImage) ,  0 , 0)</span>
   StopDrawing()
   
   Repeat
@@ -119,9 +234,9 @@ If OpenWindow(0, 0, 0, 800, 600, "Exemple...", #PB_Window_SystemMenu | #PB_Windo
   Until Event = #PB_Event_CloseWindow
 EndIf</code></pre>
 
-    <h3>Option B : Utilisation Avancée (Via Structure de Contexte / BoxBlurEx)</h3>
-    <p>Idéal pour la gestion de pointeurs mémoires complexes, les buffers personnalisés ou le traitement par lots en conservant un contexte de filtre.</p>
-    <pre><code>IncludeFile "filtres.pbi"
+        <h3>Option B : Utilisation Avancée (Via Structure de Contexte / BoxBlurEx)</h3>
+        <p>Idéal pour la gestion de pointeurs mémoires complexes, les buffers personnalisés ou le traitement par lots en conservant un contexte de filtre.</p>
+        <pre><code>IncludeFile "filtres.pbi"
 UseModule filtres
 
 If OpenWindow(0, 0, 0, 800, 600, "Exemple...", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
@@ -147,27 +262,12 @@ If OpenWindow(0, 0, 0, 800, 600, "Exemple...", #PB_Window_SystemMenu | #PB_Windo
   FilterCtx\option[3] = 1 <span class="comment">; bord</span>
   
   Set_Source(SourceImage)
-  <span class="comment">; ou Set_SourceEx(adresse_memoire_image , lg , ht) si vous connaissez l'adresse mémoire de l'image</span>
-  <span class="comment">; ou </span>
-  <span class="comment">; FilterCtx\image[0] = adresse memoire de l'image</span>
-  <span class="comment">; FilterCtx\image_lg[0] = longueur de l'image</span>
-  <span class="comment">; FilterCtx\image_ht[0] = hauteure de l'image</span>
-  
   Set_cible(CibleImage)
-  <span class="comment">; ou Set_cible(SourceImage) si la cible est la source</span>
-  <span class="comment">; ou Set_CibleEx(adresse_memoire_image , lg , ht) si vous connaissez l'adresse mémoire de l'image</span>
-  <span class="comment">; ou </span>
-  <span class="comment">; FilterCtx\image[1] = adresse memoire de l'image</span>
-  <span class="comment">; FilterCtx\image_lg[1] = longueur de l'image</span>
-  <span class="comment">; FilterCtx\image_ht[1] = hauteure de l'image</span>
   
   BoxBlurEx(FilterCtx)
-  <span class="comment">; L'image cible peut être la même que l'image source :</span>
-  <span class="comment">; BoxBlur(SourceImage, SourceImage, AucunMasque, RayonX, RayonY, Passes, ModeBord)</span>
   
   StartDrawing(WindowOutput(0))
   DrawImage(ImageID(CibleImage) ,  10 , 10)
-  <span class="comment">; DrawImage(ImageID(SourceImage) ,  0 , 0)</span>
   StopDrawing()
   
   Repeat
@@ -183,6 +283,82 @@ If OpenWindow(0, 0, 0, 800, 600, "Exemple...", #PB_Window_SystemMenu | #PB_Windo
 
   Until Event = #PB_Event_CloseWindow
 EndIf</code></pre>
+
+        <!-- PARTIE 3 -->
+        <h2>3. Le Filtre : Comment ça marche ?</h2>
+        <p>Le filtre de <strong>Box Blur</strong> (ou flou par boîte) est un traitement graphique qui adoucit les images. Son rôle fondamental est de lisser les détails, d'estomper les cassures nettes et d'effacer les imperfections visuelles (le bruit numérique) pour créer un effet de flou uniforme.</p>
+        
+        <p>Pour obtenir ce résultat de la manière la plus simple et efficace possible, le filtre utilise un principe de calcul à la portée de n'importe quel ordinateur : la moyenne mathématique.</p>
+
+        <div class="card">
+            <h3>Le principe du mélange des couleurs</h3>
+            <p>Imaginez que chaque pixel de votre photo soit une petite goutte de peinture fraîche. Pour flouter un point précis de l'image, le filtre va prendre ce point, regarder la couleur des points qui l'entourent, et mélanger le tout pour obtenir une teinte intermédiaire parfaitement homogène.</p>
+        </div>
+
+        <h3>La boîte de voisinage (Le Masque)</h3>
+        <p>Pour faire son mélange, l'ordinateur dessine une boîte virtuelle (souvent un carré de 3x3 ou 5x5 pixels) centrée sur le point qu'il souhaite modifier.</p>
+
+        <!-- Conteneur compatible avec les anciens navigateurs -->
+        <div class="demo-container">
+            <table class="demo-table">
+                <tr>
+                    <td class="demo-cell-left">
+                        <strong style="display:block; text-align:center; margin-bottom:10px;">La zone de mélange (Grille 3x3)</strong>
+                        <table class="matrix">
+                            <tr><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td></tr>
+                            <tr><td class="active-blur">1</td><td class="center-pixel">1</td><td class="active-blur">1</td></tr>
+                            <tr><td class="active-blur">1</td><td class="active-blur">1</td><td class="active-blur">1</td></tr>
+                        </table>
+                    </td>
+                    <td class="demo-cell-right">
+                        <p><strong>La formule logique visuelle :</strong></p>
+                        <div class="math-box">
+                            Nouvelle_Couleur = Somme_des_Couleurs_du_Carré / Nombre_Total_de_Pixels
+                        </div>
+                        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+                            Dans cet exemple, le pixel central (indigo) fusionne avec ses 8 voisins (bleus). On additionne l'intensité de ces 9 cases, puis on divise le tout par 9. Aucun pixel n'a plus d'importance qu'un autre.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3>Logique de traitement globale (Pseudo-code)</h3>
+        <p>Voici le cheminement logique simplifié que suit l'algorithme pour balayer et flouter toute la surface d'une image :</p>
+
+<pre>
+<span class="keyword">Pour chaque</span> ligne de la photo
+    <span class="keyword">Pour chaque</span> pixel de cette ligne
+        
+        Somme_Rouge = <span class="number">0</span>
+        Somme_Vert  = <span class="number">0</span>
+        Somme_Bleu  = <span class="number">0</span>
+        Compteur    = <span class="number">0</span>
+        
+        <span class="comment">// Ouvrir la boîte tout autour du pixel courant</span>
+        <span class="keyword">Pour chaque</span> pixel situé à l'intérieur du carré de voisinage
+            Somme_Rouge + Pixel_Voisin_Rouge
+            Somme_Vert  + Pixel_Voisin_Vert
+            Somme_Bleu  + Pixel_Voisin_Bleu
+            Compteur    + <span class="number">1</span>
+        <span class="keyword">Next</span>
+        
+        <span class="comment">// Calculer la couleur moyenne finale</span>
+        Moyenne_R = Somme_Rouge / Compteur
+        Moyenne_V = Somme_Vert / Compteur
+        Moyenne_B = Somme_Bleu / Compteur
+        
+        <span class="comment">// Ecrire le résultat sur l'image finale floutée</span>
+        Dessiner_Pixel_Flou(x, y, Moyenne_R, Moyenne_V, Moyenne_B)
+        
+    <span class="keyword">Next</span>
+<span class="keyword">Fin Pour</span>
+</pre>
+    </main>
+
+    <footer>
+        <p>Document Technique - Algorithmes Graphiques de Rendu.</p>
+    </footer>
 
 </body>
 </html>
