@@ -1357,7 +1357,7 @@ Miniature_px = 1 * Window_SizeY / 100
 Miniature_py = 3 * Window_SizeY / 100
 Miniature_decal = 1.5 * Window_SizeY / 100
 
-TargetFrameTime = 1000 / 10 ; limite les fps a 10 images par seconde ( limite les ressource cpu pour utilise la camera )
+;TargetFrameTime = 1000 / 10 ; limite les fps a 10 images par seconde ( limite les ressource cpu pour utilise la camera )
 
 If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget)
   
@@ -1836,13 +1836,14 @@ If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Wi
 
       EndIf
       
-      FrameElapsedTime = ElapsedMilliseconds() - FrameStartTime
-      If FrameElapsedTime < TargetFrameTime
-        TimeToWait = TargetFrameTime - FrameElapsedTime
-        Delay(TimeToWait)
-      Else
-        Delay(1) 
-      EndIf
+      ;FrameElapsedTime = ElapsedMilliseconds() - FrameStartTime
+      ;If FrameElapsedTime < TargetFrameTime
+        ;TimeToWait = TargetFrameTime - FrameElapsedTime
+        ;If TimeToWait > 100 : TimeToWait = 100 : EndIf
+        ;Delay(TimeToWait)
+      ;Else
+        Delay(5) 
+      ;EndIf
       
     Until quit = 1
     ;If IsImage(#cible) : FreeImage(#cible) : EndIf
@@ -1855,11 +1856,10 @@ If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Wi
   
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 1818
-; FirstLine = 1801
+; CursorPosition = 1844
+; FirstLine = 1808
 ; Folding = -----
 ; EnableThread
 ; EnableXP
-; CPU = 5
 ; DisableDebugger
 ; Compiler = PureBasic 6.40 (Windows - x64)
