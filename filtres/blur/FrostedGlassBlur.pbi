@@ -3,19 +3,6 @@
 ; Véritable effet verre dépoli : distorsion + flou local
 ; ---------------------------------------------------
 
-; --- Hash rapide pseudo-aléatoire pour la distorsion
-Macro FGB_random_offset(x, y, radius, seed, dx, dy)
-  n = (x * 73856093) ! (y * 19349663) ! (seed * 83492791)
-  n = n ! (n >> 13)
-  n = n * 1274126177
-  
-  hi = (n >> 16) & $FFFF
-  lo = n & $FFFF
-  
-  dx = hi - Int(hi / modv) * modv - radius
-  dy = lo - Int(lo / modv) * modv - radius
-EndMacro
-
 ; --- Worker Thread
 Procedure FrostedGlassBlur_sp(*FilterCtx.FilterParams)
   With *FilterCtx
@@ -29,19 +16,31 @@ Procedure FrostedGlassBlur_sp(*FilterCtx.FilterParams)
     
     macro_calul_tread(h)
     
+    Protected.l  a , r , g , b
     Protected x, y, pos, n, hi, lo, dx, dy, cx, cy
     Protected bx, by, sx, sy, sumA, sumR, sumG, sumB, count
     Protected value, *src32.Pixel32
+    
+    Protected *src.pixelarray = \addr[0]
+    Protected *dst.pixelarray = \addr[1]
     
     For y = thread_start To thread_stop - 1
       For x = 0 To w - 1
         
         ; 1. Décalage aléatoire (distorsion du verre)
-        If modv > 0
-          FGB_random_offset(x, y, radius, seed, dx, dy)
+        If modv > 0 ; --- Hash rapide pseudo-aléatoire pour la distorsion
+          n = (x * 73856093) ! (y * 19349663) ! (seed * 83492791)
+          n = n ! (n >> 13)
+          n = n * 1274126177
+          
+          hi = (n >> 16) & $FFFF
+          lo = n & $FFFF
+          
+          dx = hi - Int(hi / modv) * modv - radius
+          dy = lo - Int(lo / modv) * modv - radius
           cx = x + dx : cy = y + dy
-          If cx < 0 : cx = 0 : ElseIf cx > w_minus_1 : cx = w_minus_1 : EndIf
-          If cy < 0 : cy = 0 : ElseIf cy > h_minus_1 : cy = h_minus_1 : EndIf
+          clamp(cx , 0 , w_minus_1)
+          clamp(cy , 0 , h_minus_1)
         Else
           cx = x : cy = y
         EndIf
@@ -57,11 +56,11 @@ Procedure FrostedGlassBlur_sp(*FilterCtx.FilterParams)
             sx = cx + bx
             If sx < 0 : sx = 0 : ElseIf sx > w_minus_1 : sx = w_minus_1 : EndIf
             
-            value = PeekL(\addr[0] + ((sy * w + sx) << 2))
-            sumA + ((value >> 24) & $FF)
-            sumR + ((value >> 16) & $FF)
-            sumG + ((value >> 8) & $FF)
-            sumB + (value & $FF)
+            getargb(*src\l[sy * w + sx] , a , r , g , b)
+            sumA + a
+            sumR + r
+            sumG + g
+            sumB + b
             count + 1
           Next
         Next
@@ -70,10 +69,10 @@ Procedure FrostedGlassBlur_sp(*FilterCtx.FilterParams)
         If count > 0
           value = ((sumA / count) << 24) | ((sumR / count) << 16) | ((sumG / count) << 8) | (sumB / count)
         Else
-          value = PeekL(\addr[0] + ((y * w + x) << 2))
+          value = *src\l[sy * w + sx]
         EndIf
         
-        PokeL(\addr[1] + ((y * w + x) << 2), value)
+        *dst\l[y * w + x] = value
       Next
     Next
   EndWith
@@ -83,22 +82,27 @@ EndProcedure
 Procedure FrostedGlassBlurEx(*FilterCtx.FilterParams)
   Restore FrostedGlassBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
   ; Bornage spécifique
   If *FilterCtx\option[0] < 0 : *FilterCtx\option[0] = 0 : EndIf
   If *FilterCtx\option[2] < 0 : *FilterCtx\option[2] = 0 : EndIf
   
-  Create_MultiThread_MT(@FrostedGlassBlur_sp(), 1)
+  Create_MultiThread_MT(@FrostedGlassBlur_sp())
   
   mask_update(*FilterCtx, last_data)
 EndProcedure
 
 ; --- Appel simplifié
 Procedure FrostedGlassBlur(source, cible, mask, radius, seed, blurRadius)
-  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
   With FilterCtx
-    \option[0] = radius : \option[1] = seed : \option[2] = blurRadius
+    \option[0] = radius
+    \option[1] = seed
+    \option[2] = blurRadius
   EndWith
   FrostedGlassBlurEx(FilterCtx)
 EndProcedure
@@ -117,8 +121,7 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 97
-; FirstLine = 66
+; CursorPosition = 18
 ; Folding = -
 ; EnableXP
 ; DPIAware

@@ -1,4 +1,74 @@
-﻿Procedure ZoomBlur_sp(*FilterCtx.FilterParams)
+﻿Procedure ZoomBlur_MT_SSE4(*FilterCtx.FilterParams)
+EndProcedure
+Procedure ZoomBlur_MT_AVX(*FilterCtx.FilterParams)
+EndProcedure
+Procedure ZoomBlur_MT_AVX512(*FilterCtx.FilterParams)
+EndProcedure
+
+Procedure ZoomBlur_MT_SSE2(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected.l lg = \image_lg[0], ht = \image_ht[0]
+    Protected strength.f = \option[0] / 100.0  ; Force du zoom (0-100)
+    Protected samples = \option[1]              ; Nombre d'échantillons
+    Protected centerX.f = \option[2] / 100.0   ; Position X du centre (0-100)
+    Protected centerY.f = \option[3] / 100.0   ; Position Y du centre (0-100)
+    
+    If samples < 2 : samples = 2 : EndIf
+    If samples > 50 : samples = 50 : EndIf
+    
+    ; Calcul du centre en pixels
+    Protected cx.f = lg * centerX
+    Protected cy.f = ht * centerY
+    
+    Protected.l x, y, i
+    Protected sx.l, sy.l, index
+    Protected.f dx, dy, t, scale
+    Protected.l invSamples
+    Protected *src = \addr[0]
+    Protected *dst = \addr[1]
+    Protected lg_minus_1 = lg - 1
+    Protected ht_minus_1 = ht - 1
+    
+    invSamples = Round((65536.0 / samples), #PB_Round_Nearest) ;1.0 / samples
+    
+    macro_calul_tread(ht)
+    
+    !mov eax, [p.v_invSamples]
+    !movd xmm2, eax
+    !pshuflw xmm2, xmm2, 0 
+    For y = thread_start To thread_stop - 1
+      For x = 0 To lg - 1
+        dx = x - cx
+        dy = y - cy
+        !pxor xmm4, xmm4 
+        For i = 0 To samples - 1
+          scale = 1.0 - (i / (samples - 1.0)) * strength
+          sx = Round(cx + dx * scale, #PB_Round_Nearest)
+          sy = Round(cy + dy * scale, #PB_Round_Nearest)
+          clamp(sx , 0 , lg_minus_1)
+          clamp(sy , 0 , ht_minus_1)
+          !mov eax , [p.v_lg]
+          !imul eax , [p.v_sy]
+          !add eax , [p.v_sx]
+          !mov rcx , [p.p_src]
+          !movd xmm0 , [rcx + rax * 4]            ; xmm0 = [0, 0, 0, 0 | A, R, G, B] (8-bits)          
+          !pxor xmm1, xmm1              ; xmm1 = 0
+          !punpcklbw xmm0, xmm1         ; xmm0 = [0, A, 0, R | 0, G, 0, B] (16-bits)
+          !paddw xmm4, xmm0             
+        Next
+        !pmulhw xmm4, xmm2            ; xmm4 contient maintenant les moyennes directes !
+        !packuswb xmm4, xmm4          ; 16-bits -> 8-bits (Clamp 0-255 intégré)
+        !mov eax , [p.v_lg]
+        !imul eax, [p.v_y]
+        !add eax , [p.v_x]
+        !mov rcx, [p.p_dst]
+        !movd [rcx + rax * 4], xmm4             ; Écriture ARGB directe
+      Next
+    Next
+  EndWith
+EndProcedure
+
+Procedure ZoomBlur_MT_PB(*FilterCtx.FilterParams)
   With *FilterCtx
     Protected lg = \image_lg[0], ht = \image_ht[0]
     Protected strength.f = \option[0] / 100.0  ; Force du zoom (0-100)
@@ -77,8 +147,8 @@ Procedure ZoomBlurEx(*FilterCtx.FilterParams)
   Restore ZoomBlur_data
   Protected last_data = Filter_InitAndValidate()
   If last_data < 0 : ProcedureReturn 0 : EndIf
-  
-  Create_MultiThread_MT(@ZoomBlur_sp())
+  *FilterCtx\asm_dispo = 1
+  selet_and_start_programme(ZoomBlur_MT)
   mask_update(*FilterCtx.FilterParams , last_data)
   
 EndProcedure
@@ -114,8 +184,6 @@ DataSection
   Data.s "XXX"  
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 112
-; FirstLine = 63
-; Folding = -
+; Folding = --
 ; EnableXP
 ; DPIAware

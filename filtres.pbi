@@ -8,124 +8,6 @@ UsePNGImageEncoder()
 UseTGAImageDecoder()
 UseTIFFImageDecoder()
 
-;-- partie qui gere la camera
-
-Structure SimpleCapParams
-  *mTargetBuf ; Must be at least mWidth * mHeight * SizeOf(int) of size! 
-  mWidth.l
-  mHeight.l
-EndStructure
-Global scp.SimpleCapParams
-Global camera_lg
-Global camera_ht
-Global camera_buf
-
-;/* Return the number of capture devices found */
-PrototypeC countCaptureDevicesProc()
-PrototypeC initCaptureProc(deviceno, *aParams.SimpleCapParams) 
-PrototypeC deinitCaptureProc(deviceno) ;/* deinitCapture closes the video capture device. */
-PrototypeC doCaptureProc(deviceno) ; ;/* doCapture requests video frame To be captured. */  
-PrototypeC isCaptureDoneProc(deviceno) ;/* isCaptureDone returns 1 when the requested frame has been captured.*/ 
-PrototypeC getCaptureDeviceNameProc(deviceno, *namebuffer, bufferlength) ;/* Get the user-friendly name of a capture device. */
-PrototypeC ESCAPIDLLVersionProc() ;/* Returns the ESCAPI DLL version. 0x200 For 2.0 */
-PrototypeC initCOMProc() ; ; marked as "internal" in the example
-
-Global countCaptureDevices.countCaptureDevicesProc
-Global initCapture.initCaptureProc
-Global deinitCapture.deinitCaptureProc
-Global doCapture.doCaptureProc
-Global isCaptureDone.isCaptureDoneProc
-Global getCaptureDeviceName.getCaptureDeviceNameProc
-Global ESCAPIDLLVersion.ESCAPIDLLVersionProc
-
-
-
-Procedure setupESCAPI()
-  
-  ; load library
-  CompilerSelect #PB_Compiler_Processor
-    CompilerCase #PB_Processor_x86
-      Protected.i capdll = OpenLibrary(#PB_Any, "escapi\escapi_x32.dll")
-    CompilerCase #PB_Processor_x64
-      Protected.i capdll = OpenLibrary(#PB_Any, "escapi\escapi_x64.dll")
-  CompilerEndSelect
-  If capdll = 0
-    Debug "fichier escapi non trouvé"
-    ProcedureReturn #Null
-  EndIf
-  
-  ;/* Fetch function entry points */
-  countCaptureDevices  = GetFunction(capdll, "countCaptureDevices")
-  initCapture          = GetFunction(capdll, "initCapture")
-  deinitCapture        = GetFunction(capdll, "deinitCapture")
-  doCapture            = GetFunction(capdll, "doCapture")
-  isCaptureDone        = GetFunction(capdll, "isCaptureDone")
-  initCOM.initCOMProc  = GetFunction(capdll, "initCOM")
-  getCaptureDeviceName = GetFunction(capdll, "getCaptureDeviceName")
-  ESCAPIDLLVersion     = GetFunction(capdll, "ESCAPIDLLVersion")
-  
-  If countCaptureDevices = 0 Or initCapture = 0 Or deinitCapture = 0 Or doCapture = 0 Or isCaptureDone = 0 Or initCOM = 0 Or getCaptureDeviceName = 0 Or ESCAPIDLLVersion = 0
-    Debug "probleme 1"
-    ProcedureReturn #Null
-  EndIf
-  
-  ;/* Verify DLL version */
-  If ESCAPIDLLVersion() < $200
-    Debug "probleme 2"
-    ProcedureReturn #Null
-  EndIf
-  
-  ;/* Initialize COM.. */
-  initCOM();  
-  
-  ; returns number of devices found
-  ProcedureReturn countCaptureDevices()
-EndProcedure
-
-Procedure Camera_init()
-  Protected name$
-  If setupESCAPI() = #Null
-    Debug "Camera ok mais peut etre non accessible(protegée)"
-    ProcedureReturn #Null
-  Else
-    name$ = Space(1000)
-    getCaptureDeviceName(0, @name$, 1000)
-    name$ = PeekS(@name$, -1, #PB_Ascii)
-    ProcedureReturn countCaptureDevices()
-  EndIf
-EndProcedure
-
-Procedure Camera_on(cam , lg, ht)
-  If scp\mTargetBuf : FreeMemory(scp\mTargetBuf) : EndIf
-  scp\mWidth = lg
-  scp\mHeight = ht
-  scp\mTargetBuf = AllocateMemory (scp\mWidth * scp\mHeight * 4)
-  initCapture(cam, @scp)
-EndProcedure
-
-Procedure CameraToBuffer(cam , Buffer)
-EndProcedure
-
-Procedure CameraToImage(cam , img)
-  Protected pos , size , compt , i , var
-  If scp\mTargetBuf = 0 : ProcedureReturn : EndIf
-  doCapture(cam)
-  ;isCaptureDone(cam)
-  If StartDrawing(ImageOutput(img))
-    pos = DrawingBuffer()
-    If pos
-      size = scp\mWidth * scp\mHeight * 4 - 1
-      compt = size - 3
-      For i = 0 To size Step 4
-        var = PeekL(scp\mTargetBuf + i)
-        PokeL(pos + compt , var)
-        compt - 4
-      Next
-    EndIf
-    StopDrawing()
-  EndIf
-EndProcedure
-
 ;--
 
 DeclareModule filtres
@@ -774,6 +656,68 @@ DeclareModule filtres
   
   ;}
   
+  Structure FI_Pixel24
+  b.b  ; Bleu
+  g.b  ; Vert
+  r.b  ; Rouge
+EndStructure
+  ;----------------------------------------------------------------
+  ;-- freeimage part 1
+  ;- 1. Déclaration des constantes FreeImage
+  #FIF_UNKNOWN = -1
+  #FIF_BMP     = 0
+  #FIF_ICO     = 1
+  #FIF_JPEG    = 2
+  #FIF_PNG     = 13
+  #FIF_TIFF    = 18
+  #FIF_GIF     = 22
+  #FIF_PSD     = 24
+  #FIF_RAW     = 34
+  #FIF_WEBP    = 35
+  
+  ;- 2. Déclaration des Prototypes (liaison avec les fonctions C de la DLL)
+  PrototypeC.i FreeImage_GetFileType(filename.p-ascii, size.l = 0)
+  PrototypeC.i FreeImage_Load(fif.l, filename.p-ascii, flags.l = 0)
+  PrototypeC.i FreeImage_ConvertTo24Bits(dib.i)
+  PrototypeC.i FreeImage_GetBits(dib.i)
+  PrototypeC.l FreeImage_GetWidth(dib.i)
+  PrototypeC.l FreeImage_GetHeight(dib.i)
+  PrototypeC.l FreeImage_GetPitch(dib.i)
+  PrototypeC   FreeImage_Unload(dib.i)
+  PrototypeC   FreeImage_FlipVertical(dib.i)
+  PrototypeC.i FreeImage_ConvertTo32Bits(dib.i)
+  
+  ;- 3. Variables globales pour pointer vers les fonctions
+  Global FI_GetFileType.FreeImage_GetFileType
+  Global FI_Load.FreeImage_Load
+  Global FI_ConvertTo24Bits.FreeImage_ConvertTo24Bits
+  Global FI_GetBits.FreeImage_GetBits
+  Global FI_GetWidth.FreeImage_GetWidth
+  Global FI_GetHeight.FreeImage_GetHeight
+  Global FI_GetPitch.FreeImage_GetPitch
+  Global FI_Unload.FreeImage_Unload
+  Global FI_FlipVertical.FreeImage_FlipVertical
+  Global FI_ConvertTo32Bits.FreeImage_ConvertTo32Bits
+
+  ;----------------------------------------------------------------
+  ;-- camera part 1
+  PrototypeC countCaptureDevicesProc() ;/* Return the number of capture devices found */
+  PrototypeC initCaptureProc(deviceno, *aParams.SimpleCapParams) 
+  PrototypeC deinitCaptureProc(deviceno) ;/* deinitCapture closes the video capture device. */
+  PrototypeC doCaptureProc(deviceno)     ; ;/* doCapture requests video frame To be captured. */  
+  PrototypeC isCaptureDoneProc(deviceno) ;/* isCaptureDone returns 1 when the requested frame has been captured.*/ 
+  PrototypeC getCaptureDeviceNameProc(deviceno, *namebuffer, bufferlength) ;/* Get the user-friendly name of a capture device. */
+  PrototypeC ESCAPIDLLVersionProc()                                        ;/* Returns the ESCAPI DLL version. 0x200 For 2.0 */
+  PrototypeC initCOMProc()                                                 ; ; marked as "internal" in the example
+  
+  Global countCaptureDevices.countCaptureDevicesProc
+  Global initCapture.initCaptureProc
+  Global deinitCapture.deinitCaptureProc
+  Global doCapture.doCaptureProc
+  Global isCaptureDone.isCaptureDoneProc
+  Global getCaptureDeviceName.getCaptureDeviceNameProc
+  Global ESCAPIDLLVersion.ESCAPIDLLVersionProc
+  
   ;-- structure
   Structure FilterParams
     image.i[4] ; 0 = source , 1 = cible , 2 = mix , 3 = mask
@@ -790,10 +734,12 @@ DeclareModule filtres
     thread.l
     thread_max.l         ; nombre total de threads 
     thread_pos.l         ; position du thread courant
+    thread_actif.l       ; = 1  si le thread est atif sinon = 0
     
     asm.l     ; language selectionne par l'utilisateur
     asm_max.l ; language maximum supporter par le cpu
     asm_dispo.l ; language disponible
+    tmp.q
     
     StructureUnion
       convol3.l[9] ; (3 * 3) 
@@ -813,6 +759,8 @@ DeclareModule filtres
   
   Global Dim tabfunc.i(999)
   Global optimisation_asm
+  
+  Global key_escape_press = 0
   
   Macro DeclareModule_filtresadd_function(MaFunction , pos = 0)
     If pos > -1
@@ -841,6 +789,13 @@ DeclareModule filtres
   
   Declare DetectCPU()
   
+  Declare Camera_init()
+  Declare Camera_on(cam , lg, ht)
+  Declare CameraToBuffer(cam , Buffer)
+  Declare CameraToImage(cam , img)
+  
+  Declare InitFreeImage()
+  Declare Load_Image(var,file$)
   ;--
   ;-- decalartion des fonctions
   ;--
@@ -858,7 +813,6 @@ DeclareModule filtres
   Declare StackBlur(source , cible , mask , rx , ry , ndp = 1)
   DeclareModule_filtresadd_function(CircularMeanblurEx , #filter_CircularMeanblur)
   Declare CircularMeanblur(source , cible , mask , rayon)
-  
   ;CompilerIf #PB_Compiler_OS = #PB_OS_Linux
   ;#Blur_Directional
   DeclareModule_filtresadd_function(RadialBlurEx , #Filter_RadialBlur)
@@ -866,13 +820,13 @@ DeclareModule filtres
   DeclareModule_filtresadd_function(RadialBlur_IIREx , #Filter_RadialBlur_IIR)
   Declare RadialBlur_IIR(source , cible , mask , Rayon , posx , posy , qualite)
   DeclareModule_filtresadd_function(SpiralBlur_IIREx , #Filter_SpiralBlur_IIR)
-  Declare SpiralBlur_IIR(source , cible , mask , rayon , posx , posy , force , qualite , ra , sens)
+  Declare SpiralBlur_IIR(source , cible , mask , rayon , posx , posy , force , qualite , ra , sens, attenuation)
   DeclareModule_filtresadd_function(spiral_stochasticEx , #Filter_spiral_stochastic)
-  Declare spiral_stochastic(source , cible , mask , rayon , posx , posy , force , qualite , ra , sens)
+  Declare spiral_stochastic(source , cible , mask , rayon , posx , posy , force , ra , sens)
   DeclareModule_filtresadd_function(spiral_AccumulationEx , #Filter_spiral_Accumulation)
   Declare spiral_Accumulation(source , cible , mask , rayon , posx , posy , force , qualite , ra , sens)
   DeclareModule_filtresadd_function(spiral_SeparableEx , #Filter_spiral_Separable)
-  Declare spiral_Separable(source , cible , mask , rayon , posx , posy , force , qualite , ra , sens)
+  Declare spiral_Separable(source , cible , mask , rayon , posx , posy , force , fond = 0)
   DeclareModule_filtresadd_function(DirectionalBoxBlurEx , #Filter_DirectionalBoxBlur)
   Declare DirectionalBoxBlur(source , cible , mask , angle , radius , ndp)
   DeclareModule_filtresadd_function(MotionBlurEx , #Filter_MotionBlur)
@@ -904,33 +858,33 @@ DeclareModule filtres
   DeclareModule_filtresadd_function(WLSBlurEx , #filter_WLSBlur)
   Declare WLSBlur(source, cible, mask, lambda.f, alpha.f, iterations)
   DeclareModule_filtresadd_function(DomainTransformEx , #filter_DomainTransform)
-  Declare DomainTransform(source, cible, mask, sigma_s, sigma_r, iterations, mask_type)
+  Declare DomainTransform(source, cible, mask, sigma_s, sigma_r, iterations)
   DeclareModule_filtresadd_function(MultiScaleBilateralBlurEx , #filter_MultiScaleBilateralBlur)
-  Declare MultiScaleBilateralBlur(source, cible, mask, levels, radius, sigmaColor, mask_type)
+  Declare MultiScaleBilateralBlur(source, cible, mask, levels, radius, sigmaColor)
   DeclareModule_filtresadd_function(BilateralLaplacianBlurEx , #filter_BilateralLaplacianBlur)
-  Declare BilaterallaplacianBlur(source, cible, mask, levels, radius, sigma, mask_type)
+  Declare BilaterallaplacianBlur(source, cible, mask, levels, radius, sigma)
   DeclareModule_filtresadd_function(SmartBlurEx , #Filter_SmartBlur)
-  Declare SmartBlur(source, cible, mask, radius, threshold, mask_type)
+  Declare SmartBlur(source, cible, mask, radius, threshold)
   DeclareModule_filtresadd_function(SurfaceBlurEx , #Filter_SurfaceBlur)
-  Declare SurfaceBlur(source, cible, mask, radius, threshold, mask_type)
+  Declare SurfaceBlur(source, cible, mask, radius, threshold)
   ;#Blur_Adaptive
   DeclareModule_filtresadd_function(MedianBlurEx , #Filter_MedianBlur)
-  Declare MedianBlur(source, cible, mask, radius, mask_type)
+  Declare MedianBlur(source, cible, mask, radius)
   DeclareModule_filtresadd_function(AnisotropicBlurEx , #Filter_AnisotropicBlur)
-  Declare AnisotropicBlur(source, cible, mask, radius, angle, mask_type)
+  Declare AnisotropicBlur(source, cible, mask, radius, angle)
   DeclareModule_filtresadd_function(KuwaharaBlurEx , #Filter_KuwaharaBlur)
-  Declare KuwaharaBlur(source, cible, mask, radius, sharpness, iterations, mask_type)
+  Declare KuwaharaBlur(source, cible, mask, radius, sharpness, iterations)
   DeclareModule_filtresadd_function(NLMBlurEx , #filter_NLMBlur)
-  Declare NLMBlur(source, cible, mask, searchRadius, patchRadius, hparam, mask_type)
+  Declare NLMBlur(source, cible, mask, searchRadius, patchRadius, hparam)
   DeclareModule_filtresadd_function(RollingGuidanceFilterEx , #filter_RollingGuidanceFilter)
-  Declare RollingGuidanceFilter(source, cible, mask, radius, sigmaColor, iterations, mask_type)
+  Declare RollingGuidanceFilter(source, cible, mask, radius, sigmaColor, iterations)
   ;#Blur_Stochastic
   DeclareModule_filtresadd_function(PoissonDiskBlurEx , #Filter_PoissonDiskBlur)
-  Declare PoissonDiskBlur(source, cible, mask, radius, samples, sharpness, iterations, mask_type)
+  Declare PoissonDiskBlur(source, cible, mask, radius, samples, sharpness, iterations)
   DeclareModule_filtresadd_function(StochasticBlurEx , #filter_StochasticBlur)
-  Declare StochasticBlur(source, cible, mask, radius, samples, mask_type)
+  Declare StochasticBlur(source, cible, mask, radius, samples)
   DeclareModule_filtresadd_function(MonteCarloBlurEx , #filter_MonteCarloBlur)
-  Declare MonteCarloBlur(source, cible, mask, radius, samples, mask_type)
+  Declare MonteCarloBlur(source, cible, mask, radius, samples)
   DeclareModule_filtresadd_function(FrostedGlassBlurEx , #filter_FrostedGlassBlur)
   Declare FrostedGlassBlur(source, cible, mask, radius, seed, blurRadius)
   ;#Blur_Optical
@@ -997,7 +951,7 @@ DeclareModule filtres
   ;#Blur_Advanced
   DeclareModule_filtresadd_function(PermutohedralLatticeEx , #Filter_PermutohedralLattice)
   Declare PermutohedralLattice(source, cible, mask, sigma_spatial, sigma_couleur)
-  
+
   
   ;-- DeclareModule Edge Detection
   ;Filtres basés sur les gradients (dérivées premières)
@@ -1248,7 +1202,7 @@ DeclareModule filtres
   Declare Cartoon(source, cible, mask, levels=6, edgeSens=50, edgeThick=30, mode=0, color=0, smooth=1)
   DeclareModule_filtresadd_function(crosshatchingEx , #Filter_crosshatching)
   Declare crosshatching(source, cible, mask, strength=100, density=30, thick=15, directions=3, contrast=100, color=0, edges=80)
-  
+ 
   DeclareModule_filtresadd_function(MetalEffectEx , #Filter_BrushedMetal) 
   Declare MetalEffect(source, cible, mask, brossage=10, rugosite=20, brillance=40)
   
@@ -1576,6 +1530,10 @@ Module filtres
   
   Global Asm_Type = 0
   
+  Structure FloatArray
+    f.f[0]
+  EndStructure
+
   Structure Pixel32
     l.l
   EndStructure
@@ -1596,6 +1554,10 @@ Module filtres
     pixel.l[0]
   EndStructure
   
+  Structure quadarray
+    q.q[0]
+  EndStructure
+
   Structure Pixel8x4
     a.b
     r.b
@@ -1603,6 +1565,14 @@ Module filtres
     b.b
   EndStructure
   
+  Structure PixelVec Align 4
+    a.f
+    r.f
+    g.f
+    b.f 
+  EndStructure
+
+
   Structure Edge_Detection
     r.l[9]
     g.l[9]
@@ -1681,6 +1651,206 @@ Module filtres
     If e > c : c = e : EndIf
   EndMacro
   
+  ;----------------------------------------------------------
+  
+
+; =============================================================================
+; 4. CHARGEMENT ET CONVERSION DE L'IMAGE
+; =============================================================================
+
+;- 4. Fonction d'initialisation de la DLL
+  Procedure.i InitFreeImage()
+    Protected t$ = GetCurrentDirectory() + "freeimage\64bits\FreeImage.dll"
+  Protected hDLL.i = OpenLibrary(#PB_Any, t$)
+  
+  If hDLL
+    FI_GetFileType     = GetFunction(hDLL, "FreeImage_GetFileType")
+    FI_Load            = GetFunction(hDLL, "FreeImage_Load")
+    FI_ConvertTo24Bits = GetFunction(hDLL, "FreeImage_ConvertTo24Bits")
+    FI_GetBits         = GetFunction(hDLL, "FreeImage_GetBits")
+    FI_GetWidth        = GetFunction(hDLL, "FreeImage_GetWidth")
+    FI_GetHeight       = GetFunction(hDLL, "FreeImage_GetHeight")
+    FI_GetPitch        = GetFunction(hDLL, "FreeImage_GetPitch")
+    FI_Unload          = GetFunction(hDLL, "FreeImage_Unload")
+    FI_FlipVertical    = GetFunction(hDLL, "FreeImage_FlipVertical")
+    
+    ProcedureReturn hDLL
+  EndIf
+  
+  ProcedureReturn #False
+EndProcedure
+
+Procedure Load_Image(id, FichierImage.s)
+  Protected hFI.i = InitFreeImage()
+  Protected Resultat = 0
+  
+  If hFI
+    ; A. Détection du format
+    Protected format.l = FI_GetFileType(FichierImage, 0)
+    
+    If format <> #FIF_UNKNOWN
+      ; B. Chargement de l'image
+      Protected *dib = FI_Load(format, FichierImage, 0)
+      
+      If *dib
+        ; C. Conversion en 24 bits
+        Protected *dib24 = FI_ConvertTo24Bits(*dib)
+        FI_Unload(*dib) ; Libération de l'image d'origine
+        
+        If *dib24
+          ; E. Récupération des dimensions et du PITCH (Crucial !)
+          Protected Largeur.l = FI_GetWidth(*dib24)
+          Protected Hauteur.l = FI_GetHeight(*dib24)
+          Protected PitchSource.l = FI_GetPitch(*dib24) ; <--- CORRECTION CRITIQUE
+          
+          ; F. Obtention du pointeur vers les pixels bruts
+          Protected *PointeurPixels = FI_GetBits(*dib24)
+          
+          If *PointeurPixels
+            ; Création de l'image de destination dans PureBasic (32 bits pour BGRA)
+            If CreateImage(id, Largeur, Hauteur, 32)
+              
+              If StartDrawing(ImageOutput(id))
+                Protected *cible = DrawingBuffer()
+                Protected pitchCible = DrawingBufferPitch()
+                
+                Protected x, y
+                Protected *pixel_source.FI_Pixel24 
+                Protected *pixel_cible.Long
+                
+                ; G. BOUCLE DE COPIE OPTIMISÉE
+                For y = 0 To Hauteur - 1
+                  ; FreeImage part du bas (y=0 c'est le bas). 
+                  ; En écrivant aussi sur y=0 dans PureBasic, on conserve l'orientation d'origine de FreeImage.
+                  *ligne_source = *PointeurPixels + (y * PitchSource)
+                  *ligne_cible  = *cible + (y * pitchCible)
+                  
+                  *pixel_source = *ligne_source
+                  *pixel_cible  = *ligne_cible
+                  
+                  For x = 0 To Largeur - 1
+                    *pixel_cible\l = (*pixel_source\b & $FF) | ((*pixel_source\g & $FF) << 8) | ((*pixel_source\r & $FF) << 16) | $FF000000
+                    
+                    *pixel_source + 3 
+                    *pixel_cible + 4  
+                  Next
+                Next
+                StopDrawing()
+                Debug "Image PureBasic créée avec succès !"
+                Resultat = 1 ; On valide le succès
+              EndIf
+              
+            EndIf
+          EndIf
+          
+          ; H. Nettoyage de la mémoire FreeImage
+          FI_Unload(*dib24)
+        EndIf
+        
+      Else
+        Debug "Erreur lors du FI_Load."
+      EndIf
+    Else
+      Debug "Format d'image non reconnu."
+    EndIf
+    
+    CloseLibrary(hFI)
+  EndIf
+  
+  ProcedureReturn Resultat ; Retourne 1 si réussi, 0 si échec
+EndProcedure
+
+  ;----------------------------------------------------------
+  ;-- Camera part 2
+  Structure SimpleCapParams
+    *mTargetBuf ; Must be at least mWidth * mHeight * SizeOf(int) of size! 
+    mWidth.l
+    mHeight.l
+  EndStructure
+  Global scp.SimpleCapParams
+  Global camera_lg
+  Global camera_ht
+  Global camera_buf
+  
+  Procedure setupESCAPI()
+    ; load library
+    CompilerSelect #PB_Compiler_Processor
+      CompilerCase #PB_Processor_x86
+        Protected.i capdll = OpenLibrary(#PB_Any, "escapi\escapi_x32.dll")
+      CompilerCase #PB_Processor_x64
+        Protected.i capdll = OpenLibrary(#PB_Any, "escapi\escapi_x64.dll")
+    CompilerEndSelect
+    If capdll = 0
+      Debug "fichier escapi non trouvé"
+      ProcedureReturn #Null
+    EndIf
+    ;/* Fetch function entry points */
+    countCaptureDevices  = GetFunction(capdll, "countCaptureDevices")
+    initCapture          = GetFunction(capdll, "initCapture")
+    deinitCapture        = GetFunction(capdll, "deinitCapture")
+    doCapture            = GetFunction(capdll, "doCapture")
+    isCaptureDone        = GetFunction(capdll, "isCaptureDone")
+    initCOM.initCOMProc  = GetFunction(capdll, "initCOM")
+    getCaptureDeviceName = GetFunction(capdll, "getCaptureDeviceName")
+    ESCAPIDLLVersion     = GetFunction(capdll, "ESCAPIDLLVersion")
+    If countCaptureDevices = 0 Or initCapture = 0 Or deinitCapture = 0 Or doCapture = 0 Or isCaptureDone = 0 Or initCOM = 0 Or getCaptureDeviceName = 0 Or ESCAPIDLLVersion = 0
+      Debug "probleme 1"
+      ProcedureReturn #Null
+    EndIf
+    ;/* Verify DLL version */
+    If ESCAPIDLLVersion() < $200
+      Debug "probleme 2"
+      ProcedureReturn #Null
+    EndIf
+    ;/* Initialize COM.. */
+    initCOM();  
+    ; returns number of devices found
+    ProcedureReturn countCaptureDevices()
+  EndProcedure
+  
+  Procedure Camera_init()
+    Protected name$
+    If setupESCAPI() = #Null
+      Debug "Camera ok mais peut etre non accessible(protegée)"
+      ProcedureReturn #Null
+    Else
+      name$ = Space(1000)
+      getCaptureDeviceName(0, @name$, 1000)
+      name$ = PeekS(@name$, -1, #PB_Ascii)
+      ProcedureReturn countCaptureDevices()
+    EndIf
+  EndProcedure
+  
+  Procedure Camera_on(cam , lg, ht)
+    If scp\mTargetBuf : FreeMemory(scp\mTargetBuf) : EndIf
+    scp\mWidth = lg
+    scp\mHeight = ht
+    scp\mTargetBuf = AllocateMemory (scp\mWidth * scp\mHeight * 4)
+    initCapture(cam, @scp)
+  EndProcedure
+  
+  Procedure CameraToBuffer(cam , Buffer)
+  EndProcedure
+  
+  Procedure CameraToImage(cam , img)
+    Protected pos , size , compt , i , var
+    If scp\mTargetBuf = 0 : ProcedureReturn : EndIf
+    doCapture(cam)
+    ;isCaptureDone(cam)
+    If StartDrawing(ImageOutput(img))
+      pos = DrawingBuffer()
+      If pos
+        size = scp\mWidth * scp\mHeight * 4 - 1
+        compt = size - 3
+        For i = 0 To size Step 4
+          var = PeekL(scp\mTargetBuf + i)
+          PokeL(pos + compt , var)
+          compt - 4
+        Next
+      EndIf
+      StopDrawing()
+    EndIf
+  EndProcedure
   ;----------------------------------------------------------
   ; Macro pour lancer un traitement multi-thread
   Procedure Create_MultiThread_MT(proc , opt = 0) ; opt = nombre de threads imposé par le programme si différent de 0
@@ -1788,6 +1958,33 @@ Module filtres
   
   ;-------------------------------------------------------------------
   
+  Macro selet_and_start_programme(name)
+    CompilerIf #PB_Compiler_Processor = #PB_Processor_x86
+      Create_MultiThread_MT(@name#_PB()) ; version pb pour la version 32bits
+    CompilerElse
+      
+      CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+        Select FilterCtx\Asm
+          Case 1 : Create_MultiThread_MT(@name#_SSE2())
+          Case 2 : Create_MultiThread_MT(@name#_SSE4())
+          Case 3 : Create_MultiThread_MT(@name#_AVX())
+          Case 4 : Create_MultiThread_MT(@name#_AVX512())
+          Default :Create_MultiThread_MT(@name#_PB())
+        EndSelect
+      CompilerElse ; #PB_Compiler_Backend = #PB_Backend_C 
+        Select FilterCtx\Asm
+            ;Case 1 : Create_MultiThread_MT(name_SSE2())
+            ;Case 2 : Create_MultiThread_MT(Mname_SSE4())
+            ;Case 3 : Create_MultiThread_MT(name_AVX())
+            ;Case 4 : Create_MultiThread_MT(name_AVX512())
+          Case 100
+          Default :Create_MultiThread_MT(@name#_PB())
+        EndSelect
+      CompilerEndIf
+    CompilerEndIf
+  EndMacro
+  
+  ;-------------------------------------------------------------------
   
   Procedure.f max_2(a.f,b.f)
     If a>b 
@@ -2391,23 +2588,23 @@ Module filtres
       !mov [rax + 96],  r14
       !mov [rax + 104], r15
     CompilerElse ; (Syntaxe AT&T)
-      ;!asm volatile ( \
-      ;!  "movq v_pos(%rip), %rax \n\t" \
-      ;!  "movq %rbx, 0(%rax) \n\t" \
-      ;!  "movq %rcx, 8(%rax) \n\t" \
-      ;!  "movq %rdx, 16(%rax) \n\t" \
-      ;!  "movq %rsi, 24(%rax) \n\t" \
-      ;!  "movq %rdi, 32(%rax) \n\t" \
-      ;!  "movq %rbp, 40(%rax) \n\t" \
-      ;!  "movq %r8,  48(%rax) \n\t" \
-      ;!  "movq %r9,  56(%rax) \n\t" \
-      ;!  "movq %r10, 64(%rax) \n\t" \
-      ;!  "movq %r11, 72(%rax) \n\t" \
-      ;!  "movq %r12, 80(%rax) \n\t" \
-      ;!  "movq %r13, 88(%rax) \n\t" \
-      ;!  "movq %r14, 96(%rax) \n\t" \
-      ;!  "movq %r15, 104(%rax)" \
-      ;!);
+                 ;!asm volatile ( \
+                 ;!  "movq v_pos(%rip), %rax \n\t" \
+                 ;!  "movq %rbx, 0(%rax) \n\t" \
+                 ;!  "movq %rcx, 8(%rax) \n\t" \
+                 ;!  "movq %rdx, 16(%rax) \n\t" \
+                 ;!  "movq %rsi, 24(%rax) \n\t" \
+                 ;!  "movq %rdi, 32(%rax) \n\t" \
+                 ;!  "movq %rbp, 40(%rax) \n\t" \
+                 ;!  "movq %r8,  48(%rax) \n\t" \
+                 ;!  "movq %r9,  56(%rax) \n\t" \
+                 ;!  "movq %r10, 64(%rax) \n\t" \
+                 ;!  "movq %r11, 72(%rax) \n\t" \
+                 ;!  "movq %r12, 80(%rax) \n\t" \
+                 ;!  "movq %r13, 88(%rax) \n\t" \
+                 ;!  "movq %r14, 96(%rax) \n\t" \
+                 ;!  "movq %r15, 104(%rax)" \
+                 ;!);
     CompilerEndIf
   EndProcedure
   
@@ -2433,23 +2630,23 @@ Module filtres
       !movdqu [rax + 224], xmm14
       !movdqu [rax + 240], xmm15
     CompilerElse; Backend C (Syntaxe AT&T)
-      ;!asm ("movq v_pos(%rip), %rax");
-      ;!asm ("movdqu %xmm0,   0(%rax)");
-      ;!asm ("movdqu %xmm1,  16(%rax)");
-      ;!asm ("movdqu %xmm2,  32(%rax)");
-      ;!asm ("movdqu %xmm3,  48(%rax)");
-      ;!asm ("movdqu %xmm4,  64(%rax)");
-      ;!asm ("movdqu %xmm5,  80(%rax)");
-      ;!asm ("movdqu %xmm6,  96(%rax)");
-      ;!asm ("movdqu %xmm7, 112(%rax)");
-      ;!asm ("movdqu %xmm8, 128(%rax)");
-      ;!asm ("movdqu %xmm9, 144(%rax)");
-      ;!asm ("movdqu %xmm10, 160(%rax)");
-      ;!asm ("movdqu %xmm11, 176(%rax)");
-      ;!asm ("movdqu %xmm12, 192(%rax)");
-      ;!asm ("movdqu %xmm13, 208(%rax)");
-      ;!asm ("movdqu %xmm14, 224(%rax)");
-      ;!asm ("movdqu %xmm15, 240(%rax)");
+                ;!asm ("movq v_pos(%rip), %rax");
+                ;!asm ("movdqu %xmm0,   0(%rax)");
+                ;!asm ("movdqu %xmm1,  16(%rax)");
+                ;!asm ("movdqu %xmm2,  32(%rax)");
+                ;!asm ("movdqu %xmm3,  48(%rax)");
+                ;!asm ("movdqu %xmm4,  64(%rax)");
+                ;!asm ("movdqu %xmm5,  80(%rax)");
+                ;!asm ("movdqu %xmm6,  96(%rax)");
+                ;!asm ("movdqu %xmm7, 112(%rax)");
+                ;!asm ("movdqu %xmm8, 128(%rax)");
+                ;!asm ("movdqu %xmm9, 144(%rax)");
+                ;!asm ("movdqu %xmm10, 160(%rax)");
+                ;!asm ("movdqu %xmm11, 176(%rax)");
+                ;!asm ("movdqu %xmm12, 192(%rax)");
+                ;!asm ("movdqu %xmm13, 208(%rax)");
+                ;!asm ("movdqu %xmm14, 224(%rax)");
+                ;!asm ("movdqu %xmm15, 240(%rax)");
     CompilerEndIf
   EndProcedure
   
@@ -2474,21 +2671,21 @@ Module filtres
       !mov r14, [rax + 96]
       !mov r15, [rax + 104]
     CompilerElse; Backend C (Syntaxe AT&T)
-      ;!asm ("movq v_pos(%rip), %rax");
-      ;!asm ("movq 0(%rax),   %rbx");
-      ;!asm ("movq 8(%rax),   %rcx");
-      ;!asm ("movq 16(%rax),  %rdx");
-      ;!asm ("movq 24(%rax),  %rsi");
-      ;!asm ("movq 32(%rax),  %rdi");
-      ;!asm ("movq 40(%rax),  %rbp");
-      ;!asm ("movq 48(%rax),  %r8");
-      ;!asm ("movq 56(%rax),  %r9");
-      ;!asm ("movq 64(%rax),  %r10");
-      ;!asm ("movq 72(%rax),  %r11");
-      ;!asm ("movq 80(%rax),  %r12");
-      ;!asm ("movq 88(%rax),  %r13");
-      ;!asm ("movq 96(%rax),  %r14");
-      ;!asm ("movq 104(%rax), %r15");
+                ;!asm ("movq v_pos(%rip), %rax");
+                ;!asm ("movq 0(%rax),   %rbx");
+                ;!asm ("movq 8(%rax),   %rcx");
+                ;!asm ("movq 16(%rax),  %rdx");
+                ;!asm ("movq 24(%rax),  %rsi");
+                ;!asm ("movq 32(%rax),  %rdi");
+                ;!asm ("movq 40(%rax),  %rbp");
+                ;!asm ("movq 48(%rax),  %r8");
+                ;!asm ("movq 56(%rax),  %r9");
+                ;!asm ("movq 64(%rax),  %r10");
+                ;!asm ("movq 72(%rax),  %r11");
+                ;!asm ("movq 80(%rax),  %r12");
+                ;!asm ("movq 88(%rax),  %r13");
+                ;!asm ("movq 96(%rax),  %r14");
+                ;!asm ("movq 104(%rax), %r15");
     CompilerEndIf
   EndProcedure
   
@@ -2514,23 +2711,23 @@ Module filtres
       !movdqu xmm14, [rax + 224]
       !movdqu xmm15, [rax + 240]
     CompilerElse; Backend C (Syntaxe AT&T)
-      ;!asm ("movq v_pos(%rip), %rax");
-      ;!asm ("vmovdqu 0(%rax),   %xmm0");
-      ;!asm ("vmovdqu 16(%rax),  %xmm1");
-      ;!asm ("vmovdqu 32(%rax),  %xmm2");
-      ;!asm ("vmovdqu 48(%rax),  %xmm3");
-      ;!asm ("vmovdqu 64(%rax),  %xmm4");
-      ;!asm ("vmovdqu 80(%rax),  %xmm5");
-      ;!asm ("vmovdqu 96(%rax),  %xmm6");
-      ;!asm ("vmovdqu 112(%rax), %xmm7");
-      ;!asm ("vmovdqu 128(%rax), %xmm8");
-      ;!asm ("vmovdqu 144(%rax), %xmm9");
-      ;!asm ("vmovdqu 160(%rax), %xmm10");
-      ;!asm ("vmovdqu 176(%rax), %xmm11");
-      ;!asm ("vmovdqu 192(%rax), %xmm12");
-      ;!asm ("vmovdqu 208(%rax), %xmm13");
-      ;!asm ("vmovdqu 224(%rax), %xmm14");
-      ;!asm ("vmovdqu 240(%rax), %xmm15");
+                ;!asm ("movq v_pos(%rip), %rax");
+                ;!asm ("vmovdqu 0(%rax),   %xmm0");
+                ;!asm ("vmovdqu 16(%rax),  %xmm1");
+                ;!asm ("vmovdqu 32(%rax),  %xmm2");
+                ;!asm ("vmovdqu 48(%rax),  %xmm3");
+                ;!asm ("vmovdqu 64(%rax),  %xmm4");
+                ;!asm ("vmovdqu 80(%rax),  %xmm5");
+                ;!asm ("vmovdqu 96(%rax),  %xmm6");
+                ;!asm ("vmovdqu 112(%rax), %xmm7");
+                ;!asm ("vmovdqu 128(%rax), %xmm8");
+                ;!asm ("vmovdqu 144(%rax), %xmm9");
+                ;!asm ("vmovdqu 160(%rax), %xmm10");
+                ;!asm ("vmovdqu 176(%rax), %xmm11");
+                ;!asm ("vmovdqu 192(%rax), %xmm12");
+                ;!asm ("vmovdqu 208(%rax), %xmm13");
+                ;!asm ("vmovdqu 224(%rax), %xmm14");
+                ;!asm ("vmovdqu 240(%rax), %xmm15");
     CompilerEndIf
   EndProcedure
   
@@ -2556,23 +2753,23 @@ Module filtres
       !vmovdqu [rax + 448], ymm14
       !vmovdqu [rax + 480], ymm15
     CompilerElse; Backend C (Syntaxe AT&T)
-      ;!asm ("movq v_pos(%rip), %rax");
-      ;!asm ("vmovdqu %ymm0,   0(%rax)");
-      ;!asm ("vmovdqu %ymm1,  32(%rax)");
-      ;!asm ("vmovdqu %ymm2,  64(%rax)");
-      ;!asm ("vmovdqu %ymm3,  96(%rax)");
-      ;!asm ("vmovdqu %ymm4, 128(%rax)");
-      ;!asm ("vmovdqu %ymm5, 160(%rax)");
-      ;!asm ("vmovdqu %ymm6, 192(%rax)");
-      ;!asm ("vmovdqu %ymm7, 224(%rax)");
-      ;!asm ("vmovdqu %ymm8, 256(%rax)");
-      ;!asm ("vmovdqu %ymm9, 288(%rax)");
-      ;!asm ("vmovdqu %ymm10, 320(%rax)");
-      ;!asm ("vmovdqu %ymm11, 352(%rax)");
-      ;!asm ("vmovdqu %ymm12, 384(%rax)");
-      ;!asm ("vmovdqu %ymm13, 416(%rax)");
-      ;!asm ("vmovdqu %ymm14, 448(%rax)");
-      ;!asm ("vmovdqu %ymm15, 480(%rax)");
+                ;!asm ("movq v_pos(%rip), %rax");
+                ;!asm ("vmovdqu %ymm0,   0(%rax)");
+                ;!asm ("vmovdqu %ymm1,  32(%rax)");
+                ;!asm ("vmovdqu %ymm2,  64(%rax)");
+                ;!asm ("vmovdqu %ymm3,  96(%rax)");
+                ;!asm ("vmovdqu %ymm4, 128(%rax)");
+                ;!asm ("vmovdqu %ymm5, 160(%rax)");
+                ;!asm ("vmovdqu %ymm6, 192(%rax)");
+                ;!asm ("vmovdqu %ymm7, 224(%rax)");
+                ;!asm ("vmovdqu %ymm8, 256(%rax)");
+                ;!asm ("vmovdqu %ymm9, 288(%rax)");
+                ;!asm ("vmovdqu %ymm10, 320(%rax)");
+                ;!asm ("vmovdqu %ymm11, 352(%rax)");
+                ;!asm ("vmovdqu %ymm12, 384(%rax)");
+                ;!asm ("vmovdqu %ymm13, 416(%rax)");
+                ;!asm ("vmovdqu %ymm14, 448(%rax)");
+                ;!asm ("vmovdqu %ymm15, 480(%rax)");
     CompilerEndIf
   EndProcedure
   
@@ -2599,24 +2796,24 @@ Module filtres
       !vmovdqu [rax + 15*32], ymm15
       !vzeroupper
     CompilerElse; Backend C (Syntaxe AT&T)
-      ;!asm ("movq v_pos(%rip), %rax");
-      ;!asm ("vmovdqu %ymm0,   0(%rax)");
-      ;!asm ("vmovdqu %ymm1,  32(%rax)");
-      ;!asm ("vmovdqu %ymm2,  64(%rax)");
-      ;!asm ("vmovdqu %ymm3,  96(%rax)");
-      ;!asm ("vmovdqu %ymm4, 128(%rax)");
-      ;!asm ("vmovdqu %ymm5, 160(%rax)");
-      ;!asm ("vmovdqu %ymm6, 192(%rax)");
-      ;!asm ("vmovdqu %ymm7, 224(%rax)");
-      ;!asm ("vmovdqu %ymm8, 256(%rax)");
-      ;!asm ("vmovdqu %ymm9, 288(%rax)");
-      ;!asm ("vmovdqu %ymm10, 320(%rax)");
-      ;!asm ("vmovdqu %ymm11, 352(%rax)");
-      ;!asm ("vmovdqu %ymm12, 384(%rax)");
-      ;!asm ("vmovdqu %ymm13, 416(%rax)");
-      ;!asm ("vmovdqu %ymm14, 448(%rax)");
-      ;!asm ("vmovdqu %ymm15, 480(%rax)");
-      ;!asm ("vzeroupper");
+                ;!asm ("movq v_pos(%rip), %rax");
+                ;!asm ("vmovdqu %ymm0,   0(%rax)");
+                ;!asm ("vmovdqu %ymm1,  32(%rax)");
+                ;!asm ("vmovdqu %ymm2,  64(%rax)");
+                ;!asm ("vmovdqu %ymm3,  96(%rax)");
+                ;!asm ("vmovdqu %ymm4, 128(%rax)");
+                ;!asm ("vmovdqu %ymm5, 160(%rax)");
+                ;!asm ("vmovdqu %ymm6, 192(%rax)");
+                ;!asm ("vmovdqu %ymm7, 224(%rax)");
+                ;!asm ("vmovdqu %ymm8, 256(%rax)");
+                ;!asm ("vmovdqu %ymm9, 288(%rax)");
+                ;!asm ("vmovdqu %ymm10, 320(%rax)");
+                ;!asm ("vmovdqu %ymm11, 352(%rax)");
+                ;!asm ("vmovdqu %ymm12, 384(%rax)");
+                ;!asm ("vmovdqu %ymm13, 416(%rax)");
+                ;!asm ("vmovdqu %ymm14, 448(%rax)");
+                ;!asm ("vmovdqu %ymm15, 480(%rax)");
+                ;!asm ("vzeroupper");
     CompilerEndIf
   EndProcedure
   
@@ -2653,9 +2850,12 @@ Module filtres
   
   XIncludeFile "blur_box_Guillossien.pbi"
   XIncludeFile "SummedArea.pbi"
+  
+  XIncludeFile "blur_IIR_sse2.pbi"
   XIncludeFile "blur_IIR.pbi"
+  
   XIncludeFile "stackblur.pbi"
-  XIncludeFile "CircularMeanblur2.pbi"
+  XIncludeFile "CircularMeanblur.pbi"
   
   ;CompilerIf #PB_Compiler_OS = #PB_OS_Linux
   ;#Blur_Directional
@@ -2677,11 +2877,16 @@ Module filtres
   XIncludeFile "SeparableGaussian.pbi"
   XIncludeFile "HeatDiffusionBlur.pbi"
   ;#Blur_EdgeAware
+  XIncludeFile "bilateral_sse2.pbi"
   XIncludeFile "bilateral.pbi"
+  XIncludeFile "Edge_Aware_sse2.pbi"
   XIncludeFile "Edge_Aware.pbi"
+  XIncludeFile "GuidedFilterColor_sse2.pbi"
   XIncludeFile "GuidedFilterColor.pbi"
+  XIncludeFile "WLSBlur_sse2.pbi"
   XIncludeFile "WLSBlur.pbi"
-  XIncludeFile "DomainTransformFilter.pbi"
+  XIncludeFile "DomainTransform_sse2.pbi"
+  XIncludeFile "DomainTransform.pbi"
   XIncludeFile "MultiScaleBilateralBlur.pbi"
   XIncludeFile "BilateralLaplacianBlur.pbi"
   XIncludeFile "SmartBlur.pbi"
@@ -2689,8 +2894,11 @@ Module filtres
   ;#Blur_Adaptive
   XIncludeFile "median.pbi"
   XIncludeFile "AnisotropicBlur.pbi"
+  XIncludeFile "KuwaharaBlur_sse2.pbi"
   XIncludeFile "KuwaharaBlur.pbi"
   XIncludeFile "NLMBlur.pbi"
+  XIncludeFile "RollingGuidanceFilter_sse4.pbi"
+  XIncludeFile "RollingGuidanceFilter_sse2.pbi"
   XIncludeFile "RollingGuidanceFilter.pbi"
   ;#Blur_Stochastic
   XIncludeFile "PoissonDiskBlur.pbi"
@@ -2984,9 +3192,9 @@ Module filtres
 EndModule
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 127
-; FirstLine = 84
-; Folding = ---------------
+; CursorPosition = 886
+; FirstLine = 203
+; Folding = 0---------------
 ; Optimizer
 ; EnableXP
 ; DPIAware

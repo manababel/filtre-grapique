@@ -75,6 +75,9 @@ Procedure PolygonBokehBlur_sp(*FilterCtx.FilterParams)
     Protected accA.d, accR.d, accG.d, accB.d, weightSum.d, weight.d, bf.d, lum.d
     Protected a0, r0, g0, b0
     
+    Protected *src.pixelarray = \addr[0]
+    Protected *dst.pixelarray = \addr[1]
+    
     macro_calul_tread(h)
     
     For y = thread_start To thread_stop - 1
@@ -86,9 +89,7 @@ Procedure PolygonBokehBlur_sp(*FilterCtx.FilterParams)
           ipos = pos + PeekL(\addr[2] + k * 4)
           If ipos < 0 Or ipos >= wcount : Continue : EndIf
           
-          value = PeekL(\addr[0] + (ipos << 2))
-          a0 = (value >> 24) & $FF : r0 = (value >> 16) & $FF
-          g0 = (value >> 8)  & $FF : b0 = value & $FF
+          getargb(*src\l[ipos] , a0 , r0 , g0 , b0)
           
           weight = PeekD(\addr[3] + k * 8)
           
@@ -107,14 +108,19 @@ Procedure PolygonBokehBlur_sp(*FilterCtx.FilterParams)
         
         If weightSum > 0.0
           Protected invSum.d = 1.0 / weightSum
-          a0 = accA * invSum + 0.5 : r0 = accR * invSum + 0.5
-          g0 = accG * invSum + 0.5 : b0 = accB * invSum + 0.5
-          If a0 > 255 : a0 = 255 : EndIf : If r0 > 255 : r0 = 255 : EndIf
-          If g0 > 255 : g0 = 255 : EndIf : If b0 > 255 : b0 = 255 : EndIf
-          PokeL(\addr[1] + (pos << 2), (a0 << 24) | (r0 << 16) | (g0 << 8) | b0)
+          a0 = accA * invSum + 0.5
+          r0 = accR * invSum + 0.5
+          g0 = accG * invSum + 0.5
+          b0 = accB * invSum + 0.5
+          If a0 > 255 : a0 = 255 : EndIf
+          If r0 > 255 : r0 = 255 : EndIf
+          If g0 > 255 : g0 = 255 : EndIf
+          If b0 > 255 : b0 = 255 : EndIf
+          *dst\l[pos] = (a0 << 24) | (r0 << 16) | (g0 << 8) | b0
         Else
-          PokeL(\addr[1] + (pos << 2), PeekL(\addr[0] + (pos << 2)))
+          *dst\l[pos] = *src\l[pos]
         EndIf
+        If key_escape_press = 1 : Break 2 : EndIf
       Next
     Next
   EndWith
@@ -123,6 +129,7 @@ EndProcedure
 Procedure PolygonBokehBlurEx(*FilterCtx.FilterParams)
   Restore PolygonBokehBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
   With *FilterCtx
@@ -137,7 +144,7 @@ Procedure PolygonBokehBlurEx(*FilterCtx.FilterParams)
     
     If \addr[2] And \addr[3]
       PolygonBokeh_PrecomputeKernel(*FilterCtx)
-      Create_MultiThread_MT(@PolygonBokehBlur_sp(), 1)
+      Create_MultiThread_MT(@PolygonBokehBlur_sp())
       FreeMemory(\addr[2]) : FreeMemory(\addr[3])
     EndIf
     
@@ -146,9 +153,13 @@ Procedure PolygonBokehBlurEx(*FilterCtx.FilterParams)
 EndProcedure
 
 Procedure PolygonBokehBlur(source, cible, mask, radius, sides, highlightBoost)
-  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
   With FilterCtx
-    \option[0] = radius : \option[1] = sides : \option[2] = highlightBoost
+    \option[0] = radius
+    \option[1] = sides
+    \option[2] = highlightBoost
   EndWith
   PolygonBokehBlurEx(FilterCtx)
 EndProcedure
@@ -167,8 +178,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 147
-; FirstLine = 116
+; CursorPosition = 146
+; FirstLine = 120
 ; Folding = -
 ; EnableXP
 ; DPIAware

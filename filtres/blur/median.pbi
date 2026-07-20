@@ -3,19 +3,13 @@
 ; Filtre médian avec fenêtre glissante
 ; ---------------------------------------------------
 
-; --- Macro pour ajouter/retirer un pixel de l'histogramme ---
 Macro MedianBlur_UpdateHist(op)
-  value = PeekL(*FilterCtx\addr[0] + index)
-  a = (value >> 24) & $FF
-  r = (value >> 16) & $FF
-  g = (value >> 8) & $FF
-  b = value & $FF
+  getargb(*src\l[index] , a , r , g , b)
   histA(a) op 1
   yl = (77 * r + 150 * g + 29 * b) >> 8
   histY(yl) op 1
 EndMacro
 
-; --- Macro pour trouver la médiane ---
 Macro MedianBlur_FindMedian(hist, result)
   sum = 0
   result = 0
@@ -31,6 +25,8 @@ EndMacro
 ; --- Procédure principale (multithreadée) ---
 Procedure MedianBlur_sp(*FilterCtx.FilterParams)
   With *FilterCtx
+    Protected *src.PixelArray = \addr[0]
+    Protected *dst.PixelArray = \addr[1]
     Protected lg = \image_lg[0]
     Protected ht = \image_ht[0]
     Protected kernelSize = \option[0]
@@ -70,23 +66,20 @@ Procedure MedianBlur_sp(*FilterCtx.FilterParams)
           px = dx
           If px < 0 : px = 0 : ElseIf px > lgMinus1 : px = lgMinus1 : EndIf
           
-          index = (py * lg + px) << 2
+          index = (py * lg + px)
           MedianBlur_UpdateHist(+)
         Next
       Next
       
       ; Parcours horizontal avec fenêtre glissante
       For x = 0 To lgMinus1
+        index = y * lg + x
         ; Trouver les médianes
         MedianBlur_FindMedian(histA, medianA)
         MedianBlur_FindMedian(histY, medianY)
         
         ; Récupérer la chrominance du pixel original
-        index = (y * lg + x) << 2
-        value = PeekL(\addr[0] + index)
-        r = (value >> 16) & $FF
-        g = (value >> 8) & $FF
-        b = value & $FF
+        getrgb(*src\l[index], r , g , b)
         
         ; Convertir en YCbCr
         cb = ((-43 * r - 85 * g + 128 * b) >> 8)
@@ -98,12 +91,10 @@ Procedure MedianBlur_sp(*FilterCtx.FilterParams)
         b = medianY + ((454 * cb) >> 8)
         
         ; Clamping
-        If r < 0 : r = 0 : ElseIf r > 255 : r = 255 : EndIf
-        If g < 0 : g = 0 : ElseIf g > 255 : g = 255 : EndIf
-        If b < 0 : b = 0 : ElseIf b > 255 : b = 255 : EndIf
+        clamp_rgb(r , g , b)
         
         ; Écrire le résultat
-        PokeL(\addr[1] + index, (medianA << 24) | (r << 16) | (g << 8) | b)
+        *dst\l[index] = (medianA << 24) | (r << 16) | (g << 8) | b
         
         ; Mise à jour glissante de la fenêtre
         If x < lgMinus1
@@ -118,11 +109,11 @@ Procedure MedianBlur_sp(*FilterCtx.FilterParams)
             If py < 0 : py = 0 : ElseIf py > htMinus1 : py = htMinus1 : EndIf
             
             ; Retirer l'ancienne colonne
-            index = (py * lg + oldX) << 2
+            index = (py * lg + oldX)
             MedianBlur_UpdateHist(-)
             
             ; Ajouter la nouvelle colonne
-            index = (py * lg + newX) << 2
+            index = (py * lg + newX)
             MedianBlur_UpdateHist(+)
           Next
         EndIf
@@ -137,20 +128,20 @@ EndProcedure
 Procedure MedianBlurEx(*FilterCtx.FilterParams)
   Restore MedianBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  Create_MultiThread_MT(@MedianBlur_sp(), 1)
+  Create_MultiThread_MT(@MedianBlur_sp())
   
   mask_update(*FilterCtx, last_data)
 EndProcedure
 
-Procedure MedianBlur(source, cible, mask, radius, mask_type)
+Procedure MedianBlur(source, cible, mask, radius)
   Set_Source(source)
   Set_Cible(cible)
   Set_Mask(mask)
   With FilterCtx
     \option[0] = radius
-    \option[1] = mask_type
   EndWith
   MedianBlurEx(FilterCtx)
 EndProcedure
@@ -165,7 +156,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 7
+; CursorPosition = 128
+; FirstLine = 100
 ; Folding = -
 ; EnableXP
 ; DPIAware

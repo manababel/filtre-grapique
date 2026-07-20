@@ -186,8 +186,8 @@ EndProcedure
 
 DataSection
   Guillossien_data:
-  Data.s "Guillossien (erreur de decalage)"
-  Data.s "Blur Box optimise"
+  Data.s "Guillossien"
+  Data.s "Blur Box optimise (erreur de decalage)"
   Data.i #FilterType_Blur
   Data.i #Blur_Classic
   
@@ -202,8 +202,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 88
-; FirstLine = 63
+; CursorPosition = 188
+; FirstLine = 153
 ; Folding = --
 ; EnableXP
 ; DPIAware

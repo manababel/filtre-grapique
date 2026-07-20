@@ -1,5 +1,5 @@
 ﻿; ---------------------------------------------------
-; Bilateral Laplacian Blur - Version optimisée
+; Bilateral Laplacian Blur - Version optimisée et corrigée
 ; Flou multi-échelle avec préservation des contours
 ; ---------------------------------------------------
 
@@ -16,9 +16,12 @@ Procedure BilateralBlurBuffer(*buf, w, h, radius, sigmaColor.f)
   Protected r, g, b, a
   Protected sumR.f, sumG.f, sumB.f, sumA.f, sumW.f
   Protected dColor.f, wColor.f, wSpace.f, wTot.f
-  Protected invSigma2.f = -1.0 / (sigmaColor * sigmaColor)
+  
+  If sigmaColor = 0.0 : sigmaColor = 1.0 : EndIf
+  Protected invSigma2.f = -1.0 / (2.0 * sigmaColor * sigmaColor)
+  
   Protected radiusSq.f = radius * radius
-  Protected invRadiusSq.f = -1.0 / radiusSq
+  Protected invRadiusSq.f = -1.0 / (2.0 * radiusSq)
   Protected dxSq, dySq, distSq
   Protected wMinus1 = w - 1
   Protected hMinus1 = h - 1
@@ -59,7 +62,10 @@ Procedure BilateralBlurBuffer(*buf, w, h, radius, sigmaColor.f)
           
           wTot = wColor * wSpace
           
-          sumR + r * wTot : sumG + g * wTot : sumB + b * wTot : sumA + a * wTot
+          sumR + (r * wTot)
+          sumG + (g * wTot)
+          sumB + (b * wTot)
+          sumA + (a * wTot)
           sumW + wTot
         Next
       Next
@@ -81,59 +87,92 @@ Procedure BilateralBlurBuffer(*buf, w, h, radius, sigmaColor.f)
 EndProcedure
 
 ; --- Downscale ---
-Procedure Bilateraltab_laplacian_Downscale(*src, srcW, srcH, *dst, dstW, dstH)
-  Protected x, y, sx, sy, ex, ey, sumR, sumG, sumB, sumA, count, px, py, idx, idx2
-  Protected scaleX.f = srcW / dstW : Protected scaleY.f = srcH / dstH
-  For y = 0 To dstH - 1
+Procedure Bilateraltab_laplacian_Downscale(*FilterCtx.FilterParams)
+  Protected *src.pixelarray = *FilterCtx\addr[2]
+  Protected srcW = *FilterCtx\addr[3]
+  Protected srcH = *FilterCtx\addr[4]
+  Protected *dst.pixelarray = *FilterCtx\addr[5]
+  Protected dstW = *FilterCtx\addr[6]
+  Protected dstH = *FilterCtx\addr[7]
+  
+  Protected x, y, sx, sy, ex, ey, sumR, sumG, sumB, sumA, count, px, py
+  Protected scaleX.f = srcW / dstW
+  Protected scaleY.f = srcH / dstH
+  Protected.l a , r , g , b
+  
+  macro_calul_tread(dstH)
+  
+  For y = thread_start To thread_stop - 1
     sy = y * scaleY : ey = (y + 1) * scaleY : If ey > srcH : ey = srcH : EndIf
     For x = 0 To dstW - 1
       sx = x * scaleX : ex = (x + 1) * scaleX : If ex > srcW : ex = srcW : EndIf
       sumR = 0 : sumG = 0 : sumB = 0 : sumA = 0 : count = 0
       For py = sy To ey - 1
         For px = sx To ex - 1
-          idx = (py * srcW + px) << 2
-          sumA + PeekA(*src + idx + 3) : sumR + PeekA(*src + idx + 2)
-          sumG + PeekA(*src + idx + 1) : sumB + PeekA(*src + idx)
+          getargb(*src\l[py * srcW + px] , a , r , g , b)
+          sumA + a : sumR + r : sumG + g : sumB + b
           count + 1
         Next
       Next
       If count > 0
-        idx2 = (y * dstW + x) << 2
-        PokeA(*dst + idx2 + 3, sumA / count) : PokeA(*dst + idx2 + 2, sumR / count)
-        PokeA(*dst + idx2 + 1, sumG / count) : PokeA(*dst + idx2    , sumB / count)
+        a = sumA / count
+        r = sumR / count
+        g = sumG / count
+        b = sumB / count
+        ; Format ARGB strict
+        *dst\l[y * dstW + x] = (a << 24) | (r << 16) | (g << 8) | b
       EndIf
     Next
   Next
 EndProcedure
 
 ; --- Upscale bilinéaire ---
-Procedure Bilateraltab_laplacian_Upscale(*src, srcW, srcH, *dst, dstW, dstH)
-  Protected x, y, sx.f, sy.f, x0, y0, x1, y1, idx
-  Protected fx.f, fy.f, fx1.f, fy1.f
+Procedure Bilateraltab_laplacian_Upscale(*FilterCtx.FilterParams)
+  Protected *src.pixelarray = *FilterCtx\addr[2]
+  Protected srcW = *FilterCtx\addr[3]
+  Protected srcH = *FilterCtx\addr[4]
+  Protected *dst.pixelarray = *FilterCtx\addr[5]
+  Protected dstW = *FilterCtx\addr[6]
+  Protected dstH = *FilterCtx\addr[7]
+  
+  Protected x, y, x0, y0, x1, y1
+  Protected sx.f, sy.f, fx.f, fy.f, fx1.f, fy1.f
   Protected r00, g00, b00, a00, r01, g01, b01, a01, r10, g10, b10, a10, r11, g11, b11, a11
-  Protected r0.f, g0.f, b0.f, a0.f, r1.f, g1.f, b1.f, a1.f, r.f, g.f, b.f, a.f
-  Protected scaleX.f = (srcW - 1) / dstW : Protected scaleY.f = (srcH - 1) / dstH
-  For y = 0 To dstH - 1
-    sy = y * scaleY : y0 = sy : y1 = y0 + 1 : If y1 >= srcH : y1 = srcH - 1 : EndIf
+  Protected r.f, g.f, b.f, a.f
+  Protected.l al , rl , gl , bl
+  
+  Protected scaleX.f = srcW / dstW 
+  Protected scaleY.f = srcH / dstH
+  
+  macro_calul_tread(dstH)
+  
+  For y = thread_start To thread_stop - 1
+    sy = (y + 0.5) * scaleY - 0.5
+    If sy < 0 : sy = 0 : EndIf
+    y0 = Int(sy)
+    y1 = y0 + 1
+    If y1 >= srcH : y1 = srcH - 1 : EndIf
     fy = sy - y0 : fy1 = 1.0 - fy
+    
     For x = 0 To dstW - 1
-      sx = x * scaleX : x0 = sx : x1 = x0 + 1 : If x1 >= srcW : x1 = srcW - 1 : EndIf
+      sx = (x + 0.5) * scaleX - 0.5
+      If sx < 0 : sx = 0 : EndIf
+      x0 = Int(sx)
+      x1 = x0 + 1 : If x1 >= srcW : x1 = srcW - 1 : EndIf
       fx = sx - x0 : fx1 = 1.0 - fx
-      idx = (y * dstW + x) << 2
-      a00 = PeekA(*src + (y0*srcW+x0)*4 + 3) : r00 = PeekA(*src + (y0*srcW+x0)*4 + 2)
-      g00 = PeekA(*src + (y0*srcW+x0)*4 + 1) : b00 = PeekA(*src + (y0*srcW+x0)*4)
-      a01 = PeekA(*src + (y0*srcW+x1)*4 + 3) : r01 = PeekA(*src + (y0*srcW+x1)*4 + 2)
-      g01 = PeekA(*src + (y0*srcW+x1)*4 + 1) : b01 = PeekA(*src + (y0*srcW+x1)*4)
-      a10 = PeekA(*src + (y1*srcW+x0)*4 + 3) : r10 = PeekA(*src + (y1*srcW+x0)*4 + 2)
-      g10 = PeekA(*src + (y1*srcW+x0)*4 + 1) : b10 = PeekA(*src + (y1*srcW+x0)*4)
-      a11 = PeekA(*src + (y1*srcW+x1)*4 + 3) : r11 = PeekA(*src + (y1*srcW+x1)*4 + 2)
-      g11 = PeekA(*src + (y1*srcW+x1)*4 + 1) : b11 = PeekA(*src + (y1*srcW+x1)*4)
-      a = (a00*fx1+a01*fx)*fy1 + (a10*fx1+a11*fx)*fy
-      r = (r00*fx1+r01*fx)*fy1 + (r10*fx1+r11*fx)*fy
-      g = (g00*fx1+g01*fx)*fy1 + (g10*fx1+g11*fx)*fy
-      b = (b00*fx1+b01*fx)*fy1 + (b10*fx1+b11*fx)*fy
-      PokeA(*dst + idx + 3, a + 0.5) : PokeA(*dst + idx + 2, r + 0.5)
-      PokeA(*dst + idx + 1, g + 0.5) : PokeA(*dst + idx    , b + 0.5)
+      
+      getargb(*src\l[y0 * srcW + x0] , a00 , r00 , g00 , b00) 
+      getargb(*src\l[y0 * srcW + x1] , a01 , r01 , g01 , b01)
+      getargb(*src\l[y1 * srcW + x0] , a10 , r10 , g10 , b10) 
+      getargb(*src\l[y1 * srcW + x1] , a11 , r11 , g11 , b11) 
+      
+      a = ((a00*fx1 + a01*fx)*fy1 + (a10*fx1 + a11*fx)*fy) + 0.5
+      r = ((r00*fx1 + r01*fx)*fy1 + (r10*fx1 + r11*fx)*fy) + 0.5
+      g = ((g00*fx1 + g01*fx)*fy1 + (g10*fx1 + g11*fx)*fy) + 0.5
+      b = ((b00*fx1 + b01*fx)*fy1 + (b10*fx1 + b11*fx)*fy) + 0.5
+      
+      al = a : rl = r : gl = g : bl = b
+      *dst\l[y * dstW + x] = (al << 24) | (rl << 16) | (gl << 8) | bl
     Next
   Next
 EndProcedure
@@ -142,54 +181,110 @@ EndProcedure
 Procedure Bilateraltab_laplacianBlur_sp(*FilterCtx.FilterParams)
   With *FilterCtx
     Protected lg = \image_lg[0], ht = \image_ht[0]
-    Protected levels = \option[0], radius = \option[1], sigma.f = \option[2]
-    If levels < 2 : levels = 2 : ElseIf levels > 5 : levels = 5 : EndIf
+    Protected levels = \option[0], radius = \option[1]
+    Protected sigma.f = \option[2] 
+    
+    clamp(levels , 2 , 5) 
     
     Dim levelW(levels)
     Dim levelH(levels)
     Dim pyramid(levels)
     Dim tab_laplacian(levels)
-    Protected c , l, i, offset, size, *temp = AllocateMemory(lg * ht * 4)
+    
+    Protected l, i, *temp = AllocateMemory(lg * ht * 4)
+    
+    If Not *temp : ProcedureReturn : EndIf
     
     For l = 0 To levels - 1
       levelW(l) = lg >> l : levelH(l) = ht >> l
       If levelW(l) < 1 : levelW(l) = 1 : EndIf
       If levelH(l) < 1 : levelH(l) = 1 : EndIf
       pyramid(l) = AllocateMemory(levelW(l) * levelH(l) * 4)
-      If l < levels - 1 : tab_laplacian(l) = AllocateMemory(levelW(l) * levelH(l) * 4) : EndIf
+      If l < levels - 1 
+        tab_laplacian(l) = AllocateMemory(levelW(l) * levelH(l) * 4) 
+      EndIf
     Next
     
     CopyMemory(\addr[0], pyramid(0), lg * ht * 4)
+    
+    ; 1. Construction de la pyramide Gaussienne
     For l = 1 To levels - 1
-      Bilateraltab_laplacian_Downscale(pyramid(l - 1), levelW(l - 1), levelH(l - 1), pyramid(l), levelW(l), levelH(l))
+      \addr[2] = pyramid(l - 1)
+      \addr[3] = levelW(l - 1)
+      \addr[4] = levelH(l - 1)
+      \addr[5] = pyramid(l)
+      \addr[6] = levelW(l)
+      \addr[7] = levelH(l)
+      Create_MultiThread_MT(@Bilateraltab_laplacian_Downscale())
     Next
     
+    ; 2. Construction du Laplacien + Filtrage Bilatéral
+    Protected t = ElapsedMilliseconds()
     For l = 0 To levels - 2
-      Bilateraltab_laplacian_Upscale(pyramid(l + 1), levelW(l + 1), levelH(l + 1), *temp, levelW(l), levelH(l))
+      \addr[2] = pyramid(l + 1)
+      \addr[3] = levelW(l + 1)
+      \addr[4] = levelH(l + 1)
+      \addr[5] = *temp
+      \addr[6] = levelW(l)
+      \addr[7] = levelH(l)
+      
+      Create_MultiThread_MT(@Bilateraltab_laplacian_Upscale())
+      
+      Protected *pyrPtr.pixelarray = pyramid(l)
+      Protected *tmpPtr.pixelarray = *temp
+      Protected *lapPtr.pixelarray = tab_laplacian(l)
+      Protected.l pA, pR, pG, pB, tA, tR, tG, tB, lA, lR, lG1, lB
+      
       For i = 0 To (levelW(l) * levelH(l)) - 1
-        offset = i << 2
-        PokeA(tab_laplacian(l) + offset + 3, 128 + (PeekA(pyramid(l)+offset+3) - PeekA(*temp+offset+3)) / 2)
-        PokeA(tab_laplacian(l) + offset + 2, 128 + (PeekA(pyramid(l)+offset+2) - PeekA(*temp+offset+2)) / 2)
-        PokeA(tab_laplacian(l) + offset + 1, 128 + (PeekA(pyramid(l)+offset+1) - PeekA(*temp+offset+1)) / 2)
-        PokeA(tab_laplacian(l) + offset    , 128 + (PeekA(pyramid(l)+offset)   - PeekA(*temp+offset))   / 2)
+        getargb(*pyrPtr\l[i], pA, pR, pG, pB)
+        getargb(*tmpPtr\l[i], tA, tR, tG, tB)
+        
+        lA = 128 + (pA - tA) / 2
+        lR = 128 + (pR - tR) / 2
+        lG1 = 128 + (pG - tG) / 2 ; FIXED : lG1 changé en lG
+        lB = 128 + (pB - tB) / 2
+        
+        ; Format ARGB strict
+        *lapPtr\l[i] = (lA << 24) | (lR << 16) | (lG1 << 8) | lB
       Next
+      
       Protected effRad = radius >> l : If effRad < 1 : effRad = 1 : EndIf
       BilateralBlurBuffer(tab_laplacian(l), levelW(l), levelH(l), effRad, sigma)
     Next
+    \tmp = ElapsedMilliseconds() - t
     
+    ; 3. Reconstruction de l'image
     For l = levels - 2 To 0 Step -1
-      Bilateraltab_laplacian_Upscale(pyramid(l + 1), levelW(l + 1), levelH(l + 1), pyramid(l), levelW(l), levelH(l))
+      \addr[2] = pyramid(l + 1)
+      \addr[3] = levelW(l + 1)
+      \addr[4] = levelH(l + 1)
+      \addr[5] = pyramid(l)
+      \addr[6] = levelW(l)
+      \addr[7] = levelH(l)
+      
+      Create_MultiThread_MT(@Bilateraltab_laplacian_Upscale())
+      
+      Protected *pyrRec.pixelarray = pyramid(l)
+      Protected *lapRec.pixelarray = tab_laplacian(l)
+      Protected.l rA, rR, rG, rB, lapA, lapR, lapG, lapB, resA, resR, resG, resB
+      
       For i = 0 To (levelW(l) * levelH(l)) - 1
-        offset = i << 2
-        For c = 0 To 3
-          Protected res = PeekA(pyramid(l)+offset+c) + (PeekA(tab_laplacian(l)+offset+c) - 128) * 2
-          If res < 0 : res = 0 : ElseIf res > 255 : res = 255 : EndIf
-          PokeA(pyramid(l) + offset + c, res)
-        Next
+        getargb(*pyrRec\l[i], rA, rR, rG, rB)
+        getargb(*lapRec\l[i], lapA, lapR, lapG, lapB)
+        
+        resA = rA + (lapA - 128) * 2 : If resA < 0 : resA = 0 : ElseIf resA > 255 : resA = 255 : EndIf
+        resR = rR + (lapR - 128) * 2 : If resR < 0 : resR = 0 : ElseIf resR > 255 : resR = 255 : EndIf
+        resG = rG + (lapG - 128) * 2 : If resG < 0 : resG = 0 : ElseIf resG > 255 : resG = 255 : EndIf
+        resB = rB + (lapB - 128) * 2 : If resB < 0 : resB = 0 : ElseIf resB > 255 : resB = 255 : EndIf
+        
+        ; Format ARGB strict
+        *pyrRec\l[i] = (resA << 24) | (resR << 16) | (resG << 8) | resB
       Next
     Next
     
     CopyMemory(pyramid(0), \addr[1], lg * ht * 4)
+    
+    ; Libération mémoire propre
     For l = 0 To levels - 1
       If pyramid(l) : FreeMemory(pyramid(l)) : EndIf
       If l < levels - 1 And tab_laplacian(l) : FreeMemory(tab_laplacian(l)) : EndIf
@@ -202,25 +297,31 @@ EndProcedure
 Procedure BilaterallaplacianBlurEx(*FilterCtx.FilterParams)
   Restore BilaterallaplacianBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  Create_MultiThread_MT(@Bilateraltab_laplacianBlur_sp(), 1)
+  Bilateraltab_laplacianBlur_sp(*FilterCtx)
   
   mask_update(*FilterCtx, last_data)
 EndProcedure
 
 ; --- Appel simplifie ---
-Procedure BilaterallaplacianBlur(source, cible, mask, levels, radius, sigma, mask_type)
+Procedure BilaterallaplacianBlur(source, cible, mask, levels, radius, sigma )
   Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
   With FilterCtx
-    \option[0] = levels : \option[1] = radius : \option[2] = sigma : \option[3] = mask_type
+    \option[0] = levels
+    \option[1] = radius
+    \option[2] = sigma
   EndWith
   BilaterallaplacianBlurEx(FilterCtx)
 EndProcedure
 
+
+
+
 DataSection
   BilaterallaplacianBlur_data:
-  Data.s "BilaterallaplacianBlur (probleme)"
+  Data.s "BilaterallaplacianBlur"
   Data.s "Flou multi-échelle préservant les contours (Laplacian)"
   Data.i #FilterType_Blur, #Blur_EdgeAware
   Data.s "Niveaux"
@@ -232,8 +333,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 222
-; FirstLine = 181
+; CursorPosition = 299
+; FirstLine = 277
 ; Folding = --
 ; EnableXP
 ; DPIAware

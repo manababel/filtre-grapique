@@ -44,8 +44,6 @@ Macro BoxBlur_declare_variable(optz , v2 , v3)
   Protected *pointeur.Array32 = *FilterCtx\addr[v3]
 EndMacro
 
-
-
 ; Applique un flou horizontal avec traitement par blocs
 Procedure BoxBlur_X(*FilterCtx.FilterParams) 
   BoxBlur_declare_variable(optx , 0 , 2)
@@ -220,8 +218,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 157
-; FirstLine = 149
+; CursorPosition = 45
+; FirstLine = 63
 ; Folding = --
 ; EnableAsm
 ; EnableThread

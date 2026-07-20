@@ -3,7 +3,7 @@
 IncludeFile "filtres.pbi"
 UseModule filtres
 
-Global window_title.s = "filtre V2026.25.31"
+Global window_title.s = "filtre V2026.07.21"
 ;IncludeFile "xnview\xnview.pbi"
 ;If  XnViewLoader::Init()
 ;Debug "lib xnview ok"
@@ -85,6 +85,8 @@ Enumeration
   #menu_favori_trier_id
   #menu_favori_trier_type
   #menu_favori_supprimer
+  
+  #Touch_Escape
 EndEnumeration
 
 Enumeration images
@@ -284,7 +286,8 @@ Procedure load_img(var)
   file$ = OpenFileRequester("Image","","",0)
   ;ig = XnViewLoader::LoadToPB(file$)
   ;If ig
-  If load_image_32(var,file$) = 1
+  ;If load_image_32(var,file$) = 1
+ If Load_Image(var,file$) = 1
     Select var
       Case #img_source
         load_image_sp(#img_source , #img_miniature_source , #canvas_miniature_source)
@@ -664,6 +667,8 @@ Procedure create_menu_part1()
     CloseSubMenu()  
   CloseSubMenu()
   MenuBar()
+  MenuItem( #Touch_Escape, "ANNULER")
+  MenuBar()
   ;MenuTitle("Quit")
   MenuItem( #quit, "Quit")
     
@@ -780,7 +785,7 @@ EndProcedure
 Procedure update_favori()
     If favori_write = 1 : ProcedureReturn : EndIf
     t$ = GetCurrentDirectory() + "filtres" + #PS$ + "favori"
-    If OpenFile(0, t$)
+    If CreateFile(0, t$)
       ForEach favori()
         l$ = favori()\name + "," + Str(favori()\id) + "," + Str(favori()\typ)
         WriteStringN(0,l$)
@@ -1081,7 +1086,7 @@ Procedure update_filtre(clic)
             is_opt = Bool(val_cur = (val_min + j))
             
             ; Dessin et interaction
-            If draw_bouton(pn, py + 3, l2, 18, mx, my, clic, txt$, $ffffff, is_opt)
+            If draw_bouton(pn, py + 3, l2, 18, mx, my, clic, txt$, $ffffff, is_opt) And FilterCtx\thread_actif = 0
               res = val_min + j
               If val_cur <> res
                 List_filtre_selected()\opt(i, 2) = res
@@ -1094,7 +1099,7 @@ Procedure update_filtre(clic)
           ; Cas Trackbar
           ;res = bouton_TrackBar(option_px + 200, py + 3, 240, 18, val_min, val_max, val_cur, mx, my, clic)
           res = bouton_TrackBar(current_id, option_px + 200, py + 3, 240, 18, val_min, val_max, val_cur, mx, my, clic)
-          If res <> val_cur
+          If res <> val_cur And FilterCtx\thread_actif = 0
             List_filtre_selected()\opt(i, 2) = res
             valider = 1
           EndIf
@@ -1343,6 +1348,73 @@ EndProcedure
 
 
 
+Procedure start_filter(*FilterCtx.FilterParams)
+  With FilterCtx
+    
+    If \thread_actif = 1 : ProcedureReturn : EndIf
+    
+    Clear_Data_Filter(FilterCtx)
+    
+    \thread_actif = 1
+    
+    Select image_selected
+        
+      Case 1
+        If camera_active = 1 
+          If Not IsImage(#img_tempo_source)
+            CreateImage(#img_tempo_source , camera_lg , camera_ht , 32 )
+          Else
+            If camera_lg <> ImageWidth(#img_tempo_source) Or camera_ht <> ImageHeight(#img_tempo_source)
+              ResizeImage(#img_tempo_source , camera_lg , camera_ht)
+            EndIf
+          EndIf
+          CameraToImage(camera_device , #img_tempo_source)
+        Else
+          CopyImage(#img_source , #img_tempo_source)
+        EndIf
+        
+        Case 2 : If IsImage(#img_mix)    : CopyImage(#img_mix    , #img_tempo_source) : EndIf
+        Case 3 : If IsImage(#img_mask)   : CopyImage(#img_mask   , #img_tempo_source) : EndIf
+    EndSelect
+    
+    If IsImage(#img_tempo_source) And ListSize(list_filtre_selected())
+      CopyImage(#img_tempo_source , #img_tempo_cible)
+      set_Source(#img_tempo_source)
+      set_cible(#img_tempo_cible)
+      set_mix(#img_mix)
+      set_mask(#img_mask)
+      If list_filtre_selected()\thread < 1 : list_filtre_selected()\thread = 1 : EndIf
+      set_thread(list_filtre_selected()\thread)
+      update_miniature(image_selected , $ff)
+      t = ElapsedMilliseconds()
+      ForEach list_filtre_selected()
+        If Key_Escape_Press = 1 : Break : EndIf
+        For i = 0 To 19 : \option[i] = list_filtre_selected()\opt(i,2) : Next
+        For i = 0 To 48 : \convol7[i] = list_filtre_selected()\convol7[i] : Next
+        If tabfunc(list_filtre_selected()\id) <> 0 : CallFunctionFast(tabfunc(list_filtre_selected()\id),FilterCtx) : EndIf
+        \image[0] = \image[1]
+      Next
+      t = ElapsedMilliseconds() - t
+      SetWindowTitle(0, window_title + " : " + Str(t) + " : " + Str(FilterCtx\tmp)) 
+      update_miniature(image_selected , $ff00)
+    Else
+      If camera_active And IsImage(#img_tempo_source) : CopyImage(#img_tempo_source , #img_tempo_cible) : EndIf
+    EndIf
+    
+    
+    If IsImage(#img_tempo_cible)
+      CopyImage(#img_tempo_cible , #img_aff)
+      ResizeImage(#img_aff , travail_tx , travail_ty , #PB_Image_Raw)
+      StartDrawing(CanvasOutput(#canvas_affichage))
+      DrawImage(ImageID(#img_aff), 0, 0)
+      StopDrawing()
+      ;FreeImage(#img_tempo_cible)
+    EndIf
+    
+    \thread_actif = 0
+  EndWith
+EndProcedure
+
 ;----------
 ;-- programme
 
@@ -1377,6 +1449,8 @@ If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Wi
   
   resize_screen()
   
+  AddKeyboardShortcut(0, #PB_Shortcut_Escape, #Touch_Escape)
+  
   ;-- boucle
   ;Repeat
   update_auto = 0
@@ -1385,7 +1459,10 @@ If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Wi
     validation = 0
     update = 0
     clic = 0
+    Key_Escape_Press = 0
     Event = WindowEvent()
+    
+
     mouseUp = #False
     If Event = #PB_Event_Gadget And EventGadget() = #canvas_option
       If EventType() = #PB_EventType_LeftButtonUp
@@ -1396,6 +1473,7 @@ If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Wi
     If event <> 0  Or valider_loop Or camera_active
 
       Select Event
+          
           
         Case #PB_Event_CloseWindow
           fenetreActive = EventWindow()
@@ -1412,6 +1490,10 @@ If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Wi
         Case #PB_Event_Menu
           var = EventMenu()
           Select var
+              
+            Case #Touch_Escape ; escape
+              Key_Escape_Press = 1
+              Debug Key_Escape_Press
               
             ; chargement de image epuis le disque dur
             Case #Menu_load_Source : load_img(#img_source)      
@@ -1494,7 +1576,7 @@ If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Wi
                 MessageRequester("erreur" , "pas d'image" , #PB_MessageRequester_Warning)
               EndIf
           
-            ; tie des favoris
+            ; trie des favoris
             Case #menu_favori_trier_name , #menu_favori_trier_id , #menu_favori_trier_type
               If ListSize(favori()) > 1
                 Select var
@@ -1776,62 +1858,7 @@ If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Wi
         EndSelect
                 
         If update Or (update_auto And validation) Or valider_loop Or camera_active
-          With FilterCtx
-            Clear_Data_Filter(FilterCtx)
-            
-            Select image_selected
-                
-              Case 1
-                If camera_active = 1 
-                  If Not IsImage(#img_tempo_source)
-                    CreateImage(#img_tempo_source , camera_lg , camera_ht , 32 )
-                  Else
-                    If camera_lg <> ImageWidth(#img_tempo_source) Or camera_ht <> ImageHeight(#img_tempo_source)
-                      ResizeImage(#img_tempo_source , camera_lg , camera_ht)
-                    EndIf
-                  EndIf
-                  CameraToImage(camera_device , #img_tempo_source)
-                Else
-                  CopyImage(#img_source , #img_tempo_source)
-                EndIf
-
-                Case 2 : If IsImage(#img_mix)    : CopyImage(#img_mix    , #img_tempo_source) : EndIf
-                Case 3 : If IsImage(#img_mask)   : CopyImage(#img_mask   , #img_tempo_source) : EndIf
-            EndSelect
-            
-            If IsImage(#img_tempo_source) And ListSize(list_filtre_selected())
-              CopyImage(#img_tempo_source , #img_tempo_cible)
-              set_Source(#img_tempo_source)
-              set_cible(#img_tempo_cible)
-              set_mix(#img_mix)
-              set_mask(#img_mask)
-              If list_filtre_selected()\thread < 1 : list_filtre_selected()\thread = 1 : EndIf
-              set_thread(list_filtre_selected()\thread)
-              update_miniature(image_selected , $ff)
-              t = ElapsedMilliseconds()
-              ForEach list_filtre_selected()
-                For i = 0 To 19 : \option[i] = list_filtre_selected()\opt(i,2) : Next
-                For i = 0 To 48 : \convol7[i] = list_filtre_selected()\convol7[i] : Next
-                If tabfunc(list_filtre_selected()\id) <> 0 : CallFunctionFast(tabfunc(list_filtre_selected()\id),FilterCtx) : EndIf
-                \image[0] = \image[1]
-              Next
-              t = ElapsedMilliseconds() - t
-              SetWindowTitle(0, window_title + " : " + Str(t) ) 
-              update_miniature(image_selected , $ff00)
-            Else
-              If camera_active And IsImage(#img_tempo_source) : CopyImage(#img_tempo_source , #img_tempo_cible) : EndIf
-            EndIf
-          EndWith
-          
-          If IsImage(#img_tempo_cible)
-            CopyImage(#img_tempo_cible , #img_aff)
-            ResizeImage(#img_aff , travail_tx , travail_ty , #PB_Image_Raw)
-            StartDrawing(CanvasOutput(#canvas_affichage))
-            DrawImage(ImageID(#img_aff), 0, 0)
-            StopDrawing()
-            ;FreeImage(#img_tempo_cible)
-          EndIf
-          
+          CreateThread(@start_filter(), *FilterCtx.FilterParams)
         EndIf
 
       EndIf
@@ -1849,15 +1876,13 @@ If OpenWindow(0, 0, 0, 1920, 1080, window_title , #PB_Window_SystemMenu | #PB_Wi
     ;If IsImage(#cible) : FreeImage(#cible) : EndIf
     ;If IsImage(#Black_image) : FreeImage(#Black_image) : EndIf
     CloseWindow(0)
-    ;XnViewLoader::Free()
     deinitCapture(camera_device)
   EndIf
   
   
 
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 1844
-; FirstLine = 1808
+; CursorPosition = 5
 ; Folding = -----
 ; EnableThread
 ; EnableXP

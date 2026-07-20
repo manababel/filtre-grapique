@@ -1,6 +1,128 @@
-﻿Procedure RotationalBlur_sp(*FilterCtx.FilterParams)
+﻿Procedure RotationalBlur_MT_SSE4(*FilterCtx.FilterParams)
+EndProcedure
+Procedure RotationalBlur_MT_AVX(*FilterCtx.FilterParams)
+EndProcedure
+Procedure RotationalBlur_MT_AVX512(*FilterCtx.FilterParams)
+EndProcedure
+
+
+Procedure RotationalBlur_MT_SSE2(*FilterCtx.FilterParams)
   With *FilterCtx
-    Protected lg = \image_lg[0], ht = \image_ht[0]
+    Protected *source.pixelarray = \addr[0]
+    Protected *cible.pixelarray  = \addr[1]
+    Protected lg.l = \image_lg[0]
+    Protected ht.l = \image_ht[0]
+    Protected centerX.f = \option[0] / 100.0
+    Protected centerY.f = \option[1] / 100.0
+    Protected angle.f = \option[2] * #PI / 180.0
+    Protected samples = \option[3]
+    
+    If samples < 2 : samples = 2 : EndIf
+    If samples > 50 : samples = 50 : EndIf
+    
+    ; --- TABLE DE MULTIPLICATION POUR LE SHIFT ---
+    Protected Dim InverseTable.l(51)
+    Protected t_idx
+    For t_idx = 1 To 50
+      InverseTable(t_idx) = Round((65536.0 / t_idx), #PB_Round_Nearest)
+    Next t_idx
+    Protected *pTable = @InverseTable()
+    
+    Protected cx.f = lg * centerX
+    Protected cy.f = ht * centerY
+    
+    Protected.l x, y, i, count
+    Protected.f dx, dy, t, rotAngle, cosA, sinA, rx, ry, sx, sy
+    Protected.l lg_minus_1 = lg - 1
+    Protected.l ht_minus_1 = ht - 1
+    Protected.l isx, isy
+    macro_calul_tread(ht)
+    
+    push_reg(*FilterCtx)
+    push_reg_xmm(*FilterCtx)
+    
+    For y = thread_start To thread_stop - 1
+      For x = 0 To lg - 1
+        count = 0
+        
+        ; Accumulateur 16-bits (Mots) mis à zéro
+        !pxor xmm4, xmm4
+        
+        dx = x - cx
+        dy = y - cy
+        
+        For i = 0 To samples - 1
+          t = i / (samples - 1.0)
+          rotAngle = -angle * 0.5 + angle * t
+          
+          cosA = Cos(rotAngle)
+          sinA = Sin(rotAngle)
+          
+          rx = dx * cosA - dy * sinA
+          ry = dx * sinA + dy * cosA
+          
+          sx = cx + rx
+          sy = cy + ry
+          
+          isx = sx
+          isy = sy
+          
+          ; Vérification des limites (strictement identique au PB)
+          If isx < 0 Or isx >= lg Or isy < 0 Or isy >= ht
+            Continue
+          EndIf
+          
+          count + 1
+          
+          ; --- Lecture Source ---
+          !mov eax, [p.v_isy]
+          !imul ecx, [p.v_lg]        
+          !add eax, [p.v_isx]
+          !shl eax , 2
+          !add rax, [p.p_source]     
+          !movd xmm0, [rax] 
+          
+          !pxor xmm1, xmm1
+          !punpcklbw xmm0, xmm1       ; xmm0 = [0A, 0R, 0G, 0B]
+          !paddw xmm4, xmm0           ; Cumul dans xmm4
+        Next
+        
+        If count > 0
+          ; --- Préparation du Facteur 32-bits ---
+          !mov eax, [p.v_count]
+          !shl eax , 2
+          !add rax, [p.p_pTable]
+          !mov eax, [rax]   ; eax = Facteur (65536 / count)
+          !movd xmm1, eax
+          !pshuflw xmm1, xmm1, 0
+          
+          !pmulhw xmm4, xmm1 
+          !packuswb xmm4, xmm4
+          
+          ; --- Écriture Cible ---
+          !mov eax, [p.v_y]
+          !imul eax , [p.v_lg]
+          !add eax, [p.v_x]
+          !shl eax , 2
+          !add rax, [p.p_cible]
+          !movd [rax], xmm4  ; Écrit le pixel ARGB parfait
+        EndIf
+        
+      Next
+    Next
+    
+    pop_reg_xmm(*FilterCtx)
+    pop_reg(*FilterCtx)
+    
+  EndWith
+EndProcedure
+
+Procedure RotationalBlur_MT_PB(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected *source.pixelarray = \addr[0]
+    Protected *cible.pixelarray  = \addr[1]
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
     Protected centerX.f = \option[0] / 100.0  ; Centre X (0-100%)
     Protected centerY.f = \option[1] / 100.0  ; Centre Y (0-100%)
     Protected angle.f = \option[2] * #PI / 180.0  ; Angle en radians
@@ -35,56 +157,32 @@
         For i = 0 To samples - 1
           Protected t.f = i / (samples - 1.0)  ; 0.0 à 1.0
           rotAngle = -angle * 0.5 + angle * t  ; De -angle/2 à +angle/2
-          
-          ; Rotation du vecteur
+                                               ; Rotation du vecteur
           cosA = Cos(rotAngle)
-          sinA = Sin(rotAngle)
-          
+          sinA = Sin(rotAngle) 
           rx = dx * cosA - dy * sinA
           ry = dx * sinA + dy * cosA
-          
           ; Position échantillonnée
           sx = cx + rx
           sy = cy + ry
-          
           ; Vérification des limites
           If sx < 0 Or sx >= lg Or sy < 0 Or sy >= ht : Continue : EndIf
-          
-          index = (Int(sy) * lg + Int(sx)) << 2
-          value = PeekL(\addr[0] + index)
-          
-          a = ((value >> 24) & $FF)
-          r = ((value >> 16) & $FF)
-          g = ((value >> 8) & $FF)
-          b = (value & $FF)
+          getargb(*source\l[(Int(sy) * lg + Int(sx))] , a , r , g , b)
           sumA + a
           sumR + r
           sumG + g
           sumB + b
           count + 1
         Next
-        
         ; Moyenne
         If count > 0
           a = sumA / count
           r = sumR / count
           g = sumG / count
           b = sumB / count
-        Else
-          index = (y * lg + x) << 2
-          value = PeekL(\addr[0] + index)
-          a = (value >> 24) & $FF
-          r = (value >> 16) & $FF
-          g = (value >> 8) & $FF
-          b = value & $FF
+          clamp_argb(a,r,g,b)
+          *cible\l[(Int(y) * lg + Int(x))] = (a << 24) | (r << 16) | (g << 8) | b
         EndIf
-        
-        Clamp(a, 0, 255)
-        Clamp(r, 0, 255)
-        Clamp(g, 0, 255)
-        Clamp(b, 0, 255)
-        
-        PokeL(\addr[1] + (y * lg + x) << 2, (a << 24) | (r << 16) | (g << 8) | b)
       Next
     Next
   EndWith
@@ -93,9 +191,9 @@ EndProcedure
 Procedure RotationalBlurEx(*FilterCtx.FilterParams)
   Restore RotationalBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
-  
-  Create_MultiThread_MT(@RotationalBlur_sp())
+  selet_and_start_programme(RotationalBlur_MT)
   mask_update(*FilterCtx.FilterParams , last_data)
 EndProcedure
 
@@ -131,7 +229,7 @@ DataSection
   Data.s "XXX"  
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 2
-; Folding = -
+; CursorPosition = 204
+; Folding = --
 ; EnableXP
 ; DPIAware

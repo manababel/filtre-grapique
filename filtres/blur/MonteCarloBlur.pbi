@@ -3,31 +3,17 @@
 ; Flou basé sur échantillonnage aléatoire Monte Carlo
 ; ---------------------------------------------------
 
-Macro MonteCarloBlur_sp1(sx, sy)
-  px = x + sx
-  py = y + sy
-  
-  If px < 0 : px = 0 : ElseIf px > lg_minus_1 : px = lg_minus_1 : EndIf
-  If py < 0 : py = 0 : ElseIf py > ht_minus_1 : py = ht_minus_1 : EndIf
-  
-  index = (py * lg + px) << 2
-  value = PeekL(*FilterCtx\addr[0] + index)
-  
-  sumA + ((value >> 24) & $FF)
-  sumR + ((value >> 16) & $FF)
-  sumG + ((value >> 8) & $FF)
-  sumB + (value & $FF)
-EndMacro
-
 Procedure MonteCarloBlur_sp(*FilterCtx.FilterParams)
   With *FilterCtx
     Protected lg = \image_lg[0], ht = \image_ht[0]
     Protected radius = \option[0], samples = \option[1]
-    Protected x, y, sx, sy, i, index, value, r, g, b, a
+    Protected.l x, y, sx, sy, i, value, r, g, b, a
     Protected sumA, sumR, sumG, sumB, px, py
     Protected lg_minus_1 = lg - 1, ht_minus_1 = ht - 1
     Protected diameter = radius * 2 + 1
     
+    Protected *src.pixelarray = \addr[0]
+    Protected *dst.pixelarray = \addr[1]
     macro_calul_tread(ht)
     
     ; Initialisation du générateur aléatoire pour ce thread spécifique
@@ -41,20 +27,25 @@ Procedure MonteCarloBlur_sp(*FilterCtx.FilterParams)
         For i = 1 To samples
           sx = Random(diameter) - radius
           sy = Random(diameter) - radius
-          MonteCarloBlur_sp1(sx, sy)
+          px = x + sx
+          py = y + sy
+          clamp(px , 0 , lg_minus_1)
+          clamp(py , 0 , ht_minus_1)
+          getargb(*src\l[py * lg + px] , a , r , g , b)
+          sumA + a : sumR + r : sumG + g : sumB + b
         Next
         
         ; Calcul de la moyenne
-        a = sumA / samples : r = sumR / samples
-        g = sumG / samples : b = sumB / samples
+        a = sumA / samples
+        r = sumR / samples
+        g = sumG / samples
+        b = sumB / samples
         
         ; Clamping rapide
-        If a < 0 : a = 0 : ElseIf a > 255 : a = 255 : EndIf
-        If r < 0 : r = 0 : ElseIf r > 255 : r = 255 : EndIf
-        If g < 0 : g = 0 : ElseIf g > 255 : g = 255 : EndIf
-        If b < 0 : b = 0 : ElseIf b > 255 : b = 255 : EndIf
+        clamp_argb(a , r , g , b)
         
-        PokeL(\addr[1] + (y * lg + x) * 4, (a << 24) | (r << 16) | (g << 8) | b)
+        *dst\l[y * lg + x] = (a << 24) | (r << 16) | (g << 8) | b
+
       Next
     Next
   EndWith
@@ -63,21 +54,25 @@ EndProcedure
 Procedure MonteCarloBlurEx(*FilterCtx.FilterParams)
   Restore MonteCarloBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
   ; Bornage des options
   If *FilterCtx\option[0] < 1 : *FilterCtx\option[0] = 1 : EndIf
   If *FilterCtx\option[1] < 5 : *FilterCtx\option[1] = 5 : EndIf
   
-  Create_MultiThread_MT(@MonteCarloBlur_sp(), 1)
+  Create_MultiThread_MT(@MonteCarloBlur_sp())
   
   mask_update(*FilterCtx, last_data)
 EndProcedure
 
-Procedure MonteCarloBlur(source, cible, mask, radius, samples, mask_type)
-  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+Procedure MonteCarloBlur(source, cible, mask, radius, samples)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
   With FilterCtx
-    \option[0] = radius : \option[1] = samples : \option[2] = mask_type
+    \option[0] = radius
+    \option[1] = samples
   EndWith
   MonteCarloBlurEx(FilterCtx)
 EndProcedure
@@ -94,8 +89,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 76
-; FirstLine = 43
+; CursorPosition = 56
+; FirstLine = 30
 ; Folding = -
 ; EnableXP
 ; DPIAware

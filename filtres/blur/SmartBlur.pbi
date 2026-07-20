@@ -1,62 +1,64 @@
 ﻿; ---------------------------------------------------
-; SmartBlur - Version optimisée
 ; Flou intelligent préservant les contours
 ; ---------------------------------------------------
 
 Procedure SmartBlur_sp(*FilterCtx.FilterParams)
   With *FilterCtx
-    Protected lg = \image_lg[0], ht = \image_ht[0]
+    Protected *src.PixelArray = \addr[0]
+    Protected *dst.PixelArray = \addr[1]
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
     Protected radius = \option[0]
-    Protected threshold = \option[1]  ; Seuil de différence
+    Protected threshold = \option[1]
     
     If radius < 1 : radius = 1 : EndIf
     If threshold < 0 : threshold = 0 : EndIf
     
-    Protected x, y, dx, dy, px, py, index, value
-    Protected r, g, b, a
-    Protected centerR, centerG, centerB, centerA
-    Protected sumR, sumG, sumB, sumA, count
-    Protected diffR, diffG, diffB, diff
+    ; Optimisation du seuil pour éviter la division par 3 dans la boucle locale
+    Protected thresholdX3 = threshold * 3
+    
+    Protected x, y, dx, dy, px, py
+    Protected.l r, g, b, a
+    Protected.l centerR, centerG, centerB, centerA
+    Protected.l sumR, sumG, sumB, sumA, count
+    Protected.l diffR, diffG, diffB
+    
+    Protected min_py, max_py, min_px, max_px
+    Protected y_offset, py_offset
     
     macro_calul_tread(ht)
     
     For y = thread_start To thread_stop - 1
+      y_offset = y * lg  ; Pré-calcul de la ligne courante
+      
+      ; Gestion dynamique des bornes Y pour éviter le "If py < 0..."
+      min_py = y - radius : If min_py < 0  : min_py = 0  : EndIf
+      max_py = y + radius : If max_py >= ht : max_py = ht - 1 : EndIf
+      
       For x = 0 To lg - 1
-        ; Pixel central
-        index = (y * lg + x) << 2
-        value = PeekL(\addr[0] + index)
-        centerA = (value >> 24) & $FF
-        centerR = (value >> 16) & $FF
-        centerG = (value >> 8) & $FF
-        centerB = value & $FF
+        ; Pixel central via indexation directe pré-calculée
+        GetARGB(*src\l[y_offset + x] , centerA , centerR , centerG , centerB)
         
         sumR = 0 : sumG = 0 : sumB = 0 : sumA = 0 : count = 0
         
-        ; Parcourir le voisinage
-        For dy = -radius To radius
-          py = y + dy
-          If py < 0 Or py >= ht : Continue : EndIf
+        ; Gestion dynamique des bornes X pour éviter le "If px < 0..."
+        min_px = x - radius : If min_px < 0  : min_px = 0  : EndIf
+        max_px = x + radius : If max_px >= lg : max_px = lg - 1 : EndIf
+        
+        ; Parcourir le voisinage nettoyé des vérifications de limites
+        For py = min_py To max_py
+          py_offset = py * lg  ; Pré-calcul de la ligne du voisinage
           
-          For dx = -radius To radius
-            px = x + dx
-            If px < 0 Or px >= lg : Continue : EndIf
+          For px = min_px To max_px
+            GetARGB(*src\l[py_offset + px] , a , r , g , b)
+
+            ; Calcul de la différence absolue
+            diffR = r - centerR : If diffR < 0 : diffR = -diffR : EndIf
+            diffG = g - centerG : If diffG < 0 : diffG = -diffG : EndIf
+            diffB = b - centerB : If diffB < 0 : diffB = -diffB : EndIf
             
-            index = (py * lg + px) << 2
-            value = PeekL(\addr[0] + index)
-            
-            a = (value >> 24) & $FF
-            r = (value >> 16) & $FF
-            g = (value >> 8) & $FF
-            b = value & $FF
-            
-            ; Calcul de la différence avec le pixel central
-            diffR = Abs(r - centerR)
-            diffG = Abs(g - centerG)
-            diffB = Abs(b - centerB)
-            diff = (diffR + diffG + diffB) / 3
-            
-            ; N'inclure que si la différence est sous le seuil
-            If diff <= threshold
+            ; Comparaison directe (évite la division par 3 à chaque pixel)
+            If (diffR + diffG + diffB) <= thresholdX3
               sumA + a
               sumR + r
               sumG + g
@@ -78,8 +80,9 @@ Procedure SmartBlur_sp(*FilterCtx.FilterParams)
           g = centerG
           b = centerB
         EndIf
-        
-        PokeL(\addr[1] + (y * lg + x) << 2, (a << 24) | (r << 16) | (g << 8) | b)
+
+        ; Écriture directe sur la destination
+        *dst\l[y_offset + x] = (a << 24) | (r << 16) | (g << 8) | b
       Next
     Next
   EndWith
@@ -88,21 +91,21 @@ EndProcedure
 Procedure SmartBlurEx(*FilterCtx.FilterParams)
   Restore SmartBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  Create_MultiThread_MT(@SmartBlur_sp(), 1)
+  Create_MultiThread_MT(@SmartBlur_sp())
   
   mask_update(*FilterCtx, last_data)
 EndProcedure
 
-Procedure SmartBlur(source, cible, mask, radius, threshold, mask_type)
+Procedure SmartBlur(source, cible, mask, radius, threshold)
   Set_Source(source)
   Set_Cible(cible)
   Set_Mask(mask)
   With FilterCtx
     \option[0] = radius
     \option[1] = threshold
-    \option[2] = mask_type
   EndWith
   SmartBlurEx(FilterCtx)
 EndProcedure
@@ -119,8 +122,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 97
-; FirstLine = 68
+; CursorPosition = 93
+; FirstLine = 66
 ; Folding = -
 ; EnableXP
 ; DPIAware

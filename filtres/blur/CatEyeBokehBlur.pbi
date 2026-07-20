@@ -13,6 +13,9 @@ Procedure CatEyeBokehBlur_sp(*FilterCtx.FilterParams)
     Protected lg_minus_1 = lg - 1, ht_minus_1 = ht - 1
     Protected radiusSq_elongSq.d = (radius * radius) * (elong * elong)
     
+    Protected *src.pixelarray = \addr[0]
+    Protected *dst.pixelarray = \addr[1]
+    
     macro_calul_tread(ht)
     
     For y = thread_start To thread_stop - 1
@@ -32,32 +35,36 @@ Procedure CatEyeBokehBlur_sp(*FilterCtx.FilterParams)
               py = y + ny
               
               ; Clamping des coordonnées
-              If px < 0 : px = 0 : ElseIf px > lg_minus_1 : px = lg_minus_1 : EndIf
-              If py < 0 : py = 0 : ElseIf py > ht_minus_1 : py = ht_minus_1 : EndIf
+              clamp(px , 0 , lg_minus_1)
+              clamp(py , 0 , ht_minus_1)
               
-              index = (py * lg + px) << 2
-              value = PeekL(\addr[0] + index)
+              getargb(*src\l[py * lg + px] , a , r , g , b)
               
-              sumA + ((value >> 24) & $FF)
-              sumR + ((value >> 16) & $FF)
-              sumG + ((value >> 8) & $FF)
-              sumB + (value & $FF)
+              sumA + a
+              sumR + r
+              sumG + g
+              sumB + b
               count + 1
             EndIf
           Next
         Next
         
-        index = (y * lg + x) << 2
+        index = (y * lg + x)
         If count > 0
-          a = sumA / count : r = sumR / count
-          g = sumG / count : b = sumB / count
+          a = sumA / count
+          r = sumR / count
+          g = sumG / count
+          b = sumB / count
           ; Clamping rapide
-          If a > 255 : a = 255 : EndIf : If r > 255 : r = 255 : EndIf
-          If g > 255 : g = 255 : EndIf : If b > 255 : b = 255 : EndIf
-          PokeL(\addr[1] + index, (a << 24) | (r << 16) | (g << 8) | b)
+          If a > 255 : a = 255 : EndIf
+          If r > 255 : r = 255 : EndIf
+          If g > 255 : g = 255 : EndIf
+          If b > 255 : b = 255 : EndIf
+          *dst\l[index] = (a << 24) | (r << 16) | (g << 8) | b
         Else
-          PokeL(\addr[1] + index, PeekL(\addr[0] + index))
+          *dst\l[index] = *src\l[index] 
         EndIf
+        If key_escape_press = 1 : Break 2 : EndIf
       Next
     Next
   EndWith
@@ -66,21 +73,25 @@ EndProcedure
 Procedure CatEyeBokehBlurEx(*FilterCtx.FilterParams)
   Restore CatEyeBokehBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
   ; Bornage des options
   If *FilterCtx\option[0] < 1 : *FilterCtx\option[0] = 1 : EndIf
   If *FilterCtx\option[1] < 1 : *FilterCtx\option[1] = 1 : EndIf
   
-  Create_MultiThread_MT(@CatEyeBokehBlur_sp(), 1)
+  Create_MultiThread_MT(@CatEyeBokehBlur_sp())
   
   mask_update(*FilterCtx, last_data)
 EndProcedure
 
 Procedure CatEyeBokehBlur(source, cible, mask, radius, elongation)
-  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
   With FilterCtx
-    \option[0] = radius : \option[1] = elongation
+    \option[0] = radius
+    \option[1] = elongation
   EndWith
   CatEyeBokehBlurEx(FilterCtx)
 EndProcedure
@@ -97,8 +108,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 79
-; FirstLine = 46
+; CursorPosition = 66
+; FirstLine = 40
 ; Folding = -
 ; EnableXP
 ; DPIAware

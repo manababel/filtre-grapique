@@ -1,78 +1,119 @@
-﻿Macro ErosionBlur_sp1()
-  value = PeekL(*FilterCtx\addr[0] + index)
-  
-  ; Extraction rapide ARGB
-  a_temp = (value >> 24) & $FF
-  r_temp = (value >> 16) & $FF
-  g_temp = (value >> 8) & $FF
-  b_temp = value & $FF
-  
-  ; Mettre à jour le minimum pour chaque canal
-  If a_temp < minA : minA = a_temp : EndIf
-  If r_temp < minR : minR = r_temp : EndIf
-  If g_temp < minG : minG = g_temp : EndIf
-  If b_temp < minB : minB = b_temp : EndIf
-EndMacro
-
-Procedure ErosionBlur_MT(*FilterCtx.FilterParams)
+﻿; ============================================================================
+; PASSE 1 : Érosion Horizontale (*src -> *tmp)
+; ============================================================================
+Procedure ErosionBlur_H_MT(*FilterCtx.FilterParams)
   With *FilterCtx
     Protected lg = \image_lg[0]
     Protected ht = \image_ht[0]
-    Protected kernelSize = \option[0]
+    Protected radius = \option[0]
     
-    If kernelSize < 1 : kernelSize = 1 : EndIf
-    
-    Protected radius = kernelSize
-    Protected x, y, dx, dy, px, py, index
-    Protected value, r.l, g.l, b.l, a.l
+    Protected x, y, dx, px, value
     Protected a_temp, r_temp, g_temp, b_temp
     Protected minA, minR, minG, minB
+    
+    Protected *src.pixelarray = \addr[0]
+    Protected *tmp.pixelarray = \addr[2]
+    Protected y_offset.i
     
     macro_calul_tread(ht)
     
     For y = thread_start To thread_stop - 1
+      y_offset = y * lg
       For x = 0 To lg - 1
-        ; Initialiser le minimum à la valeur maximale possible
         minA = 255 : minR = 255 : minG = 255 : minB = 255
         
-        ; Parcourir le voisinage
-        For dy = -radius To radius
-          py = y + dy
-          If py < 0 Or py >= ht : Continue : EndIf
+        For dx = -radius To radius
+          px = x + dx
+          If px < 0 Or px >= lg : Continue : EndIf
           
-          For dx = -radius To radius
-            px = x + dx
-            If px < 0 Or px >= lg : Continue : EndIf
-            
-            index = (py * lg + px) << 2
-            ErosionBlur_sp1()
-          Next
+          value = *src\l[y_offset + px]
+          
+          a_temp = (value >> 24) & $FF
+          r_temp = (value >> 16) & $FF
+          g_temp = (value >> 8) & $FF
+          b_temp = value & $FF
+          
+          If a_temp < minA : minA = a_temp : EndIf
+          If r_temp < minR : minR = r_temp : EndIf
+          If g_temp < minG : minG = g_temp : EndIf
+          If b_temp < minB : minB = b_temp : EndIf
         Next
         
-        ; Appliquer la valeur minimale comme résultat (érosion)
-        a = minA
-        r = minR
-        g = minG
-        b = minB
-        
-        PokeL(\addr[1] + (y * lg + x) << 2, (a << 24) | (r << 16) | (g << 8) | b)
+        *tmp\l[y_offset + x] = (minA << 24) | (minR << 16) | (minG << 8) | minB
       Next
     Next
   EndWith
 EndProcedure
 
+; ============================================================================
+; PASSE 2 : Érosion Verticale (*tmp -> *dst)
+; ============================================================================
+Procedure ErosionBlur_V_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
+    Protected radius = \option[0]
+    
+    Protected x, y, dy, py, value
+    Protected a_temp, r_temp, g_temp, b_temp
+    Protected minA, minR, minG, minB
+    
+    Protected *tmp.pixelarray = \addr[2]
+    Protected *dst.pixelarray = \addr[1]
+    
+    macro_calul_tread(ht)
+    
+    For y = thread_start To thread_stop - 1
+      For x = 0 To lg - 1
+        minA = 255 : minR = 255 : minG = 255 : minB = 255
+        
+        For dy = -radius To radius
+          py = y + dy
+          If py < 0 Or py >= ht : Continue : EndIf
+          
+          value = *tmp\l[py * lg + x]
+          
+          a_temp = (value >> 24) & $FF
+          r_temp = (value >> 16) & $FF
+          g_temp = (value >> 8) & $FF
+          b_temp = value & $FF
+          
+          If a_temp < minA : minA = a_temp : EndIf
+          If r_temp < minR : minR = r_temp : EndIf
+          If g_temp < minG : minG = g_temp : EndIf
+          If b_temp < minB : minB = b_temp : EndIf
+        Next
+        
+        *dst\l[y * lg + x] = (minA << 24) | (minR << 16) | (minG << 8) | minB
+      Next
+    Next
+  EndWith
+EndProcedure
+
+; ============================================================================
+; EXÉCUTION DU FILTRE
+; ============================================================================
 Procedure ErosionBlurEx(*FilterCtx.FilterParams)
   Restore ErosionBlur_data
   Protected last_data = Filter_InitAndValidate()
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
   With *FilterCtx
-    ; Clamp d'origine
     If \option[0] < 1 : \option[0] = 1 : ElseIf \option[0] > 20 : \option[0] = 20 : EndIf
     
-    Create_MultiThread_MT(@ErosionBlur_MT())
+    Protected imgSize = \image_lg[0] * \image_ht[0] * 4
     
-    mask_update(*FilterCtx.FilterParams , last_data)
+    ; Un seul tampon temporaire est nécessaire pour l'érosion
+    \addr[2] = AllocateMemory(imgSize)
+    
+    If \addr[2]
+      Create_MultiThread_MT(@ErosionBlur_H_MT())
+      Create_MultiThread_MT(@ErosionBlur_V_MT())
+      
+      FreeMemory(\addr[2])
+    EndIf
+    
+    mask_update(*FilterCtx.FilterParams, last_data)
   EndWith
 EndProcedure
 
@@ -98,8 +139,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 78
-; FirstLine = 47
+; CursorPosition = 117
+; FirstLine = 62
 ; Folding = -
 ; EnableXP
 ; DPIAware

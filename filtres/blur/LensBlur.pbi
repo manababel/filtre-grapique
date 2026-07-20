@@ -3,29 +3,45 @@
 ; Flou réaliste avec aberrations chromatiques radiales et vignettage
 ; ---------------------------------------------------
 
+Macro LensBlur_sp0(argb,de)
+  dist = radius#argb * randDist
+  sx = x + Cos(angle) * dist
+  sy = y + Sin(angle) * dist
+  If sx >= 0 And sx < lg And sy >= 0 And sy < ht
+    index = (Int(sy) * lg + Int(sx))
+    value = *src\l[index]
+    argb = ((value >> de) & $FF)
+    sum#argb + argb
+    count#argb + 1
+  EndIf
+EndMacro
+          
 Procedure LensBlur_sp(*FilterCtx.FilterParams)
   With *FilterCtx
     Protected lg = \image_lg[0], ht = \image_ht[0]
     Protected radius = \option[0]
-    Protected chromaticAberration.f = \option[1] / 100.0
+    Protected chromaticAberration.f = \option[1] / 10.0
     Protected vignetting.f = \option[2] / 100.0
     Protected samples = \option[3]
     
     Protected x, y, i
     Protected sumR.f, sumG.f, sumB.f, sumA.f
     Protected countR, countG, countB, countA
-    Protected sx, sy, index, value
+    Protected sx.f, sy.f, index, value
     Protected r, g, b, a
     Protected angle.f, dist.f, randDist.f
     Protected cx.f = lg * 0.5, cy.f = ht * 0.5
     Protected distFromCenter.f, vignetteAmount.f
-    Protected radiusR.f, radiusG.f, radiusB.f
+    Protected radiusa.f , radiusR.f, radiusG.f, radiusB.f
     Protected dx.f, dy.f
     
+     Protected *src.pixelarray = \addr[0]
+     Protected *dst.pixelarray = \addr[1]
+     
     RandomSeed((\thread_pos + 1) * 777)
     
     macro_calul_tread(ht)
-    
+
     For y = thread_start To thread_stop - 1
       For x = 0 To lg - 1
         ; Distance au centre (pour vignettage et aberration)
@@ -35,7 +51,7 @@ Procedure LensBlur_sp(*FilterCtx.FilterParams)
         
         Protected aberrationFactor.f = chromaticAberration * distFromCenter
         radiusR = radius * (1.0 + aberrationFactor * 0.1)
-        radiusG = radius
+        radiusG = radius * (1.0 + aberrationFactor * 0.1)
         radiusB = radius * (1.0 - aberrationFactor * 0.1)
         
         sumR = 0.0 : sumG = 0.0 : sumB = 0.0 : sumA = 0.0
@@ -45,53 +61,15 @@ Procedure LensBlur_sp(*FilterCtx.FilterParams)
           angle = (2.0 * #PI * i) / samples
           randDist = Sqr(Random(1000) / 1000.0)
           
-          ; ==== Canal Rouge ====
-          dist = radiusR * randDist
-          sx = x + Cos(angle) * dist
-          sy = y + Sin(angle) * dist
-          If sx >= 0 And sx < lg And sy >= 0 And sy < ht
-            index = (Int(sy) * lg + Int(sx)) << 2
-            value = PeekL(\addr[0] + index)
-            r = ((value >> 16) & $FF)
-            sumR + r
-            countR + 1
-          EndIf
-          
-          ; ==== Canal Vert ====
-          dist = radiusG * randDist
-          sx = x + Cos(angle) * dist
-          sy = y + Sin(angle) * dist
-          If sx >= 0 And sx < lg And sy >= 0 And sy < ht
-            index = (Int(sy) * lg + Int(sx)) << 2
-            value = PeekL(\addr[0] + index)
-            g = ((value >> 8) & $FF)
-            sumG + g
-            countG + 1
-          EndIf
-          
-          ; ==== Canal Bleu ====
-          dist = radiusB * randDist
-          sx = x + Cos(angle) * dist
-          sy = y + Sin(angle) * dist
-          If sx >= 0 And sx < lg And sy >= 0 And sy < ht
-            index = (Int(sy) * lg + Int(sx)) << 2
-            value = PeekL(\addr[0] + index)
-            b = (value & $FF)
-            sumB + b
-            countB + 1
-          EndIf
-          
           ; ==== Canal Alpha ====
-          dist = radiusG * randDist
-          sx = x + Cos(angle) * dist
-          sy = y + Sin(angle) * dist
-          If sx >= 0 And sx < lg And sy >= 0 And sy < ht
-            index = (Int(sy) * lg + Int(sx)) << 2
-            value = PeekL(\addr[0] + index)
-            a = ((value >> 24) & $FF)
-            sumA + a
-            countA + 1
-          EndIf
+          LensBlur_sp0(a,24)
+          ; ==== Canal Rouge ====
+          LensBlur_sp0(r,16)
+          ; ==== Canal Vert ====
+          LensBlur_sp0(g,8)
+          ; ==== Canal Bleu ====
+          LensBlur_sp0(b,0)
+          
         Next
         
         If countR > 0 : r = sumR / countR : Else : r = 0 : EndIf
@@ -113,7 +91,8 @@ Procedure LensBlur_sp(*FilterCtx.FilterParams)
         If g > 255 : g = 255 : ElseIf g < 0 : g = 0 : EndIf
         If b > 255 : b = 255 : ElseIf b < 0 : b = 0 : EndIf
         
-        PokeL(\addr[1] + (y * lg + x) << 2, (a << 24) | (r << 16) | (g << 8) | b)
+        *dst\l[y * lg + x] =  (a << 24) | (r << 16) | (g << 8) | b
+        If key_escape_press = 1 : Break 2 : EndIf
       Next
     Next
   EndWith
@@ -122,22 +101,28 @@ EndProcedure
 Procedure LensBlurEx(*FilterCtx.FilterParams)
   Restore LensBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   Create_MultiThread_MT(@LensBlur_sp())
   mask_update(*FilterCtx, last_data)
 EndProcedure
 
 Procedure LensBlur(source, cible, mask, radius, chroma, vignette, samples)
-  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
   With FilterCtx
-    \option[0] = radius : \option[1] = chroma : \option[2] = vignette : \option[3] = samples
+    \option[0] = radius
+    \option[1] = chroma
+    \option[2] = vignette
+    \option[3] = samples
   EndWith
   LensBlurEx(FilterCtx)
 EndProcedure
 
 DataSection
   LensBlur_data:
-  Data.s "Lens Blur (probleme) "
+  Data.s "Lens Blur"
   Data.s "Flou réaliste avec aberrations chromatiques radiales et vignettage"
   Data.i #FilterType_Blur, #Blur_Specialized
   Data.s "Rayon"
@@ -151,8 +136,7 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 139
-; FirstLine = 100
+; CursorPosition = 120
 ; Folding = -
 ; EnableXP
 ; DPIAware

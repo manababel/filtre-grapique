@@ -11,6 +11,10 @@ Procedure OpticalBlur_sp(*FilterCtx.FilterParams)
     Protected lg_minus_1 = lg - 1, ht_minus_1 = ht - 1
     Protected x, y, ix, iy, rSum, gSum, bSum, count, pos, value
     Protected dx, dy, targetX, targetY
+    Protected.l  r , g , b
+    
+    Protected *src.pixelarray = \addr[0]
+    Protected *dst.pixelarray = \addr[1]
     
     macro_calul_tread(ht)
     
@@ -31,20 +35,20 @@ Procedure OpticalBlur_sp(*FilterCtx.FilterParams)
             dx = ix
             ; Test de la forme circulaire (Distance Euclidienne)
             If dx * dx + dy * dy <= radiusSq
-              value = PeekL(\addr[0] + (targetY * lg + targetX) << 2)
-              rSum + ((value >> 16) & $FF)
-              gSum + ((value >> 8) & $FF)
-              bSum + (value & $FF)
+              getrgb(*src\l[targetY * lg + targetX] , r , g , b)
+              rSum + r
+              gSum + g
+              bSum + b
               count + 1
             EndIf
           Next
         Next
         
-        pos = (y * lg + x) << 2
+        pos = (y * lg + x)
         If count > 0
-          PokeL(\addr[1] + pos, ((rSum / count) << 16) | ((gSum / count) << 8) | (bSum / count))
+          *dst\l[pos] = ((rSum / count) << 16) | ((gSum / count) << 8) | (bSum / count)
         Else
-          PokeL(\addr[1] + pos, PeekL(\addr[0] + pos))
+          *dst\l[pos] = *src\l[pos]
         EndIf
       Next
     Next
@@ -54,6 +58,7 @@ EndProcedure
 Procedure OpticalBlurEx(*FilterCtx.FilterParams)
   Restore OpticalBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
   With *FilterCtx
@@ -74,7 +79,7 @@ Procedure OpticalBlurEx(*FilterCtx.FilterParams)
       \addr[0] = currentSource
       \addr[1] = currentCible
       
-      Create_MultiThread_MT(@OpticalBlur_sp(), 1)
+      Create_MultiThread_MT(@OpticalBlur_sp())
       
       ; Swap des buffers pour l'itération suivante
       If i < iterations
@@ -89,7 +94,9 @@ Procedure OpticalBlurEx(*FilterCtx.FilterParams)
 EndProcedure
 
 Procedure OpticalBlur(source, cible, mask, radius, iterations)
-  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
   With FilterCtx
     \option[0] = radius
     \option[1] = iterations
@@ -103,14 +110,14 @@ DataSection
   Data.s "Flou circulaire simulant l'ouverture d'un objectif"
   Data.i #FilterType_Blur, #Blur_Optical
   Data.s "Rayon"
-  Data.i 1, 50, 5
+  Data.i 1, 20, 5
   Data.s "Itérations"
   Data.i 1, 10, 1
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 71
-; FirstLine = 49
+; CursorPosition = 81
+; FirstLine = 30
 ; Folding = -
 ; EnableXP
 ; DPIAware

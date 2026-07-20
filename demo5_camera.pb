@@ -49,4 +49,4 @@ EndIf
 ; EnableXP
 ; DPIAware
 ; DisableDebugger
-; Compiler = PureBasic 6.40 - C Backend (Windows - x64)
+; Compiler = PureBasic 6.40 - C Backend (Windows - x86)

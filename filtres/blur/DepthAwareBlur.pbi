@@ -8,21 +8,14 @@ Procedure DepthAwareBlur_grayscale_sp(*FilterCtx.FilterParams)
     Protected lg = \image_lg[0], ht = \image_ht[0]
     Protected total = lg * ht
     Protected value, r, g, b, gray, i
+    Protected *src.pixelarray = \addr[0]
     
-    ; Calcul des plages par thread sur le total des pixels
-    Protected start = (\thread_pos * total) / \thread_max
-    Protected stop  = ((\thread_pos + 1) * total) / \thread_max
+    macro_calul_tread(total)
     
-    For i = start To stop - 1
-      value = PeekL(\addr[0] + (i << 2))
-      
-      ; Conversion luminance (Luma Rec.601 optimisée)
-      r = (value >> 16) & $FF
-      g = (value >> 8) & $FF
-      b = value & $FF
+    For i = thread_start To thread_stop - 1
+      getrgb(*src\l[i] , r , g , b)
       gray = (r * 1225 + g * 2405 + b * 466) >> 12
-      
-      PokeA(\addr[2] + i, gray)
+      PokeB(\addr[2] + i , gray)
     Next
   EndWith
 EndProcedure
@@ -34,7 +27,11 @@ Procedure DepthAwareBlur_sp(*FilterCtx.FilterParams)
     Protected radius = \option[1]
     Protected x, y, dx, dy, sx, sy, offset, col, count
     Protected r, g, b, centerDepth, sampleDepth, dr
+    Protected r1 , g1 , b1
     Protected widthLimit = width - 1, heightLimit = height - 1
+    
+    Protected *src.pixelarray = \addr[0]
+    Protected *dst.pixelarray = \addr[1]
     
     macro_calul_tread(height)
     
@@ -59,21 +56,22 @@ Procedure DepthAwareBlur_sp(*FilterCtx.FilterParams)
             dr = Abs(sampleDepth - centerDepth)
             
             If dr <= depthThreshold
-              col = PeekL(\addr[0] + (sy * width + sx) << 2)
-              r + ((col >> 16) & $FF)
-              g + ((col >> 8) & $FF)
-              b + (col & $FF)
+              getrgb(*src\l[sy * width + sx] , r1, g1 , b1)
+              r + r1
+              g + g1
+              b + b1
               count + 1
             EndIf
           Next
         Next
         
-        offset = (y * width + x) << 2
+        offset = (y * width + x)
         If count > 0
-          PokeL(\addr[1] + offset, $FF000000 | ((r / count) << 16) | ((g / count) << 8) | (b / count))
+          *dst\l[offset] =  $FF000000 | ((r / count) << 16) | ((g / count) << 8) | (b / count)
         Else
-          PokeL(\addr[1] + offset, PeekL(\addr[0] + offset))
+          *dst\l[offset] = *src\l[offset] 
         EndIf
+        If key_escape_press = 1 : Break 2 : EndIf
       Next
     Next
   EndWith
@@ -82,6 +80,7 @@ EndProcedure
 Procedure DepthAwareBlurEx(*FilterCtx.FilterParams)
   Restore DepthAwareBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
   With *FilterCtx
@@ -93,10 +92,10 @@ Procedure DepthAwareBlurEx(*FilterCtx.FilterParams)
     \addr[2] = *depthMap
     
     ; 1. Génération de la carte de profondeur
-    Create_MultiThread_MT(@DepthAwareBlur_grayscale_sp(), 1)
+    Create_MultiThread_MT(@DepthAwareBlur_grayscale_sp())
     
     ; 2. Application du flou sélectif
-    Create_MultiThread_MT(@DepthAwareBlur_sp(), 1)
+    Create_MultiThread_MT(@DepthAwareBlur_sp())
     
     FreeMemory(*depthMap)
     
@@ -105,7 +104,9 @@ Procedure DepthAwareBlurEx(*FilterCtx.FilterParams)
 EndProcedure
 
 Procedure DepthAwareBlur(source, cible, mask, threshold, radius)
-  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
   With FilterCtx
     \option[0] = threshold
     \option[1] = radius
@@ -125,8 +126,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 106
-; FirstLine = 74
+; CursorPosition = 32
+; FirstLine = 24
 ; Folding = -
 ; EnableXP
 ; DPIAware

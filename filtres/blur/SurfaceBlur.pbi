@@ -5,7 +5,10 @@
 
 Procedure SurfaceBlur_sp(*FilterCtx.FilterParams)
   With *FilterCtx
-    Protected lg = \image_lg[0], ht = \image_ht[0]
+    Protected *src.PixelArray = \addr[0]
+    Protected *dst.PixelArray = \addr[1]
+    Protected lg = \image_lg[0]
+    Protected ht = \image_ht[0]
     Protected radius = \option[0]
     Protected threshold = \option[1]  ; Seuil de différence
     
@@ -25,12 +28,7 @@ Procedure SurfaceBlur_sp(*FilterCtx.FilterParams)
     For y = thread_start To thread_stop - 1
       For x = 0 To lg - 1
         ; Pixel central
-        index = (y * lg + x) << 2
-        value = PeekL(\addr[0] + index)
-        centerA = (value >> 24) & $FF
-        centerR = (value >> 16) & $FF
-        centerG = (value >> 8) & $FF
-        centerB = value & $FF
+        GetARGB(*src\l[y * lg + x] , centerA , centerR , centerG , centerB)
         
         sumR = 0.0 : sumG = 0.0 : sumB = 0.0 : sumA = 0.0 : sumWeight = 0.0
         
@@ -43,13 +41,7 @@ Procedure SurfaceBlur_sp(*FilterCtx.FilterParams)
             px = x + dx
             If px < 0 Or px >= lg : Continue : EndIf
             
-            index = (py * lg + px) << 2
-            value = PeekL(\addr[0] + index)
-            
-            a = (value >> 24) & $FF
-            r = (value >> 16) & $FF
-            g = (value >> 8) & $FF
-            b = value & $FF
+            GetARGB(*src\l[py * lg + px] , a , r , g , b)
             
             ; Calcul de la différence de couleur
             diffR = r - centerR
@@ -84,12 +76,9 @@ Procedure SurfaceBlur_sp(*FilterCtx.FilterParams)
         EndIf
         
         ; Clamping des valeurs
-        If a < 0 : a = 0 : ElseIf a > 255 : a = 255 : EndIf
-        If r < 0 : r = 0 : ElseIf r > 255 : r = 255 : EndIf
-        If g < 0 : g = 0 : ElseIf g > 255 : g = 255 : EndIf
-        If b < 0 : b = 0 : ElseIf b > 255 : b = 255 : EndIf
+        clamp_argb(a , r , g , b)
         
-        PokeL(\addr[1] + (y * lg + x) << 2, (a << 24) | (r << 16) | (g << 8) | b)
+        *dst\l[y * lg + x] = (a << 24) | (r << 16) | (g << 8) | b
       Next
     Next
   EndWith
@@ -98,21 +87,21 @@ EndProcedure
 Procedure SurfaceBlurEx(*FilterCtx.FilterParams)
   Restore SurfaceBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  Create_MultiThread_MT(@SurfaceBlur_sp(), 1)
+  Create_MultiThread_MT(@SurfaceBlur_sp())
   
   mask_update(*FilterCtx, last_data)
 EndProcedure
 
-Procedure SurfaceBlur(source, cible, mask, radius, threshold, mask_type)
+Procedure SurfaceBlur(source, cible, mask, radius, threshold)
   Set_Source(source)
   Set_Cible(cible)
   Set_Mask(mask)
   With FilterCtx
     \option[0] = radius
     \option[1] = threshold
-    \option[2] = mask_type
   EndWith
   SurfaceBlurEx(FilterCtx)
 EndProcedure
@@ -129,8 +118,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 107
-; FirstLine = 78
+; CursorPosition = 89
+; FirstLine = 45
 ; Folding = -
 ; EnableXP
 ; DPIAware

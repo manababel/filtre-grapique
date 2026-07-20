@@ -1,29 +1,45 @@
-﻿; =================================================================
-; FILTRE : SEPARABLE GAUSSIAN BLUR
-; =================================================================
+﻿; ; --- Utilitaires de noyau ---
 
-; --- Utilitaires de noyau ---
-
-Procedure CreateGaussianKernel_Sep(Array kernel.f(1), radius.l, sigma.f)
+; Version pour la version PureBasic (Virgule fixe, retourne des Longs)
+Procedure CreateGaussianKernel_Sep(Array kernel.l(1), radius.l, sigma.f)
   If sigma <= 0.0 : sigma = radius / 3.0 : EndIf
-  
   Protected radius_opt = Int(sigma * 3.0 + 0.5)
   If radius_opt < radius : radius = radius_opt : EndIf
   If radius < 1 : radius = 1 : EndIf
-  
   Protected size = radius * 2 + 1
   Dim kernel(size - 1)
-  
+  Protected sigma2.f = 2.0 * sigma * sigma
+  Dim temp_kernel.f(size - 1)
+  Protected sum.f = 0.0
+  Protected i, x
+  For i = 0 To size - 1
+    x = i - radius
+    temp_kernel(i) = Exp(-(x * x) / sigma2)
+    sum + temp_kernel(i)
+  Next
+  If sum > 0.0
+    For i = 0 To size - 1
+      kernel(i) = Int((temp_kernel(i) / sum) * 65536.0 + 0.5)
+    Next
+  EndIf
+EndProcedure
+
+; Nouvelle procédure pour la version SSE2 (Retourne des Floats normalisés)
+Procedure CreateGaussianKernel_Sep_Float(Array kernel.f(1), radius.l, sigma.f)
+  If sigma <= 0.0 : sigma = radius / 3.0 : EndIf
+  Protected radius_opt = Int(sigma * 3.0 + 0.5)
+  If radius_opt < radius : radius = radius_opt : EndIf
+  If radius < 1 : radius = 1 : EndIf
+  Protected size = radius * 2 + 1
+  Dim kernel(size - 1)
   Protected sigma2.f = 2.0 * sigma * sigma
   Protected sum.f = 0.0
   Protected i, x
-  
   For i = 0 To size - 1
     x = i - radius
     kernel(i) = Exp(-(x * x) / sigma2)
     sum + kernel(i)
   Next
-  
   If sum > 0.0
     For i = 0 To size - 1
       kernel(i) / sum
@@ -39,163 +55,181 @@ Procedure.i CalcEffectiveRadius(radius.l, sigma.f)
   ProcedureReturn radius
 EndProcedure
 
-; --- Procédures de traitement Multi-Thread ---
+Macro SeparableGaussian_init()
+  Protected *source.pixelarray = *FilterCtx\addr[0]
+  Protected *cible.pixelarray  = *FilterCtx\addr[1]
+  Protected lg = *FilterCtx\image_lg[0]
+  Protected ht = *FilterCtx\image_ht[0]
+  Protected sigma.f = *FilterCtx\option[1] / 10.0
+  Protected radius = CalcEffectiveRadius(*FilterCtx\option[0], sigma)
+  Protected size = radius * 2 + 1
+  Protected x, y, px , py , pz, i, value
+  Protected sumA, sumR, sumG, sumB 
+  Protected k
+EndMacro
 
-Procedure SeparableGaussian_X_MT(*FilterCtx.FilterParams)
+Procedure SeparableGaussian_X_MT_SSE2(*FilterCtx.FilterParams)
+  SeparableGaussian_init()
   With *FilterCtx
-    Protected lg = \image_lg[0]
-    Protected ht = \image_ht[0]
-    Protected sigma.f = \option[1] / 10.0
-    Protected radius = CalcEffectiveRadius(\option[0], sigma)
-    
-    Protected size = radius * 2 + 1
-    Dim kernel.f(size - 1)
-    CreateGaussianKernel_Sep(kernel(), radius, sigma)
-    
-    Protected x, y, dx, px, index, value
-    Protected a.i, r.i, g.i, b.i ; Variables entières pour l'extraction
-    Protected sumA.f, sumR.f, sumG.f, sumB.f
-    Protected k.f
-    
-    Protected Dim lineA.f(lg - 1)
-    Protected Dim lineR.f(lg - 1)
-    Protected Dim lineG.f(lg - 1)
-    Protected Dim lineB.f(lg - 1)
-    
+   Dim kernel.f(size - 1) 
+    CreateGaussianKernel_Sep_Float(kernel(), radius, sigma)
+    Protected *pKernel.FloatArray = @kernel()
+    Protected pixelIn.l, pixelOut.l , posOffset
+    Protected k_val.f
     macro_calul_tread(ht)
-    
+    push_reg(*FilterCtx)
+    push_reg_xmm(*FilterCtx)
     For y = thread_start To thread_stop - 1
-      ; 1. Lecture de la ligne et conversion propre en Float
+      posOffset = y * lg
       For x = 0 To lg - 1
-        index = (y * lg + x) << 2
-        value = PeekL(\addr[0] + index)
-        
-        ; Extraction en entier d'abord (Important pour PB)
-        a = (value >> 24) & $FF
-        r = (value >> 16) & $FF
-        g = (value >> 8)  & $FF
-        b = value & $FF
-        
-        ; Puis passage en flottant
-        lineA(x) = a
-        lineR(x) = r
-        lineG(x) = g
-        lineB(x) = b
-      Next
-      
-      ; 2. Convolution horizontale
-      For x = 0 To lg - 1
-        sumA = 0.0 : sumR = 0.0 : sumG = 0.0 : sumB = 0.0
-        For dx = -radius To radius
-          px = x + dx
-          If px < 0 : px = 0 : ElseIf px >= lg : px = lg - 1 : EndIf
-          k = kernel(dx + radius)
-          sumA + lineA(px) * k
-          sumR + lineR(px) * k
-          sumG + lineG(px) * k
-          sumB + lineB(px) * k
+        !pxor xmm0, xmm0
+        For i = -radius To radius
+          px = x + i
+          clamp(px , 0 , (lg-1))
+          pixelIn = *source\l[posOffset + px]
+          k_val = *pKernel\f[i + radius]
+          !pxor xmm3, xmm3
+          !movd xmm1, [p.v_pixelIn]     ; xmm1 = [ 0 | 0 | 0 | A R G B ]
+          !punpcklbw xmm1, xmm3         ; xmm1 = [ 0 A | 0 R | 0 G | 0 B ] (en mots/words)
+          !punpcklwd xmm1, xmm3         ; xmm1 = [ A | R | G | B ] (en entiers/dwords)
+          !cvtdq2ps xmm1, xmm1          ; Convertir les 4 canaux en float
+          !movss xmm2, [p.v_k_val]      ; Charger le coef du kernel dans le float bas de xmm2
+          !shufps xmm2, xmm2, $00       ; CORRECTION : Dupliquer le coef sur les 4 canaux [ K | K | K | K ]
+          !mulps xmm1, xmm2             ; [ A*K | R*K | G*K | B*K ]
+          !addps xmm0, xmm1             ; Accumuler dans xmm0
         Next
-        
-        ; 3. Recomposition ARGB
-        PokeL(\addr[1] + ((y * lg + x) << 2), (Int(sumA + 0.5) << 24) | (Int(sumR + 0.5) << 16) | (Int(sumG + 0.5) << 8) | Int(sumB + 0.5))
+        !cvtps2dq xmm0, xmm0            ; Float -> int
+        !packssdw xmm0, xmm0            ; Int -> word (avec saturation)
+        !packuswb xmm0, xmm0            ; Word -> byte non-signé (saturation 0-255)
+        !movd [p.v_pixelOut], xmm0      ; Extraire le pixel ARGB final
+        *cible\l[posOffset + x] = pixelOut
       Next
     Next
+    pop_reg_xmm(*FilterCtx)
+    pop_reg(*FilterCtx)
   EndWith
 EndProcedure
 
-Procedure SeparableGaussian_Y_MT(*FilterCtx.FilterParams)
+Procedure SeparableGaussian_Y_MT_SSE2(*FilterCtx.FilterParams)
+  SeparableGaussian_init()
   With *FilterCtx
-    Protected lg = \image_lg[0]
-    Protected ht = \image_ht[0]
-    Protected sigma.f = \option[1] / 10.0
-    Protected radius = CalcEffectiveRadius(\option[0], sigma)
-    
-    Protected size = radius * 2 + 1
-    Dim kernel.f(size - 1)
-    CreateGaussianKernel_Sep(kernel(), radius, sigma)
-    
-    Protected x, y, dy, py, index, value
-    Protected a.i, r.i, g.i, b.i
-    Protected sumA.f, sumR.f, sumG.f, sumB.f
-    Protected k.f
-    
-    Protected Dim colA.f(ht - 1)
-    Protected Dim colR.f(ht - 1)
-    Protected Dim colG.f(ht - 1)
-    Protected Dim colB.f(ht - 1)
-    
+   Dim kernel.f(size - 1) 
+    CreateGaussianKernel_Sep_Float(kernel(), radius, sigma)
+    Protected *pKernel.FloatArray = @kernel()
+    Protected pixelIn.l, pixelOut.l
+    Protected k_val.f
     macro_calul_tread(lg)
-    
+    push_reg(*FilterCtx)
+    push_reg_xmm(*FilterCtx)
     For x = thread_start To thread_stop - 1
-      ; 1. Lecture de la colonne et conversion propre en Float
       For y = 0 To ht - 1
-        index = (y * lg + x) << 2
-        value = PeekL(\addr[0] + index)
-        
-        a = (value >> 24) & $FF
-        r = (value >> 16) & $FF
-        g = (value >> 8)  & $FF
-        b = value & $FF
-        
-        colA(y) = a
-        colR(y) = r
-        colG(y) = g
-        colB(y) = b
-      Next
-      
-      ; 2. Convolution verticale
-      For y = 0 To ht - 1
-        sumA = 0.0 : sumR = 0.0 : sumG = 0.0 : sumB = 0.0
-        For dy = -radius To radius
-          py = y + dy
-          If py < 0 : py = 0 : ElseIf py >= ht : py = ht - 1 : EndIf
-          k = kernel(dy + radius)
-          sumA + colA(py) * k
-          sumR + colR(py) * k
-          sumG + colG(py) * k
-          sumB + colB(py) * k
+        !pxor xmm0, xmm0                
+        For i = -radius To radius
+          py = y + i
+          clamp(py , 0 , (ht - 1))
+          pixelIn = *source\l[py * lg + x]
+          k_val = *pKernel\f[i + radius]
+          !pxor xmm3, xmm3
+          !movd xmm1, [p.v_pixelIn]
+          !punpcklbw xmm1, xmm3
+          !punpcklwd xmm1, xmm3
+          !cvtdq2ps xmm1, xmm1
+          !movss xmm2, [p.v_k_val]
+          !shufps xmm2, xmm2, $00       ; CORRECTION
+          !mulps xmm1, xmm2
+          !addps xmm0, xmm1
         Next
-        
-        PokeL(\addr[1] + ((y * lg + x) << 2), (Int(sumA + 0.5) << 24) | (Int(sumR + 0.5) << 16) | (Int(sumG + 0.5) << 8) | Int(sumB + 0.5))
+        !cvtps2dq xmm0, xmm0
+        !packssdw xmm0, xmm0
+        !packuswb xmm0, xmm0
+        !movd [p.v_pixelOut], xmm0
+        *cible\l[y * lg + x] = pixelOut
       Next
     Next
+    pop_reg_xmm(*FilterCtx)
+    pop_reg(*FilterCtx)
   EndWith
 EndProcedure
 
-; --- Gestion du cycle du filtre ---
+; --- Version PureBasic (Virgule fixe) ---
 
-Procedure SeparableGaussian_sp(*FilterCtx.FilterParams)
+Procedure SeparableGaussian_X_MT_PB(*FilterCtx.FilterParams)
+  SeparableGaussian_init()
+  Dim kernel.l(size - 1) 
+  CreateGaussianKernel_Sep(kernel(), radius, sigma)
   With *FilterCtx
-    Protected lg = \image_lg[0], ht = \image_ht[0]
-    Protected *tmp = AllocateMemory(lg * ht * 4)
-    If Not *tmp : ProcedureReturn : EndIf
-    
-    Protected *original_src = \addr[0]
-    Protected *original_dst = \addr[1]
-    
-    ; Passe Horizontale : Source -> Tmp
-    \addr[0] = *original_src
-    \addr[1] = *tmp
-    Create_MultiThread_MT(@SeparableGaussian_X_MT())
-    
-    ; Passe Verticale : Tmp -> Destination
-    \addr[0] = *tmp
-    \addr[1] = *original_dst
-    Create_MultiThread_MT(@SeparableGaussian_Y_MT())
-    
-    FreeMemory(*tmp)
-    \addr[0] = *original_src ; Restauration des pointeurs originaux
-    \addr[1] = *original_dst
+    Protected posOffset
+    macro_calul_tread(ht)
+    For y = thread_start To thread_stop - 1
+      posOffset = y * lg 
+      For x = 0 To lg - 1
+        sumA = 0 : sumR = 0 : sumG = 0 : sumB = 0
+        For i = -radius To radius
+          pz = x + i
+          clamp(pz , 0 , (lg - 1))
+          k = kernel(i + radius)
+          value = *source\l[posOffset + pz]
+          sumA + ((value >> 24) & $FF) * k
+          sumR + ((value >> 16) & $FF) * k
+          sumG + ((value >> 8)  & $FF) * k
+          sumB + (value         & $FF) * k
+        Next 
+        *cible\l[posOffset + x] = (((sumA + 32768) >> 16) << 24) |
+                                  (((sumR + 32768) >> 16) << 16) |
+                                  (((sumG + 32768) >> 16) << 8)  |
+                                  ((sumB + 32768) >> 16)
+      Next 
+    Next 
   EndWith
+  FreeArray(kernel()) 
 EndProcedure
+
+Procedure SeparableGaussian_Y_MT_PB(*FilterCtx.FilterParams)
+  SeparableGaussian_init()
+  Dim kernel.l(size - 1) 
+  CreateGaussianKernel_Sep(kernel(), radius, sigma)
+  With *FilterCtx
+    macro_calul_tread(lg)
+    For x = thread_start To thread_stop - 1
+      For y = 0 To ht - 1
+        sumA = 0 : sumR = 0 : sumG = 0 : sumB = 0
+        For i = -radius To radius
+          pz = y + i
+          clamp(pz , 0 , (ht-1))
+          k = kernel(i + radius)
+          value = *source\l[pz * lg + x]
+          sumA + ((value >> 24) & $FF) * k
+          sumR + ((value >> 16) & $FF) * k
+          sumG + ((value >> 8)  & $FF) * k
+          sumB + (value         & $FF) * k
+        Next 
+        *cible\l[y * lg + x] = (((sumA + 32768) >> 16) << 24) |
+                               (((sumR + 32768) >> 16) << 16) |
+                               (((sumG + 32768) >> 16) << 8)  |
+                               ((sumB + 32768) >> 16)
+      Next 
+    Next 
+  EndWith
+  FreeArray(kernel())
+EndProcedure
+
+
+Macro SeparableGaussian_sp(var)
+  *FilterCtx\addr[0] = *original_src
+  *FilterCtx\addr[1] = *tmp
+  Create_MultiThread_MT(@SeparableGaussian_X_MT_#var())
+  *FilterCtx\addr[0] = *tmp
+  *FilterCtx\addr[1] = *original_dst
+  Create_MultiThread_MT(@SeparableGaussian_Y_MT_#var())
+EndMacro
 
 Procedure SeparableGaussianEx(*FilterCtx.FilterParams)
   Restore SeparableGaussian_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 1
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
   With *FilterCtx
-    ; Logique de sécurité sur les paramètres
     If \option[0] < 1 : \option[0] = 1 : EndIf
     If \option[1] = 0 : \option[1] = \option[0] * 10 / 3 : EndIf
     
@@ -204,10 +238,37 @@ Procedure SeparableGaussianEx(*FilterCtx.FilterParams)
     If radius_max > 50 : radius_max = 50 : EndIf
     If \option[0] > radius_max : \option[0] = radius_max : EndIf
     
-    ; Exécution
-    SeparableGaussian_sp(*FilterCtx)
+    Protected *original_src = \addr[0]
+    Protected *original_dst = \addr[1]
+    Protected lg = \image_lg[0], ht = \image_ht[0]
+    Protected *tmp = AllocateMemory(lg * ht * 4)
+    If Not *tmp : ProcedureReturn : EndIf
     
-    ; Application finale (Masque)
+    CompilerIf #PB_Compiler_Processor = #PB_Processor_x86
+      SeparableGaussian_sp(PB)
+    CompilerElse
+      
+      CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+        Select \Asm ; CORRIGÉ : Utilisation directe de \Asm (car dans le bloc With)
+          Case 1   : SeparableGaussian_sp(SSE2)
+          Default  : SeparableGaussian_sp(PB)
+        EndSelect
+        
+      CompilerElse ; #PB_Compiler_Backend = #PB_Backend_C 
+        
+        Select \Asm
+          Case 100
+          Default  : SeparableGaussian_sp(PB)
+        EndSelect
+        
+      CompilerEndIf
+      
+    CompilerEndIf
+    
+    FreeMemory(*tmp)
+    \addr[0] = *original_src
+    \addr[1] = *original_dst 
+    
     mask_update(*FilterCtx, last_data)
   EndWith
 EndProcedure
@@ -223,7 +284,6 @@ Procedure SeparableGaussian(source, cible, mask, rayon, sigma_x10)
   SeparableGaussianEx(FilterCtx.FilterParams)
 EndProcedure
 
-; --- Métadonnées ---
 
 DataSection
   SeparableGaussian_data:
@@ -239,8 +299,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 239
-; FirstLine = 188
-; Folding = --
+; CursorPosition = 151
+; FirstLine = 105
+; Folding = ---
 ; EnableXP
 ; DPIAware

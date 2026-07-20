@@ -23,20 +23,19 @@ Procedure SpiralBlur_Accumulation_MT(*FilterCtx.FilterParams)
   Protected angleStep
   Max(angleStep , 1, angleCount / 32) ; Seulement 32 angles au lieu de 360*quality
   
-  Protected *src.Pixel32 = \addr[0]
-  Protected *dst.Pixel32 = \addr[1]
+  Protected *source.Pixelarray = \addr[0]
   Protected angleIdx , dist , tt , rx , ry , i
-  
+  Protected.l a , r , g , b
   ; Buffers d'accumulation (Ã©vite les allocations rÃ©pÃ©tÃ©es)
-  Dim accumR.l(lg * ht)
-  Dim accumG.l(lg * ht)
-  Dim accumB.l(lg * ht)
-  Dim accumA.l(lg * ht)
-  Dim accumCount.w(lg * ht)
+  Protected *accumR.pixelArray     = \addr[4]
+  Protected *accumG.pixelArray     = \addr[5]
+  Protected *accumB.pixelArray     = \addr[6]
+  Protected *accumA.pixelArray     = \addr[7]
+  Protected *accumCount.pixelArray = \addr[8]
   
   macro_calul_tread(angleCount / angleStep)
   
-  For angleIdx = thread_start To thread_stop
+  For angleIdx = thread_start To thread_stop - 1
     Protected angle.f = Radian((angleIdx * angleStep) / quality)
     Protected cosA.f = Cos(angle)
     Protected sinA.f = Sin(angle)
@@ -53,17 +52,14 @@ Procedure SpiralBlur_Accumulation_MT(*FilterCtx.FilterParams)
       Protected y.i = cy + dist * Sin(rotAngle)
       
       If x >= 0 And x < lg And y >= 0 And y < ht
-        Protected srcPos.i = (y * lg + x)
-        Protected *pixel.Pixel32 = *src + (srcPos << 2)
-        Protected pix.l = *pixel\l
+        
+        getargb(*source\l[y * lg + x]  , a, r , g , b)
         
         ; Accumuler dans un rayon autour du point
         ry = - Radius
         While ry <= Radius
           rx  =- Radius
           While rx <= Radius
-            ;For ry = -Radius To Radius Step sampleStep
-            ;For rx = -Radius To Radius Step sampleStep
             Protected tx.i = x + rx
             Protected ty.i = y + ry
             
@@ -72,78 +68,77 @@ Procedure SpiralBlur_Accumulation_MT(*FilterCtx.FilterParams)
               If distSq <= Radius * Radius
                 Protected dstIdx.i = ty * lg + tx
                 
-                accumR(dstIdx) + (pix >> 16) & $FF
-                accumG(dstIdx) + (pix >> 8) & $FF
-                accumB(dstIdx) + pix & $FF
-                accumA(dstIdx) + (pix >> 24) & $FF
-                accumCount(dstIdx) + 1
+                *accumR\l[dstIdx] + r
+                *accumG\l[dstIdx] + g
+                *accumB\l[dstIdx] + b
+                *accumA\l[dstIdx] + a
+                *accumCount\l[dstIdx] + 1
               EndIf
             EndIf
-            ;Next
             rx + sampleStep
           Wend
           
-          ;next
           ry + sampleStep
         Wend
       EndIf
-      
-      ;Next
-      tt + sampleStep
+     
+      dist + sampleStep
     Wend
   Next
   
-  ; Normalisation finale
-  For i = 0 To lg * ht - 1
-    Protected count.i = accumCount(i)
-    If count > 0
-      Protected *out.Pixel32 = *dst + (i << 2)
-      *out\l = ((accumA(i)/count) << 24) | ((accumR(i)/count) << 16) | 
-               ((accumG(i)/count) << 8) | (accumB(i)/count)
-    EndIf
-  Next
-  
-  FreeArray(accumR())
-  FreeArray(accumG())
-  FreeArray(accumB())
-  FreeArray(accumA())
-  FreeArray(accumCount())
   EndWith
 EndProcedure
 
 Procedure spiral_AccumulationEx(*FilterCtx.FilterParams)
-  
   Restore spiral_Accumulation_data
   Protected last_data = Filter_InitAndValidate()
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
-  
   With *FilterCtx
-    Protected i, angle.f
-    Protected quality = \option[4]
-    Protected inv_quality.f = 1.0 / quality
-    Protected angleCount = 360 * quality
+    Protected *source.Pixelarray = \addr[0]
+    Protected *cible.Pixelarray  = \addr[1]
+    Protected i, lg = \image_lg[0], ht = \image_ht[0]
+    Protected imgSize = lg * ht
+    Protected.l a, r, g, b, count
     
-    ; Allocation optimisée avec mémoire alignée
-    Dim cosTable.f(angleCount)
-    Dim sinTable.f(angleCount) 
-    
-    ; Précalcul optimisé des tables trigonométriques
-    For i = 0 To angleCount - 1
-      angle = Radian(i * inv_quality)
-      cosTable(i) = Cos(angle)
-      sinTable(i) = Sin(angle)
+    ; Allocation des buffers d'accumulation (propres et sans écraser d'index)
+    Protected err = 0
+    For i = 4 To 8
+      \addr[i] = AllocateMemory(imgSize * 4)
+      If \addr[i] = 0 : err = 1 : EndIf
     Next
     
-    \addr[2] = @cosTable()
-    \addr[3] = @sinTable()
-    
-    Create_MultiThread_MT(@SpiralBlur_Accumulation_MT())
-    
-    mask_update(*FilterCtx.FilterParams , last_data)
-    
-    FreeArray(cosTable())
-    FreeArray(sinTable())
+    If err = 0
+      ; Lancement des threads
+      Create_MultiThread_MT(@SpiralBlur_Accumulation_MT())
+      
+      ; Pointeurs pour une lecture simplifiée et ultra-rapide
+      Protected *accR.Pixelarray = \addr[4]
+      Protected *accG.Pixelarray = \addr[5]
+      Protected *accB.Pixelarray = \addr[6]
+      Protected *accA.Pixelarray = \addr[7]
+      Protected *accCount.Pixelarray = \addr[8]
+      
+      ; --- Normalisation finale (Correction arithmétique et des décalages) ---
+      For i = 0 To imgSize - 1
+        count = *accCount\l[i]
+        If count > 0
+          a = *accA\l[i] / count
+          r = *accR\l[i] / count
+          g = *accG\l[i] / count
+          b = *accB\l[i] / count
+          *cible\l[i] = (a << 24) | (r << 16) | (g << 8) | b
+        Else
+          *cible\l[i] = *source\l[i]
+        EndIf
+      Next
+      
+      mask_update(*FilterCtx.FilterParams , last_data)
+    EndIf
+    ; Libération propre de la mémoire
+    For i = 4 To 8 
+      If \addr[i] : FreeMemory(\addr[i]) : \addr[i] = 0 : EndIf 
+    Next
   EndWith
 EndProcedure
 
@@ -166,12 +161,12 @@ EndProcedure
 DataSection
   spiral_Accumulation_data:
   Data.s "spiral_Accumulation"
-  Data.s "appliquer un filtre de flou en spirale"
+  Data.s "appliquer un filtre de flou en spirale (programme bugue)"
   Data.i #FilterType_Blur
   Data.i #Blur_Directional
   
   Data.s "Rayon du filtre"       
-  Data.i 1,99,50
+  Data.i 1,99,1
   Data.s "Pos X"   
   Data.i 0,100,50
   Data.s "Pos Y"        
@@ -187,7 +182,7 @@ DataSection
   Data.s "XXX"  
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 160
+; CursorPosition = 163
 ; FirstLine = 128
 ; Folding = -
 ; EnableXP

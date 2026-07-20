@@ -10,10 +10,13 @@ Procedure DefocusBlur_sp(*FilterCtx.FilterParams)
     Protected samples = \option[1]
     Protected x, y, i, sx, sy, index, value
     Protected sumR.f, sumG.f, sumB.f, sumA.f
-    Protected a, r, g, b
+    Protected.l a, r, g, b
     Protected angle.f, dist.f
     Protected lg_minus_1 = lg - 1, ht_minus_1 = ht - 1
     
+     Protected *src.pixelarray = \addr[0]
+     Protected *dst.pixelarray = \addr[1]
+     
     ; Initialisation du générateur aléatoire par thread pour la distribution
     RandomSeed((\thread_pos + 1) * 54321)
     
@@ -33,20 +36,14 @@ Procedure DefocusBlur_sp(*FilterCtx.FilterParams)
           sy = y + Sin(angle) * dist
           
           ; Clamping des coordonnées
-          If sx < 0 : sx = 0 : ElseIf sx > lg_minus_1 : sx = lg_minus_1 : EndIf
-          If sy < 0 : sy = 0 : ElseIf sy > ht_minus_1 : sy = ht_minus_1 : EndIf
+          clamp(sx , 0 , lg_minus_1)
+          clamp(sy , 0 , ht_minus_1)
           
-          index = (sy * lg + sx) << 2
-          value = PeekL(\addr[0] + index)
-          
-        a = ((value >> 24) & $FF)
-        r = ((value >> 16) & $FF)
-        g = ((value >> 8) & $FF)
-        b = (value & $FF)
-        sumA + a
-        sumR + r
-        sumG + g
-        sumB + b
+          getargb(*src\l[sy * lg + sx] , a , r , g , b)
+          sumA + a
+          sumR + r
+          sumG + g
+          sumB + b
         Next
         
         ; Calcul de la moyenne et clamping final
@@ -60,7 +57,8 @@ Procedure DefocusBlur_sp(*FilterCtx.FilterParams)
         If g > 255 : g = 255 : EndIf
         If b > 255 : b = 255 : EndIf
         
-        PokeL(\addr[1] + (y * lg + x) << 2, (a << 24) | (r << 16) | (g << 8) | b)
+        *dst\l[y * lg + x] = (a << 24) | (r << 16) | (g << 8) | b
+        If key_escape_press = 1 : Break 2 : EndIf
       Next
     Next
   EndWith
@@ -69,6 +67,7 @@ EndProcedure
 Procedure DefocusBlurEx(*FilterCtx.FilterParams)
   Restore DefocusBlur_data
   Protected last_data = Filter_InitAndValidate()
+  *FilterCtx\asm_dispo = 0
   If last_data < 0 : ProcedureReturn 0 : EndIf
   
   With *FilterCtx
@@ -77,15 +76,18 @@ Procedure DefocusBlurEx(*FilterCtx.FilterParams)
     If \option[1] < 4 : \option[1] = 4 : EndIf
   EndWith
   
-  Create_MultiThread_MT(@DefocusBlur_sp(), 1)
+  Create_MultiThread_MT(@DefocusBlur_sp())
   
   mask_update(*FilterCtx, last_data)
 EndProcedure
 
 Procedure DefocusBlur(source, cible, mask, radius, samples)
-  Set_Source(source) : Set_Cible(cible) : Set_Mask(mask)
+  Set_Source(source)
+  Set_Cible(cible)
+  Set_Mask(mask)
   With FilterCtx
-    \option[0] = radius : \option[1] = samples
+    \option[0] = radius
+    \option[1] = samples
   EndWith
   DefocusBlurEx(FilterCtx)
 EndProcedure
@@ -102,8 +104,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 48
-; FirstLine = 22
+; CursorPosition = 39
+; FirstLine = 35
 ; Folding = -
 ; EnableXP
 ; DPIAware

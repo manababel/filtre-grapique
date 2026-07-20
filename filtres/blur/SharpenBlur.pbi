@@ -1,83 +1,152 @@
-﻿Procedure SharpenBlur_MT(*FilterCtx.FilterParams)
+﻿; ============================================================================
+; MACRO : Calcul et mélange Sharpen / Blur
+; Syntaxiquement valide pour PureBasic (arguments sans type)
+; ============================================================================
+Macro ProcessSharpenBlurPixel(origR, origG, origB, blurR, blurG, blurB, sharpenAmount, blendRatio, r_out, g_out, b_out)
+  ; 1. Netteté accentuée (Masque flou inversé)
+  sharpR = origR + sharpenAmount * (origR - blurR)
+  sharpG = origG + sharpenAmount * (origG - blurG)
+  sharpB = origB + sharpenAmount * (origB - blurB)
+  
+  ; 2. Mélange entre version floutée et version accentuée
+  fR = (blurR * blendRatio) + (sharpR * (1.0 - blendRatio))
+  fG = (blurG * blendRatio) + (sharpG * (1.0 - blendRatio))
+  fB = (blurB * blendRatio) + (sharpB * (1.0 - blendRatio))
+  
+  ; 3. Clamping
+  If fR < 0.0 : r_out = 0 : ElseIf fR > 255.0 : r_out = 255 : Else : r_out = Int(fR) : EndIf
+  If fG < 0.0 : g_out = 0 : ElseIf fG > 255.0 : g_out = 255 : Else : g_out = Int(fG) : EndIf
+  If fB < 0.0 : b_out = 0 : ElseIf fB > 255.0 : b_out = 255 : Else : b_out = Int(fB) : EndIf
+EndMacro
+
+; ============================================================================
+; PASSE 1 : Flou Box Horizontal (*src -> *tmp)
+; ============================================================================
+Procedure SharpenBlur_H_MT(*FilterCtx.FilterParams)
   With *FilterCtx
-    Protected *srcPixel.Pixel32
-    Protected *dstPixel.Pixel32
-    Protected lg = \image_lg[0]
-    Protected ht = \image_ht[0]
+    Protected lg = \image_lg[0], ht = \image_ht[0]
     Protected blurRadius = \option[0]
-    Protected sharpenAmount.f = \option[1] / 100.0  ; Force netteté
-    Protected blendRatio.f = \option[2] / 100.0     ; Mélange flou/net
+    If blurRadius < 1 : blurRadius = 1 : EndIf
     
-    Protected x, y, dx, dy, px, py
-    Protected r, g, b, a
-    Protected blurR, blurG, blurB
-    Protected origR, origG, origB, origA
-    Protected sumR, sumG, sumB, count
-    Protected sharpR.f, sharpG.f, sharpB.f
-    Protected finalR.f, finalG.f, finalB.f
+    Protected i, j, dx, px, y_offset.i
+    Protected a.l, r.l, g.l, b.l
+    Protected sumA.l, sumR.l, sumG.l, sumB.l, count.l
+    
+    Protected *src.pixelarray = \addr[0]
+    Protected *tmp.pixelarray = \addr[2]
     
     macro_calul_tread(ht)
     
-    For y = thread_start To thread_stop - 1
-      For x = 0 To lg - 1
-        ; Pixel original
-        *srcPixel = \addr[0] + ((y * lg + x) << 2)
-        getargb(*srcPixel\l, origA, origR, origG, origB)
+    For j = thread_start To thread_stop - 1
+      y_offset = j * lg
+      For i = 0 To lg - 1
+        sumA = 0 : sumR = 0 : sumG = 0 : sumB = 0 : count = 0
         
-        ; Calcul du flou
+        For dx = -blurRadius To blurRadius
+          px = i + dx
+          If px < 0 : px = 0 : ElseIf px >= lg : px = lg - 1 : EndIf
+          
+          getargb(*src\l[y_offset + px], a, r, g, b)
+          
+          sumA + a
+          sumR + r
+          sumG + g
+          sumB + b
+          count + 1
+        Next
+        
+        *tmp\l[y_offset + i] = ((sumA / count) << 24) | ((sumR / count) << 16) | ((sumG / count) << 8) | (sumB / count)
+      Next
+    Next
+  EndWith
+EndProcedure
+
+; ============================================================================
+; PASSE 2 : Flou Box Vertical + Calcul Sharpen & Mélange (*tmp -> *dst)
+; ============================================================================
+Procedure SharpenBlur_V_MT(*FilterCtx.FilterParams)
+  With *FilterCtx
+    Protected lg = \image_lg[0], ht = \image_ht[0]
+    Protected blurRadius      = \option[0]
+    Protected sharpenAmount.f = \option[1] / 100.0
+    Protected blendRatio.f    = \option[2] / 100.0
+    If blurRadius < 1 : blurRadius = 1 : EndIf
+    
+    Protected i, j, dy, py, y_offset.i
+    Protected a.l, r.l, g.l, b.l
+    Protected origA.l, origR.l, origG.l, origB.l
+    Protected sumR.l, sumG.l, sumB.l, count.l
+    Protected blurR.l, blurG.l, blurB.l
+    Protected finalR.l, finalG.l, finalB.l
+    
+    ; Variables locales requises pour la macro ProcessSharpenBlurPixel
+    Protected sharpR.f, sharpG.f, sharpB.f
+    Protected fR.f, fG.f, fB.f
+    
+    Protected *src.pixelarray = \addr[0]
+    Protected *tmp.pixelarray = \addr[2]
+    Protected *dst.pixelarray = \addr[1]
+    
+    macro_calul_tread(ht)
+    
+    For j = thread_start To thread_stop - 1
+      y_offset = j * lg
+      For i = 0 To lg - 1
+        ; 1. Pixel original
+        getargb(*src\l[y_offset + i], origA, origR, origG, origB)
+        
+        ; 2. Deuxième passe du flou (Vertical)
         sumR = 0 : sumG = 0 : sumB = 0 : count = 0
         
         For dy = -blurRadius To blurRadius
-          py = y + dy
+          py = j + dy
           If py < 0 : py = 0 : ElseIf py >= ht : py = ht - 1 : EndIf
           
-          For dx = -blurRadius To blurRadius
-            px = x + dx
-            If px < 0 : px = 0 : ElseIf px >= lg : px = lg - 1 : EndIf
-            
-            *srcPixel = \addr[0] + ((py * lg + px) << 2)
-            sumR + ((*srcPixel\l >> 16) & $FF)
-            sumG + ((*srcPixel\l >> 8) & $FF)
-            sumB + (*srcPixel\l & $FF)
-            count + 1
-          Next
+          getargb(*tmp\l[py * lg + i], a, r, g, b)
+          
+          sumR + r
+          sumG + g
+          sumB + b
+          count + 1
         Next
         
         blurR = sumR / count
         blurG = sumG / count
         blurB = sumB / count
         
-        ; Netteté accentuée (Masque flou inversé)
-        sharpR = origR + sharpenAmount * (origR - blurR)
-        sharpG = origG + sharpenAmount * (origG - blurG)
-        sharpB = origB + sharpenAmount * (origB - blurB)
+        ; 3. Application du calcul de netteté et du mélange
+        ProcessSharpenBlurPixel(origR, origG, origB, blurR, blurG, blurB, sharpenAmount, blendRatio, finalR, finalG, finalB)
         
-        ; Mélange entre flou et netteté
-        finalR = (blurR * blendRatio) + (sharpR * (1.0 - blendRatio))
-        finalG = (blurG * blendRatio) + (sharpG * (1.0 - blendRatio))
-        finalB = (blurB * blendRatio) + (sharpB * (1.0 - blendRatio))
-        
-        ; Clamping
-        If finalR < 0 : finalR = 0 : ElseIf finalR > 255 : finalR = 255 : EndIf
-        If finalG < 0 : finalG = 0 : ElseIf finalG > 255 : finalG = 255 : EndIf
-        If finalB < 0 : finalB = 0 : ElseIf finalB > 255 : finalB = 255 : EndIf
-        
-        ; Écriture du résultat
-        *dstPixel = \addr[1] + ((y * lg + x) << 2)
-        *dstPixel\l = (origA << 24) | (Int(finalR) << 16) | (Int(finalG) << 8) | Int(finalB)
+        ; 4. Écriture dans l'image destination
+        *dst\l[y_offset + i] = (origA << 24) | (finalR << 16) | (finalG << 8) | finalB
       Next
     Next
   EndWith
 EndProcedure
 
+; ============================================================================
+; LANCEUR PRINCIPAL ET ENVELOPPE PUBLIQUE
+; ============================================================================
 Procedure SharpenBlurEx(*FilterCtx.FilterParams)
   Restore SharpenBlur_data
   Protected last_data = Filter_InitAndValidate()
   If last_data < 0 : ProcedureReturn 0 : EndIf
 
-  Create_MultiThread_MT(@SharpenBlur_MT())
-  
-  mask_update(*FilterCtx, last_data)
+  With *FilterCtx
+    Protected imgSize = \image_lg[0] * \image_ht[0] * 4
+    
+    ; Allocation du tampon temporaire \addr[2]
+    \addr[2] = AllocateMemory(imgSize)
+    
+    If \addr[2]
+      Create_MultiThread_MT(@SharpenBlur_H_MT())
+      Create_MultiThread_MT(@SharpenBlur_V_MT())
+      
+      FreeMemory(\addr[2])
+    EndIf
+    
+    mask_update(*FilterCtx, last_data)
+  EndWith
 EndProcedure
 
 Procedure SharpenBlur(source, cible, mask, rayon_flou, force_nettete, ratio_flou)
@@ -108,8 +177,8 @@ DataSection
   Data.s "XXX"
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 82
-; FirstLine = 57
+; CursorPosition = 104
+; FirstLine = 100
 ; Folding = -
 ; EnableXP
 ; DPIAware

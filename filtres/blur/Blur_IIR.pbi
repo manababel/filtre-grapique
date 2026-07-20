@@ -329,43 +329,66 @@ EndProcedure
 ; ============================================================================
 
 Procedure Blur_IIREx(*FilterCtx.FilterParams)
-  
-  Restore Blur_IIR_data
-  Protected last_data = Filter_InitAndValidate()
-  If last_data < 0 : ProcedureReturn 0 : EndIf
-  
-
   With FilterCtx
+    
+    Restore Blur_IIR_data
+    Protected last_data = Filter_InitAndValidate()
+    *FilterCtx\asm_dispo = 1
+    If last_data < 0 : ProcedureReturn 0 : EndIf
+    
+    
     Protected.l lg = \image_lg[0]
     Protected.l ht = \image_ht[0]
-
-    CopyMemory(\image[0], \image[1], (lg * ht * 4))
-    \addr[4] = AllocateMemory(lg * ht * 4)
-    If \addr[4] = 0 : ProcedureReturn : EndIf
-    
-    \addr[0] = \image[0]
-    \addr[1] = \image[1]
-    ; Calculer le nombre optimal de threads
-    
-    Protected.l nb_threads = 1
+    Protected.i buffer_temp = 0
     Protected passe
     
-    ;CompilerIf #PB_Compiler_Processor = #PB_Processor_x64 And #PB_Compiler_Backend = #PB_Backend_Asm
-      ;For passe = 0 To *FilterCtx\option[2] - 1
-        ;Create_MultiThread_MT(@Blur_IIR_sp1_sse4_blocked(), nb_threads)
-        ;Create_MultiThread_MT(@Blur_IIR_sp2_sse4_blocked(), nb_threads)
-      ;Next
-    ;CompilerElse
-      ; Version PureBasic avec blocs
-      For passe = 0 To *FilterCtx\option[2] - 1
-        Create_MultiThread_MT(@Blur_IIR_sp1(), nb_threads)
-        Create_MultiThread_MT(@Blur_IIR_sp2(), nb_threads)
-
-      Next
-    ;CompilerEndIf
-    ;macro_Filter_BufferFinalize(3)
-
-  
+    ; Sécurité : Si la source et la cible sont identiques, 
+    ; on crée un buffer temporaire pour ne pas détruire l'image originale pendant le calcul
+    If \addr[0] = \addr[1]
+      buffer_temp = AllocateMemory(lg * ht * 4)
+      If buffer_temp = 0 : ProcedureReturn 0 : EndIf
+      CopyMemory(\addr[0], buffer_temp, (lg * ht * 4))
+      \addr[1] = buffer_temp
+    EndIf
+    
+    For passe = 1 To \option[2]
+      
+      CompilerIf #PB_Compiler_Processor = #PB_Processor_x86
+        Debug "version _Pb"
+        Create_MultiThread_MT(@Blur_IIR_sp1()) ; 1. Passe Horizontale
+        Create_MultiThread_MT(@Blur_IIR_sp2()) ; 2. Passe Verticale
+      CompilerElse
+        CompilerIf #PB_Compiler_Backend = #PB_Backend_Asm
+          Select FilterCtx\Asm
+            Case 1     
+              Create_MultiThread_MT(@Blur_IIR_sp1_sse2()) 
+              Create_MultiThread_MT(@Blur_IIR_sp2_sse2()) 
+            Default 
+              Create_MultiThread_MT(@Blur_IIR_sp1()) 
+              Create_MultiThread_MT(@Blur_IIR_sp2()) 
+          EndSelect
+          
+        CompilerElse ; #PB_Compiler_Backend = #PB_Backend_C 
+          
+          Select FilterCtx\Asm
+            Case 100
+            Default 
+              Create_MultiThread_MT(@Blur_IIR_sp1()) 
+              Create_MultiThread_MT(@Blur_IIR_sp2())
+          EndSelect
+          
+        CompilerEndIf
+      CompilerEndIf
+    Next 
+    
+    If buffer_temp
+      CopyMemory(buffer_temp, \image[1], (lg * ht * 4))
+      FreeMemory(buffer_temp)
+      \addr[1] = \image[1] ; Restauration du pointeur d'origine
+    EndIf
+    
+    mask_update(*FilterCtx, last_data)
+    
   EndWith
 EndProcedure
 
@@ -399,8 +422,8 @@ EndDataSection
 ;
 ; ============================================================================
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 384
-; FirstLine = 348
+; CursorPosition = 335
+; FirstLine = 319
 ; Folding = ----
 ; Optimizer
 ; EnableThread
